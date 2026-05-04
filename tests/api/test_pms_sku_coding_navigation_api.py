@@ -33,7 +33,7 @@ async def test_pms_sku_coding_page_and_route_exist(client: httpx.AsyncClient) ->
     nodes = _walk_pages(data["pages"])
     routes = _route_map(data["route_prefixes"])
 
-    assert nodes["pms.sku_coding"]["name"] == "SKU 编码"
+    assert nodes["pms.sku_coding"]["name"] == "SKU 编码工具"
     assert nodes["pms.sku_coding"]["parent_code"] == "pms"
     assert nodes["pms.sku_coding"]["domain_code"] == "pms"
     assert nodes["pms.sku_coding"]["level"] == 2
