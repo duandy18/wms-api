@@ -284,3 +284,207 @@ async def test_pms_attribute_template_options_and_item_values_contract(client: h
     r_get = await client.get(f"/items/{item_id}/attributes", headers=headers)
     assert r_get.status_code == 200, r_get.text
     assert r_get.json()["data"][0]["value_option_code_snapshots"] == [f"WHT{sfx}"]
+
+
+@pytest.mark.asyncio
+async def test_pms_category_governance_rejects_invalid_tree_and_duplicate_active_name(client: httpx.AsyncClient) -> None:
+    headers = await _headers(client)
+    sfx = _suffix()
+
+    r_root = await client.post(
+        "/pms/categories",
+        json={
+            "parent_id": None,
+            "level": 1,
+            "product_kind": "FOOD",
+            "category_name": f"治理父类-UT-{sfx}",
+            "category_code": f"GV{sfx}",
+            "is_leaf": False,
+        },
+        headers=headers,
+    )
+    assert r_root.status_code == 201, r_root.text
+    root = r_root.json()
+
+    r_missing_parent = await client.post(
+        "/pms/categories",
+        json={
+            "parent_id": None,
+            "level": 2,
+            "product_kind": "FOOD",
+            "category_name": f"缺父类-UT-{sfx}",
+            "category_code": f"MP{sfx}",
+            "is_leaf": False,
+        },
+        headers=headers,
+    )
+    assert r_missing_parent.status_code == 400, r_missing_parent.text
+    assert "必须选择父级" in r_missing_parent.text
+
+    r_wrong_kind = await client.post(
+        "/pms/categories",
+        json={
+            "parent_id": int(root["id"]),
+            "level": 2,
+            "product_kind": "SUPPLY",
+            "category_name": f"错类型-UT-{sfx}",
+            "category_code": f"WK{sfx}",
+            "is_leaf": False,
+        },
+        headers=headers,
+    )
+    assert r_wrong_kind.status_code == 400, r_wrong_kind.text
+    assert "product_kind" in r_wrong_kind.text
+
+    r_child = await client.post(
+        "/pms/categories",
+        json={
+            "parent_id": int(root["id"]),
+            "level": 2,
+            "product_kind": "FOOD",
+            "category_name": f"治理子类-UT-{sfx}",
+            "category_code": f"GC{sfx}",
+            "is_leaf": False,
+        },
+        headers=headers,
+    )
+    assert r_child.status_code == 201, r_child.text
+    child = r_child.json()
+
+    r_duplicate = await client.post(
+        "/pms/categories",
+        json={
+            "parent_id": int(root["id"]),
+            "level": 2,
+            "product_kind": "FOOD",
+            "category_name": f"治理子类-UT-{sfx}",
+            "category_code": f"GD{sfx}",
+            "is_leaf": False,
+        },
+        headers=headers,
+    )
+    assert r_duplicate.status_code == 409, r_duplicate.text
+    assert "已存在启用分类名称" in r_duplicate.text
+
+    r_level3_not_leaf = await client.post(
+        "/pms/categories",
+        json={
+            "parent_id": int(child["id"]),
+            "level": 3,
+            "product_kind": "FOOD",
+            "category_name": f"三级非叶子-UT-{sfx}",
+            "category_code": f"NL{sfx}",
+            "is_leaf": False,
+        },
+        headers=headers,
+    )
+    assert r_level3_not_leaf.status_code == 400, r_level3_not_leaf.text
+    assert "三级分类必须是叶子分类" in r_level3_not_leaf.text
+
+
+@pytest.mark.asyncio
+async def test_pms_category_governance_blocks_unsafe_update_and_disable(client: httpx.AsyncClient) -> None:
+    headers = await _headers(client)
+    sfx = _suffix()
+
+    r_root = await client.post(
+        "/pms/categories",
+        json={
+            "parent_id": None,
+            "level": 1,
+            "product_kind": "FOOD",
+            "category_name": f"安全父类-UT-{sfx}",
+            "category_code": f"SF{sfx}",
+            "is_leaf": False,
+        },
+        headers=headers,
+    )
+    assert r_root.status_code == 201, r_root.text
+    root = r_root.json()
+
+    r_child = await client.post(
+        "/pms/categories",
+        json={
+            "parent_id": int(root["id"]),
+            "level": 2,
+            "product_kind": "FOOD",
+            "category_name": f"安全子类-UT-{sfx}",
+            "category_code": f"SC{sfx}",
+            "is_leaf": False,
+        },
+        headers=headers,
+    )
+    assert r_child.status_code == 201, r_child.text
+    child = r_child.json()
+
+    r_leaf = await client.post(
+        "/pms/categories",
+        json={
+            "parent_id": int(child["id"]),
+            "level": 3,
+            "product_kind": "FOOD",
+            "category_name": f"安全叶子-UT-{sfx}",
+            "category_code": f"SL{sfx}",
+            "is_leaf": True,
+        },
+        headers=headers,
+    )
+    assert r_leaf.status_code == 201, r_leaf.text
+    leaf = r_leaf.json()
+
+    r_change_root_code = await client.patch(
+        f"/pms/categories/{root['id']}",
+        json={"category_code": f"SFX{sfx}"},
+        headers=headers,
+    )
+    assert r_change_root_code.status_code == 409, r_change_root_code.text
+    assert "存在子分类" in r_change_root_code.text
+
+    r_mark_child_leaf = await client.patch(
+        f"/pms/categories/{child['id']}",
+        json={"is_leaf": True},
+        headers=headers,
+    )
+    assert r_mark_child_leaf.status_code == 409, r_mark_child_leaf.text
+    assert "不能标记为叶子分类" in r_mark_child_leaf.text
+
+    r_brand = await client.post(
+        "/pms/brands",
+        json={"name_cn": f"分类引用品牌-UT-{sfx}", "code": f"CRB{sfx}"},
+        headers=headers,
+    )
+    assert r_brand.status_code == 201, r_brand.text
+    brand = r_brand.json()
+
+    r_item = await client.post(
+        "/items",
+        json={
+            "sku": f"CAT-GOV-{sfx}",
+            "name": f"分类引用商品-UT-{sfx}",
+            "brand_id": int(brand["id"]),
+            "category_id": int(leaf["id"]),
+            "supplier_id": 1,
+            "lot_source_policy": "SUPPLIER_ONLY",
+            "expiry_policy": "NONE",
+            "derivation_allowed": True,
+            "uom_governance_enabled": False,
+        },
+        headers=headers,
+    )
+    assert r_item.status_code == 201, r_item.text
+
+    r_disable_leaf = await client.post(f"/pms/categories/{leaf['id']}/disable", headers=headers)
+    assert r_disable_leaf.status_code == 409, r_disable_leaf.text
+    assert "已被商品引用" in r_disable_leaf.text
+
+    r_leaf_to_non_leaf = await client.patch(
+        f"/pms/categories/{leaf['id']}",
+        json={"is_leaf": False},
+        headers=headers,
+    )
+    assert r_leaf_to_non_leaf.status_code == 409, r_leaf_to_non_leaf.text
+    assert "已被商品引用" in r_leaf_to_non_leaf.text
+
+    r_disable_root = await client.post(f"/pms/categories/{root['id']}/disable", headers=headers)
+    assert r_disable_root.status_code == 409, r_disable_root.text
+    assert "存在启用子分类" in r_disable_root.text
