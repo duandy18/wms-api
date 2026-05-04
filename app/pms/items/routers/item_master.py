@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -43,6 +43,154 @@ def _bad_request(message: str) -> HTTPException:
 
 def _not_found(message: str) -> HTTPException:
     return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=message)
+
+
+def _conflict(message: str) -> HTTPException:
+    return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=message)
+
+
+def _normalize_category_name(value: object) -> str:
+    return str(value or "").strip()
+
+
+def _has_category_children(db: Session, *, category_id: int, active_only: bool) -> bool:
+    stmt = select(PmsBusinessCategory.id).where(PmsBusinessCategory.parent_id == int(category_id))
+    if active_only:
+        stmt = stmt.where(PmsBusinessCategory.is_active.is_(True))
+    return db.execute(stmt.limit(1)).scalar_one_or_none() is not None
+
+
+def _has_category_items(db: Session, *, category_id: int) -> bool:
+    stmt = select(Item.id).where(Item.category_id == int(category_id))
+    return db.execute(stmt.limit(1)).scalar_one_or_none() is not None
+
+
+def _active_category_name_exists(
+    db: Session,
+    *,
+    parent_id: int | None,
+    product_kind: str,
+    category_name: str,
+    exclude_id: int | None = None,
+) -> bool:
+    normalized_name = _normalize_category_name(category_name)
+    if not normalized_name:
+        return False
+
+    stmt = select(PmsBusinessCategory.id).where(
+        PmsBusinessCategory.product_kind == product_kind.strip().upper(),
+        PmsBusinessCategory.is_active.is_(True),
+        func.lower(func.trim(PmsBusinessCategory.category_name)) == normalized_name.lower(),
+    )
+
+    if parent_id is None:
+        stmt = stmt.where(PmsBusinessCategory.parent_id.is_(None))
+    else:
+        stmt = stmt.where(PmsBusinessCategory.parent_id == int(parent_id))
+
+    if exclude_id is not None:
+        stmt = stmt.where(PmsBusinessCategory.id != int(exclude_id))
+
+    return db.execute(stmt.limit(1)).scalar_one_or_none() is not None
+
+
+def _validate_category_create(db: Session, payload: PmsCategoryCreate) -> None:
+    level = int(payload.level)
+    parent_id = payload.parent_id
+    product_kind = payload.product_kind.strip().upper()
+
+    if level == 1 and parent_id is not None:
+        raise _bad_request("一级分类不能选择父级分类")
+    if level > 1 and parent_id is None:
+        raise _bad_request("二级/三级分类必须选择父级分类")
+
+    parent: PmsBusinessCategory | None = None
+    if parent_id is not None:
+        parent = db.get(PmsBusinessCategory, int(parent_id))
+        if parent is None:
+            raise _bad_request("父级分类不存在")
+        if not bool(parent.is_active):
+            raise _bad_request("父级分类已停用，不能新增子分类")
+        if int(parent.level) != level - 1:
+            raise _bad_request("父级分类层级不匹配")
+        if str(parent.product_kind).strip().upper() != product_kind:
+            raise _bad_request("子分类 product_kind 必须与父级分类一致")
+        if bool(parent.is_leaf):
+            raise _bad_request("父级分类是叶子分类，不能新增子分类")
+
+    if level == 3 and not bool(payload.is_leaf):
+        raise _bad_request("三级分类必须是叶子分类")
+
+    if _active_category_name_exists(
+        db,
+        parent_id=parent_id,
+        product_kind=product_kind,
+        category_name=payload.category_name,
+    ):
+        raise _conflict("同父级同商品类型下已存在启用分类名称")
+
+
+def _validate_category_update(
+    db: Session,
+    *,
+    obj: PmsBusinessCategory,
+    data: dict,
+) -> None:
+    if "category_name" in data and data["category_name"] is not None:
+        if not _normalize_category_name(data["category_name"]):
+            raise _bad_request("分类名称不能为空")
+        if bool(obj.is_active) and _active_category_name_exists(
+            db,
+            parent_id=obj.parent_id,
+            product_kind=str(obj.product_kind),
+            category_name=str(data["category_name"]),
+            exclude_id=int(obj.id),
+        ):
+            raise _conflict("同父级同商品类型下已存在启用分类名称")
+
+    if "category_code" in data:
+        if obj.is_locked:
+            raise _conflict("内部分类编码已锁定，不能修改 category_code")
+        if data["category_code"] is not None and not str(data["category_code"]).strip():
+            raise _bad_request("分类代码不能为空")
+        if _has_category_children(db, category_id=int(obj.id), active_only=False):
+            raise _conflict("当前分类下存在子分类，不能修改分类代码；请先治理子分类")
+
+    if "is_leaf" in data:
+        next_is_leaf = bool(data["is_leaf"])
+        if next_is_leaf and _has_category_children(db, category_id=int(obj.id), active_only=True):
+            raise _conflict("当前分类下存在启用子分类，不能标记为叶子分类")
+        if not next_is_leaf and _has_category_items(db, category_id=int(obj.id)):
+            raise _conflict("当前分类已被商品引用，不能取消叶子分类")
+
+
+def _validate_category_enable(db: Session, *, obj: PmsBusinessCategory) -> None:
+    if obj.parent_id is not None:
+        parent = db.get(PmsBusinessCategory, int(obj.parent_id))
+        if parent is None:
+            raise _bad_request("父级分类不存在")
+        if not bool(parent.is_active):
+            raise _conflict("父级分类已停用，不能启用子分类")
+        if int(parent.level) != int(obj.level) - 1:
+            raise _bad_request("父级分类层级不匹配")
+        if str(parent.product_kind).strip().upper() != str(obj.product_kind).strip().upper():
+            raise _bad_request("子分类 product_kind 必须与父级分类一致")
+
+    if _active_category_name_exists(
+        db,
+        parent_id=obj.parent_id,
+        product_kind=str(obj.product_kind),
+        category_name=str(obj.category_name),
+        exclude_id=int(obj.id),
+    ):
+        raise _conflict("同父级同商品类型下已存在启用分类名称")
+
+
+def _validate_category_disable(db: Session, *, obj: PmsBusinessCategory) -> None:
+    if _has_category_children(db, category_id=int(obj.id), active_only=True):
+        raise _conflict("当前分类下存在启用子分类，不能停用")
+    if _has_category_items(db, category_id=int(obj.id)):
+        raise _conflict("当前分类已被商品引用，不能停用；请先改绑商品")
 
 
 def _build_path_code(db: Session, *, parent_id: int | None, category_code: str) -> str:
@@ -162,6 +310,8 @@ def list_pms_categories(
 
 @router.post("/pms/categories", response_model=PmsCategoryOut, status_code=status.HTTP_201_CREATED)
 def create_pms_category(payload: PmsCategoryCreate, db: Session = Depends(get_db)):
+    _validate_category_create(db, payload)
+
     try:
         path_code = _build_path_code(db, parent_id=payload.parent_id, category_code=payload.category_code)
     except ValueError as e:
@@ -194,8 +344,8 @@ def update_pms_category(category_id: int, payload: PmsCategoryUpdate, db: Sessio
     if obj is None:
         raise _not_found("内部分类不存在")
     data = payload.model_dump(exclude_unset=True)
-    if "category_code" in data and obj.is_locked:
-        raise HTTPException(status_code=409, detail="内部分类编码已锁定，不能修改 category_code")
+    _validate_category_update(db, obj=obj, data=data)
+
     for k, v in data.items():
         if k == "category_code" and v is not None:
             v = str(v).upper()
@@ -212,6 +362,7 @@ def enable_pms_category(category_id: int, db: Session = Depends(get_db)):
     obj = db.get(PmsBusinessCategory, int(category_id))
     if obj is None:
         raise _not_found("内部分类不存在")
+    _validate_category_enable(db, obj=obj)
     obj.is_active = True
     db.commit()
     db.refresh(obj)
@@ -223,6 +374,7 @@ def disable_pms_category(category_id: int, db: Session = Depends(get_db)):
     obj = db.get(PmsBusinessCategory, int(category_id))
     if obj is None:
         raise _not_found("内部分类不存在")
+    _validate_category_disable(db, obj=obj)
     obj.is_active = False
     db.commit()
     db.refresh(obj)
