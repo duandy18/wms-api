@@ -111,6 +111,7 @@ class ItemUOM(Base):
 
     __table_args__ = (
         sa.UniqueConstraint("item_id", "uom", name="uq_item_uoms_item_uom"),
+        sa.UniqueConstraint("id", "item_id", name="uq_item_uoms_id_item_id"),
         CheckConstraint("ratio_to_base >= 1", name="ck_item_uoms_ratio_ge_1"),
         Index(
             "uq_item_uoms_one_base_per_item",

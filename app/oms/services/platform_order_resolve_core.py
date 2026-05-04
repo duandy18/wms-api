@@ -48,7 +48,7 @@ async def resolve_platform_lines_to_items(
     解析路径（严格确定性）：
       1) filled_code → merchant_code_fsku_bindings（一对一）→ published FSKU.id
       2) 若 1) 未命中：回退 filled_code == FSKU.code（理想路径）
-      3) 命中 FSKU.id 后：published FSKU → fsku_components → items
+      3) 命中 FSKU.id 后：published FSKU → pms_fsku_components → items
 
     说明：
     - 事实表唯一事实字段仍为 filled_code（字段语义已收敛）
@@ -136,7 +136,7 @@ async def resolve_platform_lines_to_items(
                         text(
                             """
                             SELECT id
-                              FROM fskus
+                              FROM pms_fskus
                              WHERE code = :code
                                AND status = 'published'
                              LIMIT 1

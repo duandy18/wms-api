@@ -36,6 +36,7 @@ class ItemSkuCode(Base):
 
     __table_args__ = (
         sa.UniqueConstraint("code", name="uq_item_sku_codes_code"),
+        sa.UniqueConstraint("id", "item_id", name="uq_item_sku_codes_id_item_id"),
         sa.Index(
             "uq_item_sku_codes_one_primary_per_item",
             "item_id",

@@ -18,12 +18,22 @@ async def load_fsku_components(
         await session.execute(
             text(
                 """
-                SELECT c.item_id, c.qty, c.role
-                  FROM fsku_components c
-                  JOIN fskus f ON f.id = c.fsku_id
-                 WHERE c.fsku_id = :fid
-                   AND f.status = 'published'
-                 ORDER BY c.id
+                SELECT
+                  c.resolved_item_id AS item_id,
+                  c.qty_per_fsku AS qty,
+                  'primary' AS role,
+                  c.component_sku_code,
+                  c.alloc_unit_price,
+                  c.resolved_item_sku_code_id,
+                  c.resolved_item_uom_id,
+                  c.sku_code_snapshot,
+                  c.item_name_snapshot,
+                  c.uom_snapshot
+                FROM pms_fsku_components c
+                JOIN pms_fskus f ON f.id = c.fsku_id
+                WHERE c.fsku_id = :fid
+                  AND f.status = 'published'
+                ORDER BY c.sort_order ASC, c.id ASC
                 """
             ),
             {"fid": int(fsku_id)},

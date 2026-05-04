@@ -178,9 +178,9 @@ async def _load_line_component_rows(
                   f.status AS fsku_status,
 
                   c.id AS component_id,
-                  c.item_id AS component_item_id,
-                  c.qty AS component_qty,
-                  c.role AS component_role
+                  c.resolved_item_id AS component_item_id,
+                  c.qty_per_fsku AS component_qty,
+                  'primary' AS component_role
                 FROM {line_table} l
                 LEFT JOIN merchant_code_fsku_bindings b
                   ON b.platform = :platform
@@ -191,9 +191,9 @@ async def _load_line_component_rows(
                    LIMIT 1
                  )
                  AND b.merchant_code = l.merchant_sku
-                LEFT JOIN fskus f
+                LEFT JOIN pms_fskus f
                   ON f.id = b.fsku_id
-                LEFT JOIN fsku_components c
+                LEFT JOIN pms_fsku_components c
                   ON c.fsku_id = f.id
                 WHERE l.mirror_id = :mirror_id
                 ORDER BY l.id ASC, c.id ASC

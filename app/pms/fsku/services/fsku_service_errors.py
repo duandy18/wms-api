@@ -1,4 +1,4 @@
-# app/oms/fsku/services/fsku_service_errors.py
+# app/pms/fsku/services/fsku_service_errors.py
 from __future__ import annotations
 
 from dataclasses import dataclass

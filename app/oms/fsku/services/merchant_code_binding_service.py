@@ -8,7 +8,7 @@ from typing import Optional
 from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.oms.fsku.models.fsku import Fsku
+from app.pms.fsku.models.fsku import Fsku
 from app.oms.fsku.models.merchant_code_fsku_binding import MerchantCodeFskuBinding
 
 

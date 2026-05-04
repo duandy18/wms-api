@@ -260,7 +260,7 @@ async def manual_bind_merchant_code(
             text(
                 """
                 SELECT id, status
-                  FROM fskus
+                  FROM pms_fskus
                  WHERE id = :id
                  LIMIT 1
                 """

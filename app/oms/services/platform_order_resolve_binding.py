@@ -38,7 +38,7 @@ async def resolve_fsku_id_by_binding(
                     """
                     SELECT b.fsku_id
                       FROM merchant_code_fsku_bindings b
-                      JOIN fskus f ON f.id = b.fsku_id
+                      JOIN pms_fskus f ON f.id = b.fsku_id
                      WHERE b.platform = :p
                        AND b.store_code = :store_code
                        AND b.merchant_code = :code
@@ -63,7 +63,7 @@ async def resolve_fsku_id_by_binding(
                     """
                     SELECT b.fsku_id, f.status
                       FROM merchant_code_fsku_bindings b
-                      LEFT JOIN fskus f ON f.id = b.fsku_id
+                      LEFT JOIN pms_fskus f ON f.id = b.fsku_id
                      WHERE b.platform = :p
                        AND b.store_code = :store_code
                        AND b.merchant_code = :code

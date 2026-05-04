@@ -51,6 +51,7 @@ async def test_pms_master_data_page_tree_and_routes(client: httpx.AsyncClient) -
         "pms.categories",
         "pms.item_attributes",
         "pms.sku_coding",
+        "pms.fsku_rules",
         "pms.item_barcodes",
         "pms.item_uoms",
         "pms.suppliers",
@@ -67,12 +68,19 @@ async def test_pms_master_data_page_tree_and_routes(client: httpx.AsyncClient) -
     assert nodes["pms.sku_coding"]["name"] == "SKU 编码工具"
     assert [x["code"] for x in nodes["pms.sku_coding"].get("children", [])] == []
 
+    assert nodes["pms.fsku_rules"]["name"] == "FSKU 组合规则"
+    assert nodes["pms.fsku_rules"]["parent_code"] == "pms"
+    assert nodes["pms.fsku_rules"]["domain_code"] == "pms"
+    assert nodes["pms.fsku_rules"]["effective_read_permission"] == "page.pms.read"
+    assert nodes["pms.fsku_rules"]["effective_write_permission"] == "page.pms.write"
+
     expected_routes = {
         "/items": "pms.items",
         "/pms/brands": "pms.brands",
         "/pms/categories": "pms.categories",
         "/pms/item-attribute-defs": "pms.item_attributes",
         "/items/sku-coding": "pms.sku_coding",
+        "/pms/fskus": "pms.fsku_rules",
         "/item-barcodes": "pms.item_barcodes",
         "/item-uoms": "pms.item_uoms",
         "/suppliers": "pms.suppliers",
