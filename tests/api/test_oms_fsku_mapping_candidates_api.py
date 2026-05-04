@@ -60,20 +60,28 @@ async def _create_published_fsku(session, *, code: str, name: str) -> int:
         await session.execute(
             text(
                 """
-                INSERT INTO fskus (
+                INSERT INTO pms_fskus (
                   code,
                   name,
                   shape,
                   status,
+                  fsku_expr,
+                  normalized_expr,
+                  expr_type,
+                  component_count,
                   published_at,
                   created_at,
                   updated_at
                 )
                 VALUES (
-                  :code,
-                  :name,
+                  CAST(:code AS varchar),
+                  CAST(:name AS text),
                   'single',
                   'published',
+                  CAST(:expr AS text),
+                  upper(CAST(:expr AS text)),
+                  'DIRECT',
+                  0,
                   now(),
                   now(),
                   now()
@@ -81,10 +89,9 @@ async def _create_published_fsku(session, *, code: str, name: str) -> int:
                 RETURNING id
                 """
             ),
-            {"code": code, "name": name},
+            {"code": code, "name": name, "expr": code},
         )
     ).mappings().one()
-    await session.commit()
     return int(row["id"])
 
 

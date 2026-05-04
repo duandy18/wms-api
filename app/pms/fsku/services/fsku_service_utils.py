@@ -1,4 +1,4 @@
-# app/oms/fsku/services/fsku_service_utils.py
+# app/pms/fsku/services/fsku_service_utils.py
 from __future__ import annotations
 
 from datetime import datetime, timezone

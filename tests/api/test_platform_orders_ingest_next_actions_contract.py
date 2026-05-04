@@ -18,7 +18,7 @@ async def _pick_one_published_fsku_id(async_session_maker) -> int | None:
                 text(
                     """
                     SELECT id
-                      FROM fskus
+                      FROM pms_fskus
                      WHERE status = 'published'
                      ORDER BY id ASC
                      LIMIT 1
@@ -110,10 +110,10 @@ async def test_platform_orders_manual_bind_persists_current_binding_and_ingest_c
     store_id = int(b0.get("store_id") or 0)
     assert store_id > 0
 
-    # 1) 找一个 published fsku（没有就跳过：说明 seed 未准备）
+    # 1) 找一个 published PMS FSKU（没有就跳过：说明 seed 未准备）
     fsku_id = await _pick_one_published_fsku_id(async_session_maker)
     if fsku_id is None:
-        pytest.skip("no published fsku found in test db; seed baseline is missing published fskus")
+        pytest.skip("no published PMS FSKU found in test db; seed baseline is missing published PMS FSKUs")
 
     # 2) 绑定（HTTP）
     bind_payload = {

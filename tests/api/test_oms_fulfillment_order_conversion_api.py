@@ -80,24 +80,78 @@ async def _create_published_fsku_with_component(
     name: str,
     component_qty: int = 1,
 ) -> int:
+    resolved = (
+        await session.execute(
+            text(
+                """
+                WITH code_row AS (
+                  SELECT
+                    c.id AS sku_code_id,
+                    c.item_id,
+                    c.code AS sku_code
+                  FROM item_sku_codes c
+                  WHERE c.item_id = :item_id
+                    AND c.is_active = TRUE
+                  ORDER BY c.is_primary DESC, c.id ASC
+                  LIMIT 1
+                ),
+                uom_row AS (
+                  SELECT
+                    u.id AS item_uom_id,
+                    u.item_id,
+                    COALESCE(NULLIF(u.display_name, ''), NULLIF(u.uom, ''), u.uom) AS uom_name
+                  FROM item_uoms u
+                  WHERE u.item_id = :item_id
+                    AND (u.is_outbound_default = TRUE OR u.is_base = TRUE)
+                  ORDER BY u.is_outbound_default DESC, u.is_base DESC, u.id ASC
+                  LIMIT 1
+                )
+                SELECT
+                  cr.sku_code_id,
+                  cr.sku_code,
+                  i.name AS item_name,
+                  ur.item_uom_id,
+                  ur.uom_name
+                FROM code_row cr
+                JOIN items i ON i.id = cr.item_id
+                JOIN uom_row ur ON ur.item_id = cr.item_id
+                """
+            ),
+            {"item_id": int(item_id)},
+        )
+    ).mappings().first()
+
+    assert resolved is not None, {"msg": "item missing active sku code or outbound/base uom", "item_id": int(item_id)}
+
+    component_sku_code = str(resolved["sku_code"])
+    expr = f"{component_sku_code}*{int(component_qty)}*1"
+
     row = (
         await session.execute(
             text(
                 """
-                INSERT INTO fskus (
+                INSERT INTO pms_fskus (
                   code,
                   name,
                   shape,
                   status,
+                  fsku_expr,
+                  normalized_expr,
+                  expr_type,
+                  component_count,
                   published_at,
                   created_at,
                   updated_at
                 )
                 VALUES (
-                  :code,
-                  :name,
+                  CAST(:code AS varchar),
+                  CAST(:name AS text),
                   'single',
                   'published',
+                  CAST(:expr AS text),
+                  upper(CAST(:expr AS text)),
+                  'DIRECT',
+                  1,
                   now(),
                   now(),
                   now()
@@ -105,7 +159,7 @@ async def _create_published_fsku_with_component(
                 RETURNING id
                 """
             ),
-            {"code": code, "name": name},
+            {"code": code, "name": name, "expr": expr},
         )
     ).mappings().one()
 
@@ -114,19 +168,33 @@ async def _create_published_fsku_with_component(
     await session.execute(
         text(
             """
-            INSERT INTO fsku_components (
+            INSERT INTO pms_fsku_components (
               fsku_id,
-              item_id,
-              qty,
-              role,
+              component_sku_code,
+              qty_per_fsku,
+              alloc_unit_price,
+              resolved_item_id,
+              resolved_item_sku_code_id,
+              resolved_item_uom_id,
+              sku_code_snapshot,
+              item_name_snapshot,
+              uom_snapshot,
+              sort_order,
               created_at,
               updated_at
             )
             VALUES (
               :fsku_id,
-              :item_id,
-              :qty,
-              'primary',
+              :component_sku_code,
+              :qty_per_fsku,
+              1,
+              :resolved_item_id,
+              :resolved_item_sku_code_id,
+              :resolved_item_uom_id,
+              :sku_code_snapshot,
+              :item_name_snapshot,
+              :uom_snapshot,
+              1,
               now(),
               now()
             )
@@ -134,12 +202,17 @@ async def _create_published_fsku_with_component(
         ),
         {
             "fsku_id": fsku_id,
-            "item_id": int(item_id),
-            "qty": int(component_qty),
+            "component_sku_code": component_sku_code,
+            "qty_per_fsku": int(component_qty),
+            "resolved_item_id": int(item_id),
+            "resolved_item_sku_code_id": int(resolved["sku_code_id"]),
+            "resolved_item_uom_id": int(resolved["item_uom_id"]),
+            "sku_code_snapshot": component_sku_code,
+            "item_name_snapshot": str(resolved["item_name"]),
+            "uom_snapshot": str(resolved["uom_name"]),
         },
     )
 
-    await session.commit()
     return fsku_id
 
 

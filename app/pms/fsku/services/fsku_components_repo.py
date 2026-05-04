@@ -1,4 +1,4 @@
-# app/oms/fsku/services/fsku_components_repo.py
+# app/pms/fsku/services/fsku_components_repo.py
 from __future__ import annotations
 
 from sqlalchemy import text
@@ -11,7 +11,7 @@ async def load_component_item_ids(session: AsyncSession, *, fsku_id: int) -> lis
             text(
                 """
                 SELECT DISTINCT item_id
-                  FROM fsku_components
+                  FROM pms_fsku_components
                  WHERE fsku_id = :fid
                 """
             ),

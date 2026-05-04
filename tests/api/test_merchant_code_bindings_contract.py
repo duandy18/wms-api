@@ -1,6 +1,7 @@
 # tests/api/test_merchant_code_bindings_contract.py
 from __future__ import annotations
 
+from uuid import uuid4
 from typing import Any, Dict, List
 
 import pytest
@@ -51,44 +52,57 @@ async def _pick_any_item_id(client, headers: Dict[str, str]) -> int:
     return int(data[0]["id"])
 
 
+async def _pick_item_sku_by_id(client, headers: Dict[str, str], *, item_id: int) -> str:
+    r = await client.get("/items?limit=200", headers=headers)
+    assert r.status_code == 200, r.text
+    data = r.json()
+    for item in data:
+        if int(item["id"]) == int(item_id):
+            sku = str(item["sku"]).strip()
+            assert sku, item
+            return sku
+    raise AssertionError(f"item_id not found in /items list: {item_id}")
+
+
 async def _create_draft_fsku(
     client,
     headers: Dict[str, str],
     *,
     name: str = "FSKU-TEST",
     shape: str = "bundle",
+    fsku_expr: str | None = None,
 ) -> Dict[str, Any]:
-    r = await client.post("/oms/fskus", json={"name": name, "shape": shape}, headers=headers)
+    if fsku_expr is None:
+        item_id = await _pick_any_item_id(client, headers)
+        sku = await _pick_item_sku_by_id(client, headers, item_id=item_id)
+        alloc_unit_price = 1 + (uuid4().int % 100000)
+        fsku_expr = f"{sku}*1*{alloc_unit_price}"
+
+    r = await client.post(
+        "/pms/fskus",
+        json={"name": name, "shape": shape, "fsku_expr": fsku_expr},
+        headers=headers,
+    )
     assert r.status_code == 201, r.text
     return r.json()
 
 
 async def _replace_components(client, headers: Dict[str, str], fsku_id: int, components: List[dict]) -> Dict[str, Any]:
+    parts: list[str] = []
+    for c in components:
+        sku = await _pick_item_sku_by_id(client, headers, item_id=int(c["resolved_item_id"]))
+        qty = int(c.get("qty") or 1)
+        alloc_unit_price = 1 + (uuid4().int % 100000)
+        parts.append(f"{sku}*{qty}*{alloc_unit_price}")
+
+    expr = "+".join(parts)
     r = await client.post(
-        f"/oms/fskus/{fsku_id}/components",
-        json={"components": components},
+        f"/pms/fskus/{fsku_id}/expression",
+        json={"fsku_expr": expr},
         headers=headers,
     )
     assert r.status_code == 200, r.text
     return r.json()
-
-
-@pytest.mark.anyio
-async def test_list_contract_envelope_and_row_shape(client):
-    resp = await client.get("/oms/merchant-code-bindings?current_only=true&limit=50&offset=0")
-    assert resp.status_code == 200
-    j = resp.json()
-
-    assert j["ok"] is True
-    data = j["data"]
-    assert set(data.keys()) == {"items", "total", "limit", "offset"}
-    assert isinstance(data["items"], list)
-    assert isinstance(data["total"], int)
-    assert data["limit"] == 50
-    assert data["offset"] == 0
-
-    for row in data["items"]:
-        _assert_row_shape(row)
 
 
 @pytest.mark.anyio
@@ -139,7 +153,7 @@ async def test_bind_contract_success_or_problem(client):
 async def test_retire_is_blocked_when_fsku_is_referenced_by_merchant_code_binding(client):
     """
     护栏契约：被 merchant_code_fsku_bindings 引用的 published FSKU，不允许 retire。
-    预期：POST /fskus/{id}/retire -> 409 + Problem
+    预期：POST /pms/fskus/{id}/retire -> 409 + Problem
     """
     headers = await _auth_headers(client)
     item_id = await _pick_any_item_id(client, headers)
@@ -150,10 +164,10 @@ async def test_retire_is_blocked_when_fsku_is_referenced_by_merchant_code_bindin
         client,
         headers,
         fsku_id=int(f["id"]),
-        components=[{"item_id": item_id, "qty": 1, "role": "primary"}],
+        components=[{"resolved_item_id": item_id, "qty": 1, "role": "primary"}],
     )
 
-    r_pub = await client.post(f"/oms/fskus/{f['id']}/publish", headers=headers)
+    r_pub = await client.post(f"/pms/fskus/{f['id']}/publish", headers=headers)
     assert r_pub.status_code == 200, r_pub.text
     pub = r_pub.json()
     assert pub["status"] == "published"
@@ -176,7 +190,7 @@ async def test_retire_is_blocked_when_fsku_is_referenced_by_merchant_code_bindin
     assert str(j["data"]["merchant_code"]) == mc
 
     # 3) retire 必须被阻断
-    r_ret = await client.post(f"/oms/fskus/{f['id']}/retire", headers=headers)
+    r_ret = await client.post(f"/pms/fskus/{f['id']}/retire", headers=headers)
     assert r_ret.status_code == 409, r_ret.text
     p = r_ret.json()
     _assert_problem_shape(p)

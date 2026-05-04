@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 def _fmt_qty(v: Any) -> str:
     """
-    fsku_components.qty 是 Numeric -> Decimal。
+    pms_fsku_components.qty_per_fsku 是 Numeric -> Decimal。
     展示：去掉多余 0，避免科学计数法，保持稳定可读。
     """
     if v is None:
@@ -55,7 +55,7 @@ async def list_bound_filled_code_options(
                   b.fsku_id       AS fsku_id,
                   f.name          AS fsku_name
                 FROM merchant_code_fsku_bindings b
-                JOIN fskus f
+                JOIN pms_fskus f
                   ON f.id = b.fsku_id
                  AND f.status = 'published'
                WHERE b.platform = :p
@@ -81,14 +81,14 @@ async def list_bound_filled_code_options(
                 SELECT
                   c.fsku_id  AS fsku_id,
                   COALESCE(i.name, i.sku) AS item_name,
-                  c.qty      AS qty,
-                  c.role     AS role
-                FROM fsku_components c
+                  c.qty_per_fsku      AS qty,
+                  'primary'     AS role
+                FROM pms_fsku_components c
                 JOIN items i
-                  ON i.id = c.item_id
+                  ON i.id = c.resolved_item_id
                WHERE c.fsku_id = ANY(:ids)
                ORDER BY c.fsku_id ASC,
-                        CASE WHEN c.role = 'primary' THEN 0 ELSE 1 END,
+                        CASE WHEN 'primary' = 'primary' THEN 0 ELSE 1 END,
                         COALESCE(i.name, i.sku) ASC
                 """
             ),
@@ -158,7 +158,7 @@ async def build_components_summary_by_filled_code(
                 """
                 SELECT f.id AS fsku_id
                   FROM merchant_code_fsku_bindings b
-                  JOIN fskus f
+                  JOIN pms_fskus f
                     ON f.id = b.fsku_id
                    AND f.status = 'published'
                  WHERE b.platform = :p
@@ -181,12 +181,12 @@ async def build_components_summary_by_filled_code(
                 """
                 SELECT
                   COALESCE(i.name, i.sku) AS item_name,
-                  c.qty  AS qty,
-                  c.role AS role
-                FROM fsku_components c
-                JOIN items i ON i.id = c.item_id
+                  c.qty_per_fsku  AS qty,
+                  'primary' AS role
+                FROM pms_fsku_components c
+                JOIN items i ON i.id = c.resolved_item_id
                WHERE c.fsku_id = :fid
-               ORDER BY CASE WHEN c.role = 'primary' THEN 0 ELSE 1 END,
+               ORDER BY CASE WHEN 'primary' = 'primary' THEN 0 ELSE 1 END,
                         COALESCE(i.name, i.sku) ASC
                 """
             ),

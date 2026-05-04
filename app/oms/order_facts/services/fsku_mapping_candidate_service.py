@@ -127,7 +127,7 @@ async def list_fsku_mapping_candidates(
                     ON b.platform = :platform
                    AND b.store_code = m.collector_store_code
                    AND b.merchant_code = l.merchant_sku
-                  LEFT JOIN fskus f ON f.id = b.fsku_id
+                  LEFT JOIN pms_fskus f ON f.id = b.fsku_id
                  WHERE {where_sql}
                 """
             ),
@@ -171,7 +171,7 @@ async def list_fsku_mapping_candidates(
                   ON b.platform = :platform
                  AND b.store_code = m.collector_store_code
                  AND b.merchant_code = l.merchant_sku
-                LEFT JOIN fskus f ON f.id = b.fsku_id
+                LEFT JOIN pms_fskus f ON f.id = b.fsku_id
                 WHERE {where_sql}
                 ORDER BY m.last_synced_at DESC, m.id DESC, l.id ASC
                 LIMIT :limit OFFSET :offset
