@@ -284,3 +284,129 @@ async def test_sku_coding_legacy_dictionary_routes_are_retired(client: httpx.Asy
         headers=headers,
     )
     assert r_create.status_code == 404, r_create.text
+
+
+@pytest.mark.asyncio
+async def test_sku_coding_generate_from_item_uses_item_category_and_attributes(client: httpx.AsyncClient) -> None:
+    headers = await _headers(client)
+    sfx = _suffix()
+
+    brand_code = f"ITB{sfx}"
+    category_code = f"ICF{sfx}"
+    life_stage_code = f"IALS{sfx}"
+    process_code = f"IDP{sfx}"
+    chicken_code = f"ICHK{sfx}"
+    salmon_code = f"ISLM{sfx}"
+
+    brand = await _create_brand(client, headers, name_cn=f"商品生成品牌-UT-{sfx}", code=brand_code)
+
+    root = await _create_category(
+        client,
+        headers,
+        parent_id=None,
+        level=1,
+        product_kind="FOOD",
+        category_name=f"商品生成食品-UT-{sfx}",
+        category_code=f"IPF{sfx}",
+        is_leaf=False,
+    )
+    mid = await _create_category(
+        client,
+        headers,
+        parent_id=int(root["id"]),
+        level=2,
+        product_kind="FOOD",
+        category_name=f"商品生成猫主食-UT-{sfx}",
+        category_code=f"ICATF{sfx}",
+        is_leaf=False,
+    )
+    leaf = await _create_category(
+        client,
+        headers,
+        parent_id=int(mid["id"]),
+        level=3,
+        product_kind="FOOD",
+        category_name=f"商品生成干粮-UT-{sfx}",
+        category_code=category_code,
+        is_leaf=True,
+    )
+
+    life_stage_def_id = await _attribute_def_id(client, headers, product_kind="FOOD", code="LIFE_STAGE")
+    process_def_id = await _attribute_def_id(client, headers, product_kind="FOOD", code="PROCESS")
+    flavor_def_id = await _attribute_def_id(client, headers, product_kind="FOOD", code="FLAVOR")
+
+    life_stage = await _create_attribute_option(
+        client,
+        headers,
+        attribute_def_id=life_stage_def_id,
+        option_name=f"全期-商品生成-UT-{sfx}",
+        option_code=life_stage_code,
+        sort_order=10,
+    )
+    process = await _create_attribute_option(
+        client,
+        headers,
+        attribute_def_id=process_def_id,
+        option_name=f"双拼-商品生成-UT-{sfx}",
+        option_code=process_code,
+        sort_order=10,
+    )
+    chicken = await _create_attribute_option(
+        client,
+        headers,
+        attribute_def_id=flavor_def_id,
+        option_name=f"鸡肉-商品生成-UT-{sfx}",
+        option_code=chicken_code,
+        sort_order=10,
+    )
+    salmon = await _create_attribute_option(
+        client,
+        headers,
+        attribute_def_id=flavor_def_id,
+        option_name=f"三文鱼-商品生成-UT-{sfx}",
+        option_code=salmon_code,
+        sort_order=20,
+    )
+
+    r_item = await client.post(
+        "/items",
+        json={
+            "sku": f"ITEM-SKU-SRC-{sfx}",
+            "name": f"从商品生成SKU-UT-{sfx}",
+            "spec": "500g",
+            "brand_id": int(brand["id"]),
+            "category_id": int(leaf["id"]),
+            "supplier_id": 1,
+            "lot_source_policy": "SUPPLIER_ONLY",
+            "expiry_policy": "NONE",
+            "derivation_allowed": True,
+            "uom_governance_enabled": False,
+        },
+        headers=headers,
+    )
+    assert r_item.status_code == 201, r_item.text
+    item_id = int(r_item.json()["id"])
+
+    r_values = await client.put(
+        f"/items/{item_id}/attributes",
+        json={
+            "values": [
+                {"attribute_def_id": int(life_stage_def_id), "value_option_ids": [int(life_stage["id"])]},
+                {"attribute_def_id": int(process_def_id), "value_option_ids": [int(process["id"])]},
+                {
+                    "attribute_def_id": int(flavor_def_id),
+                    "value_option_ids": [int(salmon["id"]), int(chicken["id"])],
+                },
+            ]
+        },
+        headers=headers,
+    )
+    assert r_values.status_code == 200, r_values.text
+
+    r = await client.post(f"/pms/sku-coding/items/{item_id}/generate", headers=headers)
+    assert r.status_code == 200, r.text
+    data = r.json()["data"]
+
+    assert data["sku"] == f"SKU-{brand_code}-{category_code}-{life_stage_code}-{process_code}-{chicken_code}-{salmon_code}-500G"
+    assert data["exists"] is False
+    assert data["segments"][-1] == {"segment_key": "SPEC", "name_cn": "500g", "code": "500G"}

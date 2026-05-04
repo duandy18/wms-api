@@ -28,3 +28,12 @@ def generate_sku(payload: SkuGenerateIn, db: Session = Depends(get_db)):
         return {"ok": True, "data": data}
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
+
+
+@router.post("/items/{item_id}/generate", response_model=SkuGenerateOut)
+def generate_sku_from_item(item_id: int, db: Session = Depends(get_db)):
+    try:
+        data = SkuCodingService(db).generate_from_item(item_id=int(item_id))
+        return {"ok": True, "data": data}
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e

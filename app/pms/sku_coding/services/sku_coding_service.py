@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.pms.items.models.item import Item
-from app.pms.items.models.item_master import ItemAttributeDef, ItemAttributeOption, PmsBrand, PmsBusinessCategory
+from app.pms.items.models.item_master import ItemAttributeDef, ItemAttributeOption, ItemAttributeValue, PmsBrand, PmsBusinessCategory
 from app.pms.items.models.item_sku_code import ItemSkuCode
 from app.pms.sku_coding.models.sku_coding import SkuCodeTemplate
 
@@ -135,6 +135,80 @@ class SkuCodingService:
         if len(rows) != len(normalized_ids):
             raise ValueError(f"属性选项不存在、已停用或属性不匹配：{attribute_def.code}")
         return list(rows)
+
+    def _build_attribute_option_ids_from_item(
+        self,
+        *,
+        item_id: int,
+        product_kind: str,
+    ) -> dict[str, list[int]]:
+        rows = (
+            self.db.execute(
+                select(ItemAttributeDef.code, ItemAttributeValue.value_option_id)
+                .join(
+                    ItemAttributeValue,
+                    ItemAttributeValue.attribute_def_id == ItemAttributeDef.id,
+                )
+                .where(
+                    ItemAttributeValue.item_id == int(item_id),
+                    ItemAttributeValue.value_option_id.is_not(None),
+                    ItemAttributeDef.product_kind == product_kind,
+                    ItemAttributeDef.is_active.is_(True),
+                    ItemAttributeDef.value_type == "OPTION",
+                    ItemAttributeDef.is_sku_segment.is_(True),
+                )
+                .order_by(
+                    ItemAttributeDef.sort_order.asc(),
+                    ItemAttributeDef.code.asc(),
+                    ItemAttributeValue.value_option_id.asc(),
+                )
+            )
+            .all()
+        )
+
+        out: dict[str, list[int]] = {}
+        for code, option_id in rows:
+            if option_id is None:
+                continue
+            key = str(code)
+            out.setdefault(key, []).append(int(option_id))
+        return out
+
+    def generate_from_item(self, *, item_id: int) -> dict:
+        item = self.db.get(Item, int(item_id))
+        if item is None:
+            raise ValueError("商品不存在")
+
+        if item.brand_id is None:
+            raise ValueError("商品未绑定品牌，不能生成 SKU")
+        if item.category_id is None:
+            raise ValueError("商品未绑定分类，不能生成 SKU")
+
+        spec_text = (item.spec or "").strip()
+        if not spec_text:
+            raise ValueError("商品规格为空，不能生成 SKU")
+
+        category = self.db.get(PmsBusinessCategory, int(item.category_id))
+        if category is None:
+            raise ValueError("商品分类不存在")
+
+        kind = _norm_code(str(category.product_kind))
+        if kind not in {"FOOD", "SUPPLY"}:
+            raise ValueError("当前商品类型暂不支持 SKU 编码生成")
+
+        attribute_option_ids = self._build_attribute_option_ids_from_item(
+            item_id=int(item.id),
+            product_kind=kind,
+        )
+
+        return self.generate(
+            product_kind=kind,
+            brand_id=int(item.brand_id),
+            category_id=int(item.category_id),
+            attribute_option_ids=attribute_option_ids,
+            text_segments={},
+            spec_text=spec_text,
+        )
 
     def generate(
         self,
