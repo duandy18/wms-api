@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from typing import Any
+from uuid import uuid4
 
 import httpx
 import pytest
@@ -12,6 +13,63 @@ async def _login_admin_headers(client: httpx.AsyncClient) -> dict[str, str]:
     assert r.status_code == 200, r.text
     token = r.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}
+
+
+def _suffix() -> str:
+    return uuid4().hex[:8].upper()
+
+
+def _assert_completeness_contract(value: dict[str, Any]) -> None:
+    required = {
+        "status",
+        "is_complete",
+        "product_kind",
+        "has_brand",
+        "has_active_leaf_category",
+        "has_base_uom",
+        "has_active_primary_barcode",
+        "has_active_primary_sku",
+        "item_required_attributes_complete",
+        "sku_required_attributes_complete",
+        "sku_segment_attributes_present",
+        "sku_generation_applicable",
+        "can_generate_sku",
+        "missing_item_required_attribute_codes",
+        "missing_sku_required_attribute_codes",
+        "missing_sku_segment_attribute_codes",
+        "missing_items",
+        "blocking_items",
+        "warnings",
+    }
+    assert required <= set(value.keys()), value
+    assert value["status"] in {"COMPLETE", "WARNING", "BLOCKED"}, value
+    assert isinstance(value["is_complete"], bool), value
+    assert value["product_kind"] is None or value["product_kind"] in {"FOOD", "SUPPLY", "OTHER"}, value
+
+    for key in (
+        "has_brand",
+        "has_active_leaf_category",
+        "has_base_uom",
+        "has_active_primary_barcode",
+        "has_active_primary_sku",
+        "item_required_attributes_complete",
+        "sku_required_attributes_complete",
+        "sku_segment_attributes_present",
+        "sku_generation_applicable",
+        "can_generate_sku",
+    ):
+        assert isinstance(value[key], bool), value
+
+    for key in (
+        "missing_item_required_attribute_codes",
+        "missing_sku_required_attribute_codes",
+        "missing_sku_segment_attribute_codes",
+        "missing_items",
+        "blocking_items",
+        "warnings",
+    ):
+        assert isinstance(value[key], list), value
+        assert all(isinstance(x, str) and x.strip() for x in value[key]), value
 
 
 def _assert_item_list_row_contract(row: dict[str, Any]) -> None:
@@ -37,6 +95,7 @@ def _assert_item_list_row_contract(row: dict[str, Any]) -> None:
         "barcode_count",
         "sku_code_count",
         "attribute_count",
+        "completeness",
         "updated_at",
     }
     assert required <= set(row.keys()), row
@@ -45,6 +104,8 @@ def _assert_item_list_row_contract(row: dict[str, Any]) -> None:
     assert isinstance(row["sku"], str) and row["sku"].strip(), row
     assert isinstance(row["name"], str) and row["name"].strip(), row
     assert isinstance(row["enabled"], bool), row
+    assert isinstance(row["completeness"], dict), row
+    _assert_completeness_contract(row["completeness"])
 
     for key in ("uom_count", "barcode_count", "sku_code_count", "attribute_count"):
         assert isinstance(row[key], int), row
@@ -155,6 +216,56 @@ async def test_item_list_rows_returns_owner_summary_contract(client: httpx.Async
     assert rows, "base seed should expose at least one item list row"
 
     _assert_item_list_row_contract(rows[0])
+
+
+@pytest.mark.asyncio
+async def test_item_list_rows_completeness_reports_missing_blocking_parts(client: httpx.AsyncClient) -> None:
+    headers = await _login_admin_headers(client)
+    sfx = _suffix()
+    sku = f"COMPLETE-MISSING-{sfx}"
+
+    r_create = await client.post(
+        "/items",
+        json={
+            "sku": sku,
+            "name": f"完整度缺失项测试-{sfx}",
+            "spec": "500g",
+            "lot_source_policy": "SUPPLIER_ONLY",
+            "expiry_policy": "NONE",
+            "derivation_allowed": True,
+            "uom_governance_enabled": False,
+        },
+        headers=headers,
+    )
+    assert r_create.status_code == 201, r_create.text
+    item_id = int(r_create.json()["id"])
+
+    r = await client.get(f"/items/list-rows?q={sku}&limit=20", headers=headers)
+    assert r.status_code == 200, r.text
+    rows = r.json()
+    row = next((x for x in rows if int(x["item_id"]) == item_id), None)
+    assert row is not None, rows
+
+    completeness = row["completeness"]
+    _assert_completeness_contract(completeness)
+
+    assert completeness["status"] == "BLOCKED", completeness
+    assert completeness["is_complete"] is False, completeness
+    assert completeness["has_brand"] is False, completeness
+    assert completeness["has_active_leaf_category"] is False, completeness
+    # POST /items 主合同会自动补最小基础包装；完整度不应把基础包装判缺。
+    assert completeness["has_base_uom"] is True, completeness
+    assert completeness["has_active_primary_barcode"] is False, completeness
+    assert "未绑定启用品牌" in completeness["blocking_items"], completeness
+    assert "未绑定启用叶子分类" in completeness["blocking_items"], completeness
+    assert "未维护基础包装" not in completeness["blocking_items"], completeness
+    assert "未绑定启用主条码" in completeness["blocking_items"], completeness
+
+    detail_resp = await client.get(f"/items/{item_id}/list-detail", headers=headers)
+    assert detail_resp.status_code == 200, detail_resp.text
+    detail = detail_resp.json()
+    _assert_detail_contract(detail)
+    assert detail["row"]["completeness"] == completeness
 
 
 @pytest.mark.asyncio

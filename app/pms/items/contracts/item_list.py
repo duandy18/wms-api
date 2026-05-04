@@ -2,9 +2,50 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
+
+
+ItemCompletenessStatus = Literal["COMPLETE", "WARNING", "BLOCKED"]
+ItemCompletenessProductKind = Literal["FOOD", "SUPPLY", "OTHER"]
+
+
+class ItemCompletenessOut(BaseModel):
+    """
+    PMS 商品完整度 owner read model。
+
+    定位：
+    - 后端统一计算商品完整度
+    - 前端列表、详情、编辑流程只消费这个合同
+    - 不让前端根据多个数组自行拼完整度判断
+    """
+
+    status: ItemCompletenessStatus
+    is_complete: bool
+
+    product_kind: Optional[ItemCompletenessProductKind] = None
+
+    has_brand: bool = False
+    has_active_leaf_category: bool = False
+    has_base_uom: bool = False
+    has_active_primary_barcode: bool = False
+    has_active_primary_sku: bool = False
+
+    item_required_attributes_complete: bool = True
+    sku_required_attributes_complete: bool = True
+    sku_segment_attributes_present: bool = True
+
+    sku_generation_applicable: bool = False
+    can_generate_sku: bool = False
+
+    missing_item_required_attribute_codes: list[str] = Field(default_factory=list)
+    missing_sku_required_attribute_codes: list[str] = Field(default_factory=list)
+    missing_sku_segment_attribute_codes: list[str] = Field(default_factory=list)
+
+    missing_items: list[str] = Field(default_factory=list)
+    blocking_items: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
 
 
 class ItemListRowOut(BaseModel):
@@ -45,6 +86,8 @@ class ItemListRowOut(BaseModel):
     barcode_count: int = Field(default=0, ge=0)
     sku_code_count: int = Field(default=0, ge=0)
     attribute_count: int = Field(default=0, ge=0)
+
+    completeness: ItemCompletenessOut
 
     updated_at: Optional[datetime] = None
 

@@ -36,6 +36,15 @@ def _item_list_rows_sql(where_sql: str) -> str:
         AND b.is_primary IS TRUE
       ORDER BY b.item_id, b.id ASC
     ),
+    active_primary_sku AS (
+      SELECT DISTINCT ON (c.item_id)
+        c.item_id,
+        c.code
+      FROM item_sku_codes c
+      WHERE c.is_primary IS TRUE
+        AND c.is_active IS TRUE
+      ORDER BY c.item_id, c.id ASC
+    ),
     uom_counts AS (
       SELECT item_id, COUNT(*)::int AS cnt
       FROM item_uoms
@@ -57,6 +66,75 @@ def _item_list_rows_sql(where_sql: str) -> str:
       SELECT item_id, COUNT(*)::int AS cnt
       FROM item_attribute_values
       GROUP BY item_id
+    ),
+    attr_value_presence AS (
+      SELECT
+        v.item_id,
+        v.attribute_def_id,
+        BOOL_OR(
+          CASE
+            WHEN d.value_type = 'OPTION' THEN v.value_option_id IS NOT NULL
+            WHEN d.value_type = 'TEXT' THEN NULLIF(BTRIM(COALESCE(v.value_text, '')), '') IS NOT NULL
+            WHEN d.value_type = 'NUMBER' THEN v.value_number IS NOT NULL
+            WHEN d.value_type = 'BOOL' THEN v.value_bool IS NOT NULL
+            ELSE FALSE
+          END
+        ) AS has_value
+      FROM item_attribute_values v
+      JOIN item_attribute_defs d
+        ON d.id = v.attribute_def_id
+      GROUP BY v.item_id, v.attribute_def_id
+    ),
+    attr_requirement_stats AS (
+      SELECT
+        i.id AS item_id,
+        COALESCE(
+          ARRAY_AGG(DISTINCT d.code ORDER BY d.code)
+          FILTER (
+            WHERE d.is_item_required IS TRUE
+              AND COALESCE(avp.has_value, FALSE) IS FALSE
+          ),
+          ARRAY[]::varchar[]
+        ) AS missing_item_required_attribute_codes,
+        COALESCE(
+          ARRAY_AGG(DISTINCT d.code ORDER BY d.code)
+          FILTER (
+            WHERE d.is_sku_required IS TRUE
+              AND COALESCE(avp.has_value, FALSE) IS FALSE
+          ),
+          ARRAY[]::varchar[]
+        ) AS missing_sku_required_attribute_codes,
+        COALESCE(
+          ARRAY_AGG(DISTINCT d.code ORDER BY d.code)
+          FILTER (
+            WHERE d.is_sku_segment IS TRUE
+              AND COALESCE(avp.has_value, FALSE) IS FALSE
+          ),
+          ARRAY[]::varchar[]
+        ) AS missing_sku_segment_attribute_codes
+      FROM items i
+      LEFT JOIN pms_business_categories cat
+        ON cat.id = i.category_id
+      LEFT JOIN item_attribute_defs d
+        ON d.is_active IS TRUE
+       AND (
+         d.product_kind = 'COMMON'
+         OR (
+           cat.product_kind IS NOT NULL
+           AND d.product_kind = cat.product_kind
+         )
+       )
+      LEFT JOIN attr_value_presence avp
+        ON avp.item_id = i.id
+       AND avp.attribute_def_id = d.id
+      GROUP BY i.id
+    ),
+    sku_template_stats AS (
+      SELECT
+        product_kind,
+        BOOL_OR(is_active) AS has_active_template
+      FROM sku_code_templates
+      GROUP BY product_kind
     )
     SELECT
       i.id::int AS item_id,
@@ -87,6 +165,26 @@ def _item_list_rows_sql(where_sql: str) -> str:
       COALESCE(sc.cnt, 0)::int AS sku_code_count,
       COALESCE(ac.cnt, 0)::int AS attribute_count,
 
+      cat.product_kind::text AS product_kind,
+      (br.id IS NOT NULL AND br.is_active IS TRUE) AS has_brand,
+      (cat.id IS NOT NULL AND cat.is_active IS TRUE AND cat.is_leaf IS TRUE) AS has_active_leaf_category,
+      (bu.item_id IS NOT NULL) AS has_base_uom,
+      (pb.item_id IS NOT NULL) AS has_active_primary_barcode,
+      (aps.item_id IS NOT NULL) AS has_active_primary_sku,
+      COALESCE(st.has_active_template, FALSE) AS has_active_sku_template,
+      COALESCE(
+        ars.missing_item_required_attribute_codes,
+        ARRAY[]::varchar[]
+      ) AS missing_item_required_attribute_codes,
+      COALESCE(
+        ars.missing_sku_required_attribute_codes,
+        ARRAY[]::varchar[]
+      ) AS missing_sku_required_attribute_codes,
+      COALESCE(
+        ars.missing_sku_segment_attribute_codes,
+        ARRAY[]::varchar[]
+      ) AS missing_sku_segment_attribute_codes,
+
       i.updated_at
     FROM items i
     LEFT JOIN pms_brands br
@@ -101,6 +199,8 @@ def _item_list_rows_sql(where_sql: str) -> str:
       ON pu.item_id = i.id
     LEFT JOIN primary_barcode pb
       ON pb.item_id = i.id
+    LEFT JOIN active_primary_sku aps
+      ON aps.item_id = i.id
     LEFT JOIN uom_counts uc
       ON uc.item_id = i.id
     LEFT JOIN barcode_counts bc
@@ -109,6 +209,10 @@ def _item_list_rows_sql(where_sql: str) -> str:
       ON sc.item_id = i.id
     LEFT JOIN attribute_counts ac
       ON ac.item_id = i.id
+    LEFT JOIN attr_requirement_stats ars
+      ON ars.item_id = i.id
+    LEFT JOIN sku_template_stats st
+      ON st.product_kind = cat.product_kind
     {where_sql}
     ORDER BY i.updated_at DESC NULLS LAST, i.id DESC
     LIMIT :limit
@@ -133,7 +237,7 @@ def list_item_list_row_mappings(
     - item_barcodes：主条码与条码数量
     - item_uoms：基础包装、采购默认包装、净重、包装数量
     - item_sku_codes：SKU 编码数量
-    - item_attribute_values：属性值数量
+    - item_attribute_values / item_attribute_defs：属性值与完整度
     """
 
     conditions: list[str] = []
