@@ -166,7 +166,7 @@ async def _db_clean_and_seed(async_engine: AsyncEngine):
 
         # ✅ Baseline 需要覆盖多条合同测试使用的 (platform, store_code)
         # - PDD/1：历史 UT 默认
-        # - DEMO/1：merchant-code-bindings / order ingest 等合同测试依赖
+        # - DEMO/1：platform-code-mappings / order ingest 等合同测试依赖
         await conn.execute(
             text(
                 """

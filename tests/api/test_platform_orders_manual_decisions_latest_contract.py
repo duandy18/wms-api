@@ -38,7 +38,7 @@ async def test_platform_orders_manual_decisions_latest_contract(client) -> None:
     store_code = "UT-STORE-MD-1"
     ext_order_no = "E2E-MD-0001"
 
-    # 1) ingest 落事实（刻意构造 UNRESOLVED：缺填写码 / 找不到 published FSKU）
+    # 1) ingest 落事实（刻意构造 UNRESOLVED：缺填写码 / 找不到 published OMS FSKU）
     ingest_payload = {
         "platform": platform,
         "store_code": store_code,

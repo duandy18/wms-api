@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 def _fmt_qty(v: Any) -> str:
     """
-    pms_fsku_components.qty_per_fsku 是 Numeric -> Decimal。
+    oms_fsku_components.qty_per_fsku 是 Numeric -> Decimal。
     展示：去掉多余 0，避免科学计数法，保持稳定可读。
     """
     if v is None:
@@ -40,7 +40,7 @@ async def list_bound_filled_code_options(
     store_code: str,
 ) -> List[Dict[str, Any]]:
     """
-    只用 A：已绑定 merchant_code → published FSKU。
+    只用 A：已映射平台编码 identity_kind=merchant_code → published OMS FSKU。
     返回：filled_code + suggested_title + components_summary（spec 只读展示）。
 
     组件摘要：优先 items.name（人类可读），缺 name 时回退 items.sku。
@@ -51,16 +51,16 @@ async def list_bound_filled_code_options(
             text(
                 """
                 SELECT
-                  b.merchant_code AS filled_code,
+                  b.identity_value AS filled_code,
                   b.fsku_id       AS fsku_id,
                   f.name          AS fsku_name
-                FROM merchant_code_fsku_bindings b
-                JOIN pms_fskus f
+                FROM platform_code_fsku_mappings b
+                JOIN oms_fskus f
                   ON f.id = b.fsku_id
                  AND f.status = 'published'
                WHERE b.platform = :p
                  AND b.store_code   = :s
-               ORDER BY b.merchant_code ASC
+               ORDER BY b.identity_value ASC
                 """
             ),
             {"p": str(platform), "s": str(store_code)},
@@ -83,7 +83,7 @@ async def list_bound_filled_code_options(
                   COALESCE(i.name, i.sku) AS item_name,
                   c.qty_per_fsku      AS qty,
                   'primary'     AS role
-                FROM pms_fsku_components c
+                FROM oms_fsku_components c
                 JOIN items i
                   ON i.id = c.resolved_item_id
                WHERE c.fsku_id = ANY(:ids)
@@ -142,7 +142,7 @@ async def build_components_summary_by_filled_code(
     filled_code: str,
 ) -> Optional[str]:
     """
-    spec 的唯一来源：merchant_code(current) -> published fsku -> components -> items
+    spec 的唯一来源：platform_code_mapping(identity_kind=merchant_code) -> published oms fsku -> components -> items
     未绑定或非 published => None
 
     组件摘要：优先 items.name（人类可读），缺 name 时回退 items.sku。
@@ -157,13 +157,14 @@ async def build_components_summary_by_filled_code(
             text(
                 """
                 SELECT f.id AS fsku_id
-                  FROM merchant_code_fsku_bindings b
-                  JOIN pms_fskus f
+                  FROM platform_code_fsku_mappings b
+                  JOIN oms_fskus f
                     ON f.id = b.fsku_id
                    AND f.status = 'published'
                  WHERE b.platform = :p
                    AND b.store_code   = :s
-                   AND b.merchant_code = :c
+                   AND b.identity_kind = 'merchant_code'
+                   AND b.identity_value = :c
                  LIMIT 1
                 """
             ),
@@ -183,7 +184,7 @@ async def build_components_summary_by_filled_code(
                   COALESCE(i.name, i.sku) AS item_name,
                   c.qty_per_fsku  AS qty,
                   'primary' AS role
-                FROM pms_fsku_components c
+                FROM oms_fsku_components c
                 JOIN items i ON i.id = c.resolved_item_id
                WHERE c.fsku_id = :fid
                ORDER BY CASE WHEN 'primary' = 'primary' THEN 0 ELSE 1 END,

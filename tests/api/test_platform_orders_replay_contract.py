@@ -193,7 +193,7 @@ async def _create_published_fsku_with_component(
         await session.execute(
             text(
                 """
-                INSERT INTO pms_fskus (
+                INSERT INTO oms_fskus (
                   code,
                   name,
                   shape,
@@ -231,7 +231,7 @@ async def _create_published_fsku_with_component(
     await session.execute(
         text(
             """
-            INSERT INTO pms_fsku_components (
+            INSERT INTO oms_fsku_components (
               fsku_id,
               component_sku_code,
               qty_per_fsku,
@@ -362,7 +362,7 @@ async def test_replay_with_published_fsku_code_is_idempotent(
 
     ext = f"UT-REPLAY-OK-{uuid.uuid4().hex[:8]}"
 
-    # published fsku + component(item_id=1)
+    # published oms fsku + component(item_id=1)
     fsku_id, fsku_code = await _create_published_fsku_with_component(db_session, item_id=1)
     assert fsku_id > 0
     assert isinstance(fsku_code, str) and fsku_code
