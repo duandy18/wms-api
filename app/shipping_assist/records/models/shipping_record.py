@@ -49,7 +49,7 @@ class ShippingRecord(Base):
     package_no: Mapped[int] = mapped_column(
         Integer,
         nullable=False,
-        comment="包裹序号，从 1 开始，对应 order_shipment_prepare_packages.package_no",
+        comment="包裹序号，从 1 开始；物流台账内部包裹序号",
     )
 
     # 发货仓库
