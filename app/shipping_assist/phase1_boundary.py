@@ -15,7 +15,6 @@ class DomainOwner(StrEnum):
 class TmsSubdomain(StrEnum):
     SHIPPING_ASSIST_CONFIG = "ShippingAssistConfig"
     SHIPPING_ASSIST_QUOTE = "ShippingAssistQuote"
-    SHIPPING_ASSIST_SHIPMENT = "ShippingAssistShipment"
     SHIPPING_ASSIST_RECORDS = "ShippingAssistRecords"
     SHIPPING_ASSIST_REPORTS = "ShippingAssistReports"
 
@@ -25,17 +24,8 @@ class FrozenOwnership:
     """
     第一阶段冻结后的对象所有权定义。
 
-    code:
-        对象/能力代号，供代码、测试、后续文档统一引用。
-    owner_domain:
-        一级领域所有者（TMS / WMS / OMS）。
-    owner_subdomain:
-        若 owner_domain = TMS，则进一步指向 TMS 子域。
-        非 TMS 对象可为 None。
-    collaborators:
-        协作域列表；不代表拥有权。
-    description:
-        对该对象/能力的冻结定义。
+    当前 WMS 已退役 quote / shipment runtime 代码；仍保留 WMS 当前承载的
+    providers / pricing / records / reports 相关边界定义。
     """
 
     code: str
@@ -50,11 +40,8 @@ class FileOwnershipRule:
     """
     当前仓库物理文件归属冻结规则。
 
-    说明：
-    - Phase 1 先冻结语义归属，不要求立刻物理迁目录。
-    - 当前已进入后端 router 壳物理归位阶段，因此规则同时覆盖：
-      1) 历史叶子 route 文件；
-      2) 新的 TMS router 壳文件。
+    已迁移到 Logistics 的 quote / quote_snapshot / shipment runtime 文件不再
+    出现在本规则中；这些路径若被查询应返回 None。
     """
 
     path_prefix: str
@@ -106,48 +93,6 @@ FROZEN_OWNERSHIP: dict[str, FrozenOwnership] = {
         collaborators=(DomainOwner.TMS,),
         description="附加费配置属于 TMS/ShippingAssistConfig。",
     ),
-    "quote": FrozenOwnership(
-        code="quote",
-        owner_domain=DomainOwner.TMS,
-        owner_subdomain=TmsSubdomain.SHIPPING_ASSIST_QUOTE,
-        collaborators=(DomainOwner.WMS, DomainOwner.OMS),
-        description="运费计算与候选报价属于发货辅助/ShippingAssistQuote。",
-    ),
-    "quote_snapshot": FrozenOwnership(
-        code="quote_snapshot",
-        owner_domain=DomainOwner.TMS,
-        owner_subdomain=TmsSubdomain.SHIPPING_ASSIST_QUOTE,
-        collaborators=(DomainOwner.WMS, DomainOwner.OMS),
-        description="QuoteSnapshot 由报价产出，被发货执行消费，是算价与选择快递网点的证据包。",
-    ),
-    "shipment_execution": FrozenOwnership(
-        code="shipment_execution",
-        owner_domain=DomainOwner.TMS,
-        owner_subdomain=TmsSubdomain.SHIPPING_ASSIST_SHIPMENT,
-        collaborators=(DomainOwner.WMS, DomainOwner.OMS),
-        description="发货执行与面单申请属于发货辅助/ShippingAssistShipment。",
-    ),
-    "waybill_request": FrozenOwnership(
-        code="waybill_request",
-        owner_domain=DomainOwner.TMS,
-        owner_subdomain=TmsSubdomain.SHIPPING_ASSIST_SHIPMENT,
-        collaborators=(DomainOwner.OMS,),
-        description="面单申请属于发货辅助/ShippingAssistShipment。",
-    ),
-    "tracking_number": FrozenOwnership(
-        code="tracking_number",
-        owner_domain=DomainOwner.TMS,
-        owner_subdomain=TmsSubdomain.SHIPPING_ASSIST_SHIPMENT,
-        collaborators=(DomainOwner.WMS, DomainOwner.OMS),
-        description="运单号属于 Shipment 执行事实。",
-    ),
-    "shipping_record_write": FrozenOwnership(
-        code="shipping_record_write",
-        owner_domain=DomainOwner.TMS,
-        owner_subdomain=TmsSubdomain.SHIPPING_ASSIST_SHIPMENT,
-        collaborators=(DomainOwner.TMS,),
-        description="shipping_record 的 create/upsert 入口由发货执行主拥有，必须统一收口。",
-    ),
     "shipping_record": FrozenOwnership(
         code="shipping_record",
         owner_domain=DomainOwner.TMS,
@@ -174,7 +119,7 @@ FROZEN_OWNERSHIP: dict[str, FrozenOwnership] = {
         owner_domain=DomainOwner.WMS,
         owner_subdomain=None,
         collaborators=(DomainOwner.TMS,),
-        description="仓内出库属于 WMS；可触发发货执行，但不拥有发货辅助主线。",
+        description="仓内出库属于 WMS；可触发外部 Logistics 执行，但不拥有发货执行主线。",
     ),
 }
 
@@ -202,109 +147,19 @@ FILE_OWNERSHIP_RULES: tuple[FileOwnershipRule, ...] = (
         path_prefix="app/shipping_assist/providers/",
         owner_domain=DomainOwner.TMS,
         owner_subdomain=TmsSubdomain.SHIPPING_ASSIST_CONFIG,
-        note="发货辅助 / providers 子域。",
+        note="发货辅助 providers 子域。",
     ),
     FileOwnershipRule(
         path_prefix="app/shipping_assist/pricing/",
         owner_domain=DomainOwner.TMS,
         owner_subdomain=TmsSubdomain.SHIPPING_ASSIST_CONFIG,
-        note="发货辅助 / pricing 子域。",
-    ),
-    FileOwnershipRule(
-        path_prefix="app/shipping_assist/quote/router.py",
-        owner_domain=DomainOwner.TMS,
-        owner_subdomain=TmsSubdomain.SHIPPING_ASSIST_QUOTE,
-        note="发货算价新主路由壳。",
-    ),
-    FileOwnershipRule(
-        path_prefix="app/shipping_assist/quote/",
-        owner_domain=DomainOwner.TMS,
-        owner_subdomain=TmsSubdomain.SHIPPING_ASSIST_QUOTE,
-        note="发货算价主模块。",
-    ),
-    FileOwnershipRule(
-        path_prefix="app/shipping_assist/quote_snapshot/",
-        owner_domain=DomainOwner.TMS,
-        owner_subdomain=TmsSubdomain.SHIPPING_ASSIST_QUOTE,
-        note="QuoteSnapshot 主合同与构建/校验逻辑，由发货算价域主拥有。",
+        note="发货辅助 pricing 子域。",
     ),
     FileOwnershipRule(
         path_prefix="app/shipping_assist/alerts/",
         owner_domain=DomainOwner.TMS,
         owner_subdomain=TmsSubdomain.SHIPPING_ASSIST_QUOTE,
-        note="告警聚合服务；当前承载 SHIPPING_QUOTE 告警与历史运输异常观测。",
-    ),
-    FileOwnershipRule(
-        path_prefix="app/shipping_assist/shipment/waybill_service.py",
-        owner_domain=DomainOwner.TMS,
-        owner_subdomain=TmsSubdomain.SHIPPING_ASSIST_SHIPMENT,
-        note="发货辅助面单申请服务实现。",
-    ),
-    FileOwnershipRule(
-        path_prefix="app/shipping_assist/shipment/orders_v2_router.py",
-        owner_domain=DomainOwner.TMS,
-        owner_subdomain=TmsSubdomain.SHIPPING_ASSIST_SHIPMENT,
-        note="发货辅助在 orders_fulfillment_v2 下的新主路由壳。",
-    ),
-    FileOwnershipRule(
-        path_prefix="app/shipping_assist/shipment/contracts_calc.py",
-        owner_domain=DomainOwner.TMS,
-        owner_subdomain=TmsSubdomain.SHIPPING_ASSIST_SHIPMENT,
-        note="发货辅助 /shipping-assist/shipping/calc 合同定义。",
-    ),
-    FileOwnershipRule(
-        path_prefix="app/shipping_assist/shipment/contracts_prepare.py",
-        owner_domain=DomainOwner.TMS,
-        owner_subdomain=TmsSubdomain.SHIPPING_ASSIST_SHIPMENT,
-        note="发货辅助 /shipping-assist/shipping/prepare-from-order 合同定义。",
-    ),
-    FileOwnershipRule(
-        path_prefix="app/shipping_assist/shipment/router.py",
-        owner_domain=DomainOwner.TMS,
-        owner_subdomain=TmsSubdomain.SHIPPING_ASSIST_SHIPMENT,
-        note="发货辅助在 /ship 下的新主路由壳。",
-    ),
-    FileOwnershipRule(
-        path_prefix="app/shipping_assist/shipment/routes_calc.py",
-        owner_domain=DomainOwner.TMS,
-        owner_subdomain=TmsSubdomain.SHIPPING_ASSIST_SHIPMENT,
-        note="发货辅助 /shipping-assist/shipping/calc 路由实现。",
-    ),
-    FileOwnershipRule(
-        path_prefix="app/shipping_assist/shipment/routes_prepare.py",
-        owner_domain=DomainOwner.TMS,
-        owner_subdomain=TmsSubdomain.SHIPPING_ASSIST_SHIPMENT,
-        note="发货辅助 /shipping-assist/shipping/prepare-from-order 路由实现。",
-    ),
-    FileOwnershipRule(
-        path_prefix="app/shipping_assist/shipment/routes_ship_with_waybill.py",
-        owner_domain=DomainOwner.TMS,
-        owner_subdomain=TmsSubdomain.SHIPPING_ASSIST_SHIPMENT,
-        note="发货辅助 /orders/.../ship-with-waybill 路由实现。",
-    ),
-    FileOwnershipRule(
-        path_prefix="app/shipping_assist/shipment/api_contracts.py",
-        owner_domain=DomainOwner.TMS,
-        owner_subdomain=TmsSubdomain.SHIPPING_ASSIST_SHIPMENT,
-        note="发货辅助 API 合同定义（含 ShipWithWaybill 请求/响应）。",
-    ),
-    FileOwnershipRule(
-        path_prefix="app/shipping_assist/shipment/",
-        owner_domain=DomainOwner.TMS,
-        owner_subdomain=TmsSubdomain.SHIPPING_ASSIST_SHIPMENT,
-        note="发货辅助执行主模块。",
-    ),
-    FileOwnershipRule(
-        path_prefix="app/api/routers/orders_fulfillment_v2_schemas.py",
-        owner_domain=DomainOwner.TMS,
-        owner_subdomain=TmsSubdomain.SHIPPING_ASSIST_SHIPMENT,
-        note="历史共享 schema 文件；当前仅保留 Pick 合同。",
-    ),
-    FileOwnershipRule(
-        path_prefix="app/api/routers/outbound_ship_routes_confirm.py",
-        owner_domain=DomainOwner.TMS,
-        owner_subdomain=TmsSubdomain.SHIPPING_ASSIST_SHIPMENT,
-        note="当前挂在 Outbound，但语义属于发货辅助执行；已由 TMS router 壳统一挂载。",
+        note="告警聚合服务；当前保留历史运输异常观测。",
     ),
     FileOwnershipRule(
         path_prefix="app/models/shipping_record.py",
@@ -376,6 +231,7 @@ def get_frozen_ownership(code: str) -> FrozenOwnership:
     Raises:
         KeyError: 当 code 不存在时抛出。
     """
+
     return FROZEN_OWNERSHIP[code]
 
 
@@ -387,6 +243,7 @@ def find_file_ownership(path: str) -> FileOwnershipRule | None:
     - 采用前缀匹配
     - 更长的 path_prefix 优先，避免上层前缀吞掉更具体规则
     """
+
     normalized = PurePosixPath(path).as_posix()
     matched: FileOwnershipRule | None = None
 

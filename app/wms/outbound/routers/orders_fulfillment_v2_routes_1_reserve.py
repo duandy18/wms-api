@@ -5,12 +5,58 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.user.deps.auth import get_current_user
 from app.db.deps import get_async_session as get_session
 from app.wms.outbound.services.order_fulfillment_manual_assign import manual_assign_fulfillment_warehouse
-from app.shipping_assist.shipment.router_helpers import get_order_ref_and_trace_id
+
+
+
+async def get_order_ref_and_trace_id(
+    *,
+    session: AsyncSession,
+    platform: str,
+    store_code: str,
+    ext_order_no: str,
+) -> tuple[str, str]:
+    """Load OMS order_ref and trace_id for WMS fulfillment assignment.
+
+    The old helper lived in the retired WMS shipment runtime package.
+    Shipment execution has moved out of WMS, so WMS owns this minimal
+    order lookup locally.
+    """
+
+    platform_norm = str(platform or "").strip().upper()
+    store_code_norm = str(store_code or "").strip()
+    ext_order_no_norm = str(ext_order_no or "").strip()
+
+    row = (
+        await session.execute(
+            text(
+                """
+                SELECT trace_id
+                FROM orders
+                WHERE platform = :platform
+                  AND store_code = :store_code
+                  AND ext_order_no = :ext_order_no
+                LIMIT 1
+                """
+            ),
+            {
+                "platform": platform_norm,
+                "store_code": store_code_norm,
+                "ext_order_no": ext_order_no_norm,
+            },
+        )
+    ).mappings().first()
+
+    if row is None:
+        raise HTTPException(status_code=404, detail="order not found")
+
+    order_ref = f"ORD:{platform_norm}:{store_code_norm}:{ext_order_no_norm}"
+    return order_ref, str(row["trace_id"] or "")
 
 
 class ManualAssignRequest(BaseModel):
