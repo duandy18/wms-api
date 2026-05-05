@@ -149,7 +149,6 @@ def init_models(
         "app.oms.order_facts.models",
         "app.shipping_assist.pricing.templates.models",
         "app.shipping_assist.providers.models",
-        "app.shipping_assist.shipment.models",
         "app.oms.orders.models",
         "app.wms.warehouses.models",
         "app.oms.stores.models",
