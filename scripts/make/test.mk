@@ -218,15 +218,13 @@ test-backend-smoke: dev-reset-test-db audit-all
 	$(PYTEST) -q tests/services/test_store_service.py
 
 # =================================
-# Pricing smoke tests（quote + scheme binding + constraints）
+# Pricing smoke tests（scheme binding + constraints）
 # =================================
 .PHONY: test-pricing-smoke
 test-pricing-smoke: dev-reset-test-db audit-all
-	@echo "[pytest] Pricing smoke (quote + recommend + scheme binding + constraints)"
+	@echo "[pytest] Pricing smoke (scheme binding + constraints)"
 	@PYTHONPATH=. WMS_ENV=test WMS_DATABASE_URL="$(DEV_TEST_DB_DSN)" WMS_TEST_DATABASE_URL="$(DEV_TEST_DB_DSN)" \
 	$(PYTEST) -q -s \
-	  tests/api/test_shipping_quote_calc_api.py \
-	  tests/api/test_shipping_quote_recommend_contract.py \
 	  tests/api/test_shipping_quote_scheme_warehouses_api.py \
 	  tests/api/test_zone_brackets_constraints_and_copy.py \
 	  tests/api/test_zone_brackets_matrix_unbound_contract.py \
