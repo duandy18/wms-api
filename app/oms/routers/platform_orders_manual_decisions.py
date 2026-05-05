@@ -4,16 +4,13 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.deps import get_async_session as get_session
-from app.core.problem import make_problem
 from app.oms.contracts.platform_orders_manual_decisions import ManualDecisionOrdersOut
 from app.oms.services.platform_order_resolve_service import norm_platform
-from app.oms.services.test_store_testset_guard_service import TestShopTestSetGuardService
 
 router = APIRouter(tags=["platform-orders"])
 
@@ -55,14 +52,6 @@ async def _load_store_code_by_store_id(session: AsyncSession, *, platform: str, 
     v = row.get("store_code")
     s = str(v).strip() if v is not None else ""
     return s or None
-
-
-class ManualBindMerchantCodeIn(BaseModel):
-    platform: str = Field(..., min_length=1, max_length=32, description="平台（DEMO/PDD/TB），大小写不敏感")
-    store_id: int = Field(..., ge=1, description="内部店铺 store_id（stores.id）")
-    filled_code: str = Field(..., min_length=1, max_length=128, description="填写码（商家规格编码 / filled_code）")
-    fsku_id: int = Field(..., ge=1, description="目标 FSKU.id（必须为 published）")
-    reason: Optional[str] = Field(None, max_length=500, description="绑定原因（可选）")
 
 
 @router.get(
@@ -218,140 +207,3 @@ async def list_latest_manual_decisions(
             items.append(grouped[bid])
 
     return ManualDecisionOrdersOut(items=items, total=total, limit=int(limit), offset=int(offset))
-
-
-@router.post(
-    "/platform-orders/manual-decisions/bind-merchant-code",
-    summary="人工救火：将 filled_code 绑定/覆盖到 published FSKU（一码一对一）",
-)
-async def manual_bind_merchant_code(
-    payload: ManualBindMerchantCodeIn = Body(...),
-    session: AsyncSession = Depends(get_session),
-) -> Dict[str, Any]:
-    plat = norm_platform(payload.platform)
-    store_id = int(payload.store_id)
-
-    filled_code = (payload.filled_code or "").strip()
-    if not filled_code:
-        raise HTTPException(
-            status_code=422,
-            detail=make_problem(
-                status_code=422,
-                error_code="request_validation_error",
-                message="filled_code 不能为空",
-                context={"platform": plat, "store_id": store_id},
-            ),
-        )
-
-    store_code = await _load_store_code_by_store_id(session, platform=plat, store_id=store_id)
-    if not store_code:
-        raise HTTPException(
-            status_code=404,
-            detail=make_problem(
-                status_code=404,
-                error_code="not_found",
-                message="store_id 不存在或未绑定 store_code",
-                context={"platform": plat, "store_id": store_id},
-            ),
-        )
-
-    fsku_row = (
-        await session.execute(
-            text(
-                """
-                SELECT id, status
-                  FROM pms_fskus
-                 WHERE id = :id
-                 LIMIT 1
-                """
-            ),
-            {"id": int(payload.fsku_id)},
-        )
-    ).mappings().first()
-
-    if not fsku_row or fsku_row.get("id") is None:
-        raise HTTPException(
-            status_code=404,
-            detail=make_problem(
-                status_code=404,
-                error_code="not_found",
-                message="FSKU 不存在",
-                context={"platform": plat, "store_id": store_id, "fsku_id": int(payload.fsku_id)},
-            ),
-        )
-
-    st = str(fsku_row.get("status") or "")
-    if st != "published":
-        raise HTTPException(
-            status_code=409,
-            detail=make_problem(
-                status_code=409,
-                error_code="conflict",
-                message="仅 published FSKU 允许绑定（避免草稿/退休被订单引用）",
-                context={
-                    "platform": plat,
-                    "store_id": store_id,
-                    "store_code": store_code,
-                    "fsku_id": int(payload.fsku_id),
-                    "fsku_status": st,
-                },
-            ),
-        )
-
-    # ✅ 宇宙边界（以 platform_test_stores 为唯一真相）：
-    #    - 有 components 才校验；无 components 直接放行（合同兼容）
-    guard = TestShopTestSetGuardService(session)
-    await guard.guard_fsku_components_by_store(
-        platform=plat,
-        store_code=store_code,
-        store_id=store_id,
-        fsku_id=int(payload.fsku_id),
-        set_code="DEFAULT",
-        path="/platform-orders/manual-decisions/bind-merchant-code",
-        method="POST",
-    )
-
-    now = _utc_now()
-    reason = (payload.reason or "").strip() or "manual bind"
-
-    await session.execute(
-        text(
-            """
-            INSERT INTO merchant_code_fsku_bindings(
-              platform, store_code, merchant_code,
-              fsku_id, reason, created_at, updated_at
-            )
-            VALUES (
-              :p, :store_code, :code,
-              :fsku_id, :reason, :now, :now
-            )
-            ON CONFLICT (platform, store_code, merchant_code)
-            DO UPDATE SET
-              fsku_id = EXCLUDED.fsku_id,
-              reason = EXCLUDED.reason,
-              updated_at = EXCLUDED.updated_at
-            """
-        ),
-        {"p": plat, "store_code": store_code, "code": filled_code, "fsku_id": int(payload.fsku_id), "now": now, "reason": reason},
-    )
-
-    await session.commit()
-
-    return {
-        "ok": True,
-        "data": {
-            "platform": plat,
-            "store_id": store_id,
-            "store_code": store_code,
-            "merchant_code": filled_code,
-            "fsku_id": int(payload.fsku_id),
-            "reason": reason,
-            "updated_at": now,
-        },
-        "next_actions": [
-            {
-                "action": "re_ingest_or_replay",
-                "label": "重新接入/回放该订单（后续同 filled_code 将自动解析）",
-            }
-        ],
-    }

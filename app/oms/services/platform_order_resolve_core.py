@@ -46,9 +46,9 @@ async def resolve_platform_lines_to_items(
       - 行级字段：filled_code + qty
 
     解析路径（严格确定性）：
-      1) filled_code → merchant_code_fsku_bindings（一对一）→ published FSKU.id
+      1) filled_code → platform_code_fsku_mappings(identity_kind=merchant_code) → published OMS FSKU.id
       2) 若 1) 未命中：回退 filled_code == FSKU.code（理想路径）
-      3) 命中 FSKU.id 后：published FSKU → pms_fsku_components → items
+      3) 命中 FSKU.id 后：published OMS FSKU → oms_fsku_components → items
 
     说明：
     - 事实表唯一事实字段仍为 filled_code（字段语义已收敛）
@@ -109,7 +109,7 @@ async def resolve_platform_lines_to_items(
                         "hint": "填写码已绑定，但目标 FSKU 非 published",
                         "next_actions": [
                             {
-                                "action": "rebind_merchant_code",
+                                "action": "go_code_mapping",
                                 "label": "重新绑定填写码到一个已发布 FSKU",
                                 "payload": {
                                     "platform": plat,
@@ -136,7 +136,7 @@ async def resolve_platform_lines_to_items(
                         text(
                             """
                             SELECT id
-                              FROM pms_fskus
+                              FROM oms_fskus
                              WHERE code = :code
                                AND status = 'published'
                              LIMIT 1
@@ -162,9 +162,9 @@ async def resolve_platform_lines_to_items(
                     "next_actions": [
                         # ✅ 既有契约：第一条必须是 bind_merchant_code（endpoint + payload）
                         {
-                            "action": "bind_merchant_code",
+                            "action": "go_code_mapping",
                             "label": "人工绑定填写码到 FSKU（一次绑定，后续自动解析）",
-                            "endpoint": "/oms/platform-orders/manual-decisions/bind-merchant-code",
+                            "route_path": f"/oms/{plat.lower()}/code-mapping",
                             "payload": {
                                 "platform": plat,
                                 "store_id": sid,

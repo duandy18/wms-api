@@ -29,8 +29,8 @@ async def load_fsku_components(
                   c.sku_code_snapshot,
                   c.item_name_snapshot,
                   c.uom_snapshot
-                FROM pms_fsku_components c
-                JOIN pms_fskus f ON f.id = c.fsku_id
+                FROM oms_fsku_components c
+                JOIN oms_fskus f ON f.id = c.fsku_id
                 WHERE c.fsku_id = :fid
                   AND f.status = 'published'
                 ORDER BY c.sort_order ASC, c.id ASC

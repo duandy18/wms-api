@@ -126,7 +126,7 @@ class OrderSimPreviewOrderOut(BaseModel):
 
 
 # ============================================================
-# ✅ 新增：filled_code 下拉候选（只用绑定事实 merchant_code → published FSKU）
+# ✅ 新增：filled_code 下拉候选（只用绑定事实 merchant_code → published OMS FSKU）
 # ============================================================
 
 class OrderSimFilledCodeOptionOut(BaseModel):

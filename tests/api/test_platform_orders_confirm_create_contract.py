@@ -39,7 +39,7 @@ async def test_platform_orders_confirm_and_create_contract(client) -> None:
     store_code = "UT-STORE-1"
     ext_order_no = "E2E-CONFIRM-0001"
 
-    # 1) 先 ingest 落事实（本用例刻意构造 UNRESOLVED：缺填写码 / 填写码未绑定且不等于任何 published FSKU.code）
+    # 1) 先 ingest 落事实（本用例刻意构造 UNRESOLVED：缺填写码 / 填写码未绑定且不等于任何 published OMS FSKU.code）
     ingest_payload = {
         "platform": platform,
         "store_code": store_code,
@@ -89,7 +89,7 @@ async def test_platform_orders_confirm_and_create_contract(client) -> None:
     rf = j2.get("risk_flags")
     assert isinstance(rf, list), j2
     assert "FILLED_CODE_MISSING" in rf, rf
-    # current-only 语义下：有填写码但未绑定/不等于 published FSKU.code → CODE_NOT_BOUND
+    # current-only 语义下：有填写码但未绑定/不等于 published OMS FSKU.code → CODE_NOT_BOUND
     assert "CODE_NOT_BOUND" in rf, rf
 
     first_id = int(j2["id"])

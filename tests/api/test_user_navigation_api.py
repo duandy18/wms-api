@@ -360,7 +360,7 @@ async def test_my_navigation_route_prefix_mapping_and_effective_permissions(clie
     pricing_page = nodes["shipping_assist.pricing.bindings"]
     items_page = nodes["pms.items"]
     suppliers_page = nodes["pms.suppliers"]
-    fsku_rules_page = nodes["pms.fsku_rules"]
+    fsku_rules_page = nodes["oms.fsku_rules"]
     inventory_page = nodes["wms.inventory.main"]
     warehouses_page = nodes["wms.warehouses"]
     inventory_adjustment_page = nodes["wms.inventory_adjustment.summary"]
@@ -374,8 +374,8 @@ async def test_my_navigation_route_prefix_mapping_and_effective_permissions(clie
     assert suppliers_page["effective_read_permission"] == "page.pms.read"
     assert suppliers_page["effective_write_permission"] == "page.pms.write"
 
-    assert fsku_rules_page["effective_read_permission"] == "page.pms.read"
-    assert fsku_rules_page["effective_write_permission"] == "page.pms.write"
+    assert fsku_rules_page["effective_read_permission"] == "page.oms.read"
+    assert fsku_rules_page["effective_write_permission"] == "page.oms.write"
 
     assert inventory_page["effective_read_permission"] == "page.wms.read"
     assert inventory_page["effective_write_permission"] == "page.wms.write"
@@ -389,7 +389,7 @@ async def test_my_navigation_route_prefix_mapping_and_effective_permissions(clie
     pricing_route = route_map.get("/shipping-assist/pricing/bindings")
     items_route = route_map.get("/items")
     suppliers_route = route_map.get("/suppliers")
-    fsku_rules_route = route_map.get("/pms/fskus")
+    fsku_rules_route = route_map.get("/oms/fskus")
     inventory_route = route_map.get("/inventory")
     warehouses_route = route_map.get("/warehouses")
     inventory_adjustment_route = route_map.get("/inventory-adjustment")
@@ -397,7 +397,7 @@ async def test_my_navigation_route_prefix_mapping_and_effective_permissions(clie
     assert pricing_route is not None, "/shipping-assist/pricing/bindings should exist in route_prefixes"
     assert items_route is not None, "/items should exist in route_prefixes"
     assert suppliers_route is not None, "/suppliers should exist in route_prefixes"
-    assert fsku_rules_route is not None, "/pms/fskus should exist in route_prefixes"
+    assert fsku_rules_route is not None, "/oms/fskus should exist in route_prefixes"
     assert inventory_route is not None, "/inventory should exist in route_prefixes"
     assert warehouses_route is not None, "/warehouses should exist in route_prefixes"
     assert inventory_adjustment_route is not None, "/inventory-adjustment should exist in route_prefixes"
@@ -405,7 +405,7 @@ async def test_my_navigation_route_prefix_mapping_and_effective_permissions(clie
     assert pricing_route["page_code"] == "shipping_assist.pricing.bindings"
     assert items_route["page_code"] == "pms.items"
     assert suppliers_route["page_code"] == "pms.suppliers"
-    assert fsku_rules_route["page_code"] == "pms.fsku_rules"
+    assert fsku_rules_route["page_code"] == "oms.fsku_rules"
     assert inventory_route["page_code"] == "wms.inventory.main"
     assert warehouses_route["page_code"] == "wms.warehouses"
     assert inventory_adjustment_route["page_code"] == "wms.inventory_adjustment.summary"
@@ -419,8 +419,8 @@ async def test_my_navigation_route_prefix_mapping_and_effective_permissions(clie
     assert suppliers_route["effective_read_permission"] == "page.pms.read"
     assert suppliers_route["effective_write_permission"] == "page.pms.write"
 
-    assert fsku_rules_route["effective_read_permission"] == "page.pms.read"
-    assert fsku_rules_route["effective_write_permission"] == "page.pms.write"
+    assert fsku_rules_route["effective_read_permission"] == "page.oms.read"
+    assert fsku_rules_route["effective_write_permission"] == "page.oms.write"
 
     assert inventory_route["effective_read_permission"] == "page.wms.read"
     assert inventory_route["effective_write_permission"] == "page.wms.write"

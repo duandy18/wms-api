@@ -1,9 +1,4 @@
-# app/oms/fsku/models/__init__.py
-# OMS only owns platform merchant-code bindings.
-# PMS owns FSKU master data and FSKU components.
+from app.oms.fsku.models.fsku import Fsku, FskuComponent
+from app.oms.fsku.models.platform_code_fsku_mapping import PlatformCodeFskuMapping
 
-from app.oms.fsku.models.merchant_code_fsku_binding import MerchantCodeFskuBinding
-
-__all__ = [
-    "MerchantCodeFskuBinding",
-]
+__all__ = ["Fsku", "FskuComponent", "PlatformCodeFskuMapping"]

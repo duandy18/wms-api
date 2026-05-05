@@ -175,7 +175,7 @@ async def _create_published_fsku_with_component(
         await session.execute(
             text(
                 """
-                INSERT INTO pms_fskus (
+                INSERT INTO oms_fskus (
                   code,
                   name,
                   shape,
@@ -213,7 +213,7 @@ async def _create_published_fsku_with_component(
     await session.execute(
         text(
             """
-            INSERT INTO pms_fsku_components (
+            INSERT INTO oms_fsku_components (
               fsku_id,
               component_sku_code,
               qty_per_fsku,

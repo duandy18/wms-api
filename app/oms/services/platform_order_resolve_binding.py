@@ -1,12 +1,10 @@
 # app/oms/services/platform_order_resolve_binding.py
 from __future__ import annotations
 
-from typing import Optional, Tuple
+from typing import Optional
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.oms.services.platform_order_resolve_utils import norm_platform, norm_store_code
 
 
 async def resolve_fsku_id_by_binding(
@@ -15,71 +13,43 @@ async def resolve_fsku_id_by_binding(
     platform: str,
     store_code: str,
     merchant_code: str,
-) -> Tuple[Optional[int], Optional[str]]:
+) -> tuple[Optional[int], Optional[str]]:
     """
-    一码一对一：返回 (fsku_id, reason_if_not_ok)
+    Resolve merchant_code/fill_code to published OMS FSKU by platform code mapping.
 
-    reason:
-      - None: 命中 published FSKU
-      - FSKU_NOT_PUBLISHED: 绑定存在但指向非 published
-      - CODE_NOT_BOUND: 未找到绑定
+    This legacy helper only receives merchant_code, so it resolves identity_kind='merchant_code'.
+    Platform mirror SKU resolution supports more identity kinds directly.
     """
-    plat = norm_platform(platform)
-    sid = norm_store_code(store_code)
     code = (merchant_code or "").strip()
     if not code:
-        return (None, "CODE_NOT_BOUND")
+        return None, "MISSING_CODE"
 
-    # 1) 优先：绑定存在且 published
     row = (
-        (
-            await session.execute(
-                text(
-                    """
-                    SELECT b.fsku_id
-                      FROM merchant_code_fsku_bindings b
-                      JOIN pms_fskus f ON f.id = b.fsku_id
-                     WHERE b.platform = :p
-                       AND b.store_code = :store_code
-                       AND b.merchant_code = :code
-                       AND f.status = 'published'
-                     LIMIT 1
-                    """
-                ),
-                {"p": plat, "store_code": sid, "code": code},
-            )
+        await session.execute(
+            text(
+                """
+                SELECT m.fsku_id, f.status AS fsku_status
+                  FROM platform_code_fsku_mappings m
+                  JOIN oms_fskus f ON f.id = m.fsku_id
+                 WHERE m.platform = :platform
+                   AND m.store_code = :store_code
+                   AND m.identity_kind = 'merchant_code'
+                   AND m.identity_value = :code
+                 LIMIT 1
+                """
+            ),
+            {
+                "platform": platform,
+                "store_code": store_code,
+                "code": code,
+            },
         )
-        .mappings()
-        .first()
-    )
-    if row and row.get("fsku_id") is not None:
-        return (int(row["fsku_id"]), None)
+    ).mappings().first()
 
-    # 2) 再查：绑定存在但非 published（给更精确原因）
-    row2 = (
-        (
-            await session.execute(
-                text(
-                    """
-                    SELECT b.fsku_id, f.status
-                      FROM merchant_code_fsku_bindings b
-                      LEFT JOIN pms_fskus f ON f.id = b.fsku_id
-                     WHERE b.platform = :p
-                       AND b.store_code = :store_code
-                       AND b.merchant_code = :code
-                     LIMIT 1
-                    """
-                ),
-                {"p": plat, "store_code": sid, "code": code},
-            )
-        )
-        .mappings()
-        .first()
-    )
-    if row2 and row2.get("fsku_id") is not None:
-        st = str(row2.get("status") or "")
-        if st and st != "published":
-            return (None, "FSKU_NOT_PUBLISHED")
-        return (None, "CODE_NOT_BOUND")
+    if not row:
+        return None, "CODE_NOT_MAPPED"
 
-    return (None, "CODE_NOT_BOUND")
+    if str(row.get("fsku_status") or "") != "published":
+        return None, "FSKU_NOT_PUBLISHED"
+
+    return int(row["fsku_id"]), None
