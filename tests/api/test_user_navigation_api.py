@@ -28,7 +28,14 @@ async def _reset_navigation_registry_state(session: AsyncSession) -> None:
             UPDATE page_registry
                SET is_active = TRUE
              WHERE code = 'shipping_assist'
-                OR code LIKE 'shipping_assist.%'
+                OR (
+                  code LIKE 'shipping_assist.%'
+                  AND code NOT IN (
+                    'shipping_assist.shipping.quote',
+                    'shipping_assist.settings',
+                    'shipping_assist.settings.waybill'
+                  )
+                )
             """
         )
     )
@@ -89,7 +96,13 @@ async def _reset_navigation_registry_state(session: AsyncSession) -> None:
             """
             UPDATE page_route_prefixes
                SET is_active = TRUE
-             WHERE route_prefix LIKE '/shipping-assist/%'
+             WHERE (
+                    route_prefix LIKE '/shipping-assist/%'
+                    AND route_prefix NOT IN (
+                      '/shipping-assist/shipping/quote',
+                      '/shipping-assist/settings/waybill'
+                    )
+                  )
                 OR route_prefix LIKE '/inventory-adjustment%'
             """
         )
@@ -482,12 +495,10 @@ async def test_my_navigation_filters_to_only_directly_visible_parent_tree(
         "shipping_assist.shipping",
         "shipping_assist.pricing",
         "shipping_assist.billing",
-        "shipping_assist.settings",
     ]
 
     nodes = _walk_pages(pages)
     assert _child_codes(nodes["shipping_assist.shipping"]) == [
-        "shipping_assist.shipping.quote",
         "shipping_assist.shipping.records",
     ]
     assert _child_codes(nodes["shipping_assist.pricing"]) == [
@@ -499,20 +510,15 @@ async def test_my_navigation_filters_to_only_directly_visible_parent_tree(
         "shipping_assist.billing.items",
         "shipping_assist.billing.reconciliation",
     ]
-    assert _child_codes(nodes["shipping_assist.settings"]) == [
-        "shipping_assist.settings.waybill",
-    ]
 
     assert all(item["page_code"].startswith("shipping_assist.") for item in route_prefixes)
     assert [item["route_prefix"] for item in route_prefixes] == [
-        "/shipping-assist/shipping/quote",
         "/shipping-assist/shipping/records",
         "/shipping-assist/pricing/providers",
         "/shipping-assist/pricing/bindings",
         "/shipping-assist/pricing/templates",
         "/shipping-assist/billing/items",
         "/shipping-assist/billing/reconciliation",
-        "/shipping-assist/settings/waybill",
     ]
 
 
@@ -570,11 +576,9 @@ async def test_my_navigation_contains_shipping_assist_level3_tree(client: AsyncC
         "shipping_assist.shipping",
         "shipping_assist.pricing",
         "shipping_assist.billing",
-        "shipping_assist.settings",
     ]
 
     assert _child_codes(nodes["shipping_assist.shipping"]) == [
-        "shipping_assist.shipping.quote",
         "shipping_assist.shipping.records",
     ]
     assert _child_codes(nodes["shipping_assist.pricing"]) == [
@@ -586,19 +590,14 @@ async def test_my_navigation_contains_shipping_assist_level3_tree(client: AsyncC
         "shipping_assist.billing.items",
         "shipping_assist.billing.reconciliation",
     ]
-    assert _child_codes(nodes["shipping_assist.settings"]) == [
-        "shipping_assist.settings.waybill",
-    ]
 
     expected_route_map = {
-        "/shipping-assist/shipping/quote": "shipping_assist.shipping.quote",
         "/shipping-assist/shipping/records": "shipping_assist.shipping.records",
         "/shipping-assist/pricing/providers": "shipping_assist.pricing.providers",
         "/shipping-assist/pricing/bindings": "shipping_assist.pricing.bindings",
         "/shipping-assist/pricing/templates": "shipping_assist.pricing.templates",
         "/shipping-assist/billing/items": "shipping_assist.billing.items",
         "/shipping-assist/billing/reconciliation": "shipping_assist.billing.reconciliation",
-        "/shipping-assist/settings/waybill": "shipping_assist.settings.waybill",
     }
 
     for route_prefix, page_code in expected_route_map.items():
@@ -609,3 +608,8 @@ async def test_my_navigation_contains_shipping_assist_level3_tree(client: AsyncC
         assert route["effective_write_permission"] == "page.shipping_assist.write"
 
     assert "/shipping-assist/reports" not in route_map
+    assert "/shipping-assist/shipping/quote" not in route_map
+    assert "/shipping-assist/settings/waybill" not in route_map
+    assert "shipping_assist.shipping.quote" not in nodes
+    assert "shipping_assist.settings" not in nodes
+    assert "shipping_assist.settings.waybill" not in nodes
