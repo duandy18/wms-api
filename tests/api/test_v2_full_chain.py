@@ -1,7 +1,6 @@
 # tests/api/test_v2_full_chain.py
 from __future__ import annotations
 
-import json
 from datetime import date, datetime, timezone
 from uuid import uuid4
 
@@ -89,175 +88,6 @@ async def _ensure_supplier_lot(session: AsyncSession, *, wh_id: int, item_id: in
     )
 
 
-async def _pick_active_shipping_provider_for_warehouse(
-    session: AsyncSession,
-    *,
-    warehouse_id: int,
-) -> dict[str, object] | None:
-    row = (
-        await session.execute(
-            text(
-                """
-                SELECT
-                  sp.id AS provider_id,
-                  sp.shipping_provider_code AS shipping_provider_code,
-                  sp.name AS shipping_provider_name
-                FROM warehouse_shipping_providers AS wsp
-                JOIN shipping_providers AS sp
-                  ON sp.id = wsp.shipping_provider_id
-                WHERE wsp.warehouse_id = :wid
-                  AND wsp.active = true
-                  AND sp.active = true
-                ORDER BY wsp.priority ASC, sp.priority ASC, sp.id ASC
-                LIMIT 1
-                """
-            ),
-            {"wid": warehouse_id},
-        )
-    ).mappings().first()
-
-    return dict(row) if row else None
-
-
-def _build_quote_snapshot(
-    *,
-    warehouse_id: int,
-    provider_id: int,
-    shipping_provider_code: str | None,
-    shipping_provider_name: str | None,
-    province: str,
-    city: str,
-    district: str,
-    weight_kg: float,
-) -> dict[str, object]:
-    total_amount = 12.34
-    base_amount = 10.84
-    surcharge_amount = 1.50
-
-    return {
-        "version": "v1",
-        "source": "unit-test",
-        "input": {
-            "warehouse_id": warehouse_id,
-            "dest": {
-                "province": province,
-                "city": city,
-                "district": district,
-                "province_code": "UT-PROV-CODE",
-                "city_code": "UT-CITY-CODE",
-            },
-            "real_weight_kg": weight_kg,
-            "flags": [],
-        },
-        "selected_quote": {
-            "quote_status": "OK",
-            "template_id": 999001,
-            "template_name": "UT-TEMPLATE",
-            "provider_id": provider_id,
-            "shipping_provider_code": shipping_provider_code,
-            "shipping_provider_name": shipping_provider_name,
-            "currency": "CNY",
-            "total_amount": total_amount,
-            "weight": {
-                "real_weight_kg": weight_kg,
-                "billable_weight_kg": weight_kg,
-            },
-            "destination_group": {
-                "group_id": 999001,
-                "group_name": "UT-DEST-GROUP",
-            },
-            "pricing_matrix": {
-                "matrix_id": 999001,
-                "hit": True,
-            },
-            "breakdown": {
-                "base": {
-                    "amount": base_amount,
-                },
-                "surcharges": [
-                    {
-                        "id": 1,
-                        "name": "UT-SURCHARGE",
-                        "scope": "city",
-                        "amount": surcharge_amount,
-                        "detail": {"kind": "unit-test"},
-                    }
-                ],
-                "summary": {
-                    "base_amount": base_amount,
-                    "surcharge_amount": surcharge_amount,
-                    "extra_amount": surcharge_amount,
-                    "total_amount": total_amount,
-                },
-            },
-            "reasons": ["unit-test-selected-quote"],
-        },
-    }
-
-
-async def _upsert_active_waybill_config(
-    session: AsyncSession,
-    *,
-    platform: str,
-    store_code: str,
-    provider_id: int,
-) -> None:
-    await session.execute(
-        text(
-            """
-            INSERT INTO electronic_waybill_configs (
-                platform,
-                store_code,
-                shipping_provider_id,
-                customer_code,
-                sender_name,
-                sender_mobile,
-                sender_phone,
-                sender_province,
-                sender_city,
-                sender_district,
-                sender_address,
-                active,
-                created_at,
-                updated_at
-            )
-            VALUES (
-                :platform,
-                :store_code,
-                :provider_id,
-                'UT-CUSTOMER-CODE',
-                'UT-SENDER',
-                '13800000000',
-                NULL,
-                '北京市',
-                '北京市',
-                '朝阳区',
-                '测试发件地址 FULL-CHAIN',
-                TRUE,
-                now(),
-                now()
-            )
-            ON CONFLICT (platform, store_code, shipping_provider_id) DO UPDATE
-               SET customer_code = EXCLUDED.customer_code,
-                   sender_name = EXCLUDED.sender_name,
-                   sender_mobile = EXCLUDED.sender_mobile,
-                   sender_phone = EXCLUDED.sender_phone,
-                   sender_province = EXCLUDED.sender_province,
-                   sender_city = EXCLUDED.sender_city,
-                   sender_district = EXCLUDED.sender_district,
-                   sender_address = EXCLUDED.sender_address,
-                   active = TRUE,
-                   updated_at = now()
-            """
-        ),
-        {
-            "platform": str(platform).upper(),
-            "store_code": str(store_code),
-            "provider_id": int(provider_id),
-        },
-    )
-
-
 async def _load_order_id(
     session: AsyncSession,
     *,
@@ -287,81 +117,6 @@ async def _load_order_id(
     return int(order_id)
 
 
-async def _upsert_prepare_package_for_ship(
-    session: AsyncSession,
-    *,
-    order_id: int,
-    warehouse_id: int,
-    provider_id: int,
-    weight_kg: float,
-    quote_snapshot: dict[str, object],
-) -> None:
-    await session.execute(
-        text(
-            """
-            INSERT INTO order_shipment_prepare (
-                order_id,
-                address_ready_status,
-                package_status,
-                pricing_status,
-                provider_status
-            )
-            VALUES (
-                :order_id,
-                'ready',
-                'planned',
-                'calculated',
-                'selected'
-            )
-            ON CONFLICT (order_id) DO UPDATE SET
-                address_ready_status = EXCLUDED.address_ready_status,
-                package_status = EXCLUDED.package_status,
-                pricing_status = EXCLUDED.pricing_status,
-                provider_status = EXCLUDED.provider_status
-            """
-        ),
-        {"order_id": int(order_id)},
-    )
-
-    await session.execute(
-        text(
-            """
-            INSERT INTO order_shipment_prepare_packages (
-                order_id,
-                package_no,
-                weight_kg,
-                warehouse_id,
-                pricing_status,
-                selected_provider_id,
-                selected_quote_snapshot
-            )
-            VALUES (
-                :order_id,
-                1,
-                :weight_kg,
-                :warehouse_id,
-                'calculated',
-                :provider_id,
-                CAST(:quote_snapshot AS jsonb)
-            )
-            ON CONFLICT (order_id, package_no) DO UPDATE SET
-                weight_kg = EXCLUDED.weight_kg,
-                warehouse_id = EXCLUDED.warehouse_id,
-                pricing_status = EXCLUDED.pricing_status,
-                selected_provider_id = EXCLUDED.selected_provider_id,
-                selected_quote_snapshot = EXCLUDED.selected_quote_snapshot,
-                updated_at = now()
-            """
-        ),
-        {
-            "order_id": int(order_id),
-            "weight_kg": float(weight_kg),
-            "warehouse_id": int(warehouse_id),
-            "provider_id": int(provider_id),
-            "quote_snapshot": json.dumps(quote_snapshot, ensure_ascii=False),
-        },
-    )
-
 
 @pytest.mark.asyncio
 async def test_v2_order_full_chain(client: AsyncClient, db_session_like_pg: AsyncSession):
@@ -371,8 +126,8 @@ async def test_v2_order_full_chain(client: AsyncClient, db_session_like_pg: Asyn
     1) ingest：创建订单并写 trace_id
     2) 人工履约决策：调用 manual-assign 指定执行仓，并标记可进入履约
     3) 入库（为后续 pick/ship 准备库存）
-    4) pick → ship-with-waybill
-    5) ship-with-waybill：完成发货执行并返回运输事实
+    4) legacy pick HTTP route 已退役；WMS 验证订单、履约分配、库存就绪边界
+    5) shipment execution / waybill 已迁移到 logistics-api；WMS 不再请求面单
     """
     plat = "PDD"
     store_code = "1"
@@ -471,72 +226,12 @@ async def test_v2_order_full_chain(client: AsyncClient, db_session_like_pg: Asyn
     # and dedicated outbound submit API tests.
     assert lot_id > 0
 
-    provider = await _pick_active_shipping_provider_for_warehouse(db_session_like_pg, warehouse_id=1)
-    if provider is None:
-        pytest.skip("warehouse 1 has no active shipping provider binding")
-
-    shipping_provider_id = int(provider["provider_id"])
-    shipping_provider_code = provider.get("shipping_provider_code")
-    shipping_provider_name = provider.get("shipping_provider_name")
-    weight_kg = 1.0
-
-    quote_snapshot = _build_quote_snapshot(
-        warehouse_id=1,
-        provider_id=shipping_provider_id,
-        shipping_provider_code=str(shipping_provider_code) if shipping_provider_code is not None else None,
-        shipping_provider_name=str(shipping_provider_name) if shipping_provider_name is not None else None,
-        province=province,
-        city=city,
-        district=district,
-        weight_kg=weight_kg,
-    )
-
-    await _upsert_prepare_package_for_ship(
-        db_session_like_pg,
-        order_id=order_id,
-        warehouse_id=1,
-        provider_id=shipping_provider_id,
-        weight_kg=weight_kg,
-        quote_snapshot=quote_snapshot,
-    )
-    await _upsert_active_waybill_config(
-        db_session_like_pg,
-        platform=plat,
-        store_code=store_code,
-        provider_id=shipping_provider_id,
-    )
-    await db_session_like_pg.commit()
-
-    # 5) ship-with-waybill（Shipment Execution 唯一主入口）
-    resp = await client.post(
-        f"/orders/{plat}/{store_code}/{ext}/ship-with-waybill",
-        json={
-            "package_no": 1,
-            "receiver_name": "X",
-            "receiver_phone": "000",
-            "province": province,
-            "city": city,
-            "district": district,
-            "address_detail": "UT-ADDR-001",
-            "meta": {
-                "extra": {
-                    "source": "tests.api.test_v2_full_chain",
-                },
-            },
-        },
-        headers=headers,
-    )
-    print("[HTTP] ship-with-waybill status:", resp.status_code, "body:", resp.text)
-    assert resp.status_code == 200, resp.text
-    ship_data = resp.json()
-    assert ship_data["ok"] is True
-    assert ship_data["ref"] == order_ref
-    assert int(ship_data["package_no"]) == 1
-    assert int(ship_data["shipping_provider_id"]) == shipping_provider_id
-    assert str(ship_data["tracking_no"]).strip() != ""
-    assert ship_data["status"] == "IN_TRANSIT"
+    # 5) Logistics handoff boundary.
+    # Shipment execution / waybill 已迁移到 logistics-api。
+    # WMS 全链路测试停在订单创建、人工履约分配、库存就绪这条边界。
+    assert order_id > 0
 
     # diagnostics trace endpoint has been retired.
-    # The full-chain contract now ends at shipment execution; trace_id remains
-    # a persisted data field, not a debug API dependency.
+    # The full-chain contract now ends at the WMS logistics handoff boundary;
+    # trace_id remains a persisted data field, not a debug API dependency.
     assert trace_id
