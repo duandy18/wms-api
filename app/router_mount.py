@@ -16,7 +16,6 @@ def mount_routers(app: FastAPI) -> None:
         router as inventory_adjustment_summary_router,
     )
     from app.finance.routers.router import router as finance_router
-    from app.shipping_assist.routers.geo_cn import router as geo_router
     from app.pms.items.routers.item_aggregate import router as item_aggregate_router
     from app.pms.items.routers.item_barcodes import router as item_barcodes_router
     from app.pms.items.routers.item_list import router as item_list_router
@@ -145,7 +144,6 @@ def mount_routers(app: FastAPI) -> None:
     app.include_router(suppliers_router)
     app.include_router(supplier_contacts_router)
 
-    app.include_router(geo_router)
 
 
     app.include_router(tms_records_router)
