@@ -29,7 +29,7 @@ class ShippingRecord(Base):
     - 一条记录代表一次“仓库交付物流”的发货台帐
     - 当前终态粒度为“订单下某个包裹的一次发货事实”
     - 只记录发货事实，不承担物流状态、不承担对账结果
-    - 对账结果存储在 shipping_record_reconciliations 表
+    - 对账结果已迁移到 Logistics；WMS 仅保留 shipping_records 发货事实
     """
 
     __tablename__ = "shipping_records"
