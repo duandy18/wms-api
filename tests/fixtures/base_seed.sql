@@ -16,15 +16,6 @@
 --   - adjust_lot_impl / lot-only stock write primitives
 --   - tests/helpers/inventory.py: seed_supplier_lot_slot 等
 --
--- Pricing Phase-3：
--- - template 生命周期改为 draft / archived
--- - 计费重量规则改为结构化字段
--- - 运价主线改为 template + ranges + destination_groups + pricing_matrix
---
--- Pricing Phase-surcharge-config：
--- - surcharge 主线已切到 config + cities 子表
--- - base_seed 不再写 shipping_provider_surcharges 旧表
-
 -- ===== warehouses =====
 INSERT INTO warehouses (id, name, code)
 VALUES (1, 'WH-1', 'WH-1')
@@ -130,130 +121,6 @@ VALUES
   (2, 'Fake Express', 'FAKE', true, 100, 'UT-ADDR-FAKE')
 ON CONFLICT (id) DO NOTHING;
 
--- ===== shipping pricing template baseline =====
--- template 主线：provider -> template -> ranges/groups -> matrix + surcharge_config
-INSERT INTO shipping_provider_pricing_templates (
-  id,
-  shipping_provider_id,
-  name,
-  status,
-  archived_at,
-  validation_status,
-  expected_ranges_count,
-  expected_groups_count
-)
-VALUES (
-  1,
-  1,
-  'UT-TEMPLATE-1',
-  'draft',
-  NULL,
-  'passed',
-  3,
-  1
-)
-ON CONFLICT (id) DO UPDATE SET
-  shipping_provider_id = EXCLUDED.shipping_provider_id,
-  name = EXCLUDED.name,
-  status = EXCLUDED.status,
-  archived_at = EXCLUDED.archived_at,
-  validation_status = EXCLUDED.validation_status,
-  expected_ranges_count = EXCLUDED.expected_ranges_count,
-  expected_groups_count = EXCLUDED.expected_groups_count;
-
--- ranges：单模板直挂
-INSERT INTO shipping_provider_pricing_template_module_ranges (
-  id,
-  template_id,
-  min_kg,
-  max_kg,
-  sort_order,
-  default_pricing_mode
-)
-VALUES
-  (1, 1, 0.000, 1.000, 0, 'flat'),
-  (2, 1, 1.000, 2.000, 1, 'flat'),
-  (3, 1, 2.000, NULL, 2, 'linear_total')
-ON CONFLICT (id) DO UPDATE SET
-  template_id = EXCLUDED.template_id,
-  min_kg = EXCLUDED.min_kg,
-  max_kg = EXCLUDED.max_kg,
-  sort_order = EXCLUDED.sort_order,
-  default_pricing_mode = EXCLUDED.default_pricing_mode;
-
--- destination groups：单模板直挂
-INSERT INTO shipping_provider_pricing_template_destination_groups (
-  id,
-  template_id,
-  name,
-  active,
-  sort_order
-)
-VALUES
-  (1, 1, '华北测试组', true, 0)
-ON CONFLICT (id) DO UPDATE SET
-  template_id = EXCLUDED.template_id,
-  name = EXCLUDED.name,
-  active = EXCLUDED.active,
-  sort_order = EXCLUDED.sort_order;
-
-INSERT INTO shipping_provider_pricing_template_destination_group_members (
-  id,
-  group_id,
-  province_code,
-  province_name
-)
-VALUES
-  (1, 1, NULL, '北京市'),
-  (2, 1, NULL, '天津市'),
-  (3, 1, NULL, '河北省')
-ON CONFLICT (id) DO UPDATE SET
-  group_id = EXCLUDED.group_id,
-  province_code = EXCLUDED.province_code,
-  province_name = EXCLUDED.province_name;
-
--- pricing matrix：单模板 cell 结构
-INSERT INTO shipping_provider_pricing_template_matrix (
-  id,
-  group_id,
-  pricing_mode,
-  flat_amount,
-  base_amount,
-  rate_per_kg,
-  base_kg,
-  active,
-  module_range_id
-)
-VALUES
-  (1, 1, 'flat',         2.50, NULL, NULL, NULL, true, 1),
-  (2, 1, 'flat',         3.80, NULL, NULL, NULL, true, 2),
-  (3, 1, 'linear_total', NULL, 3.00, 1.50, NULL, true, 3)
-ON CONFLICT (id) DO UPDATE SET
-  group_id = EXCLUDED.group_id,
-  pricing_mode = EXCLUDED.pricing_mode,
-  flat_amount = EXCLUDED.flat_amount,
-  base_amount = EXCLUDED.base_amount,
-  rate_per_kg = EXCLUDED.rate_per_kg,
-  base_kg = EXCLUDED.base_kg,
-  active = EXCLUDED.active,
-  module_range_id = EXCLUDED.module_range_id;
-
-INSERT INTO warehouse_shipping_providers (
-  warehouse_id,
-  shipping_provider_id,
-  active_template_id,
-  active,
-  priority,
-  pickup_cutoff_time,
-  remark
-)
-VALUES (1, 1, 1, true, 0, NULL, 'seed bind')
-ON CONFLICT (warehouse_id, shipping_provider_id) DO UPDATE SET
-  active_template_id = EXCLUDED.active_template_id,
-  active = EXCLUDED.active,
-  priority = EXCLUDED.priority,
-  pickup_cutoff_time = EXCLUDED.pickup_cutoff_time,
-  remark = EXCLUDED.remark;
 
 -- ===== items =====
 INSERT INTO items (
@@ -451,35 +318,10 @@ SELECT setval(
   true
 );
 
-SELECT setval(
-  pg_get_serial_sequence('shipping_provider_pricing_templates','id'),
-  COALESCE((SELECT MAX(id) FROM shipping_provider_pricing_templates), 0),
-  true
-);
 
-SELECT setval(
-  pg_get_serial_sequence('shipping_provider_pricing_template_module_ranges','id'),
-  COALESCE((SELECT MAX(id) FROM shipping_provider_pricing_template_module_ranges), 0),
-  true
-);
 
-SELECT setval(
-  pg_get_serial_sequence('shipping_provider_pricing_template_destination_groups','id'),
-  COALESCE((SELECT MAX(id) FROM shipping_provider_pricing_template_destination_groups), 0),
-  true
-);
 
-SELECT setval(
-  pg_get_serial_sequence('shipping_provider_pricing_template_destination_group_members','id'),
-  COALESCE((SELECT MAX(id) FROM shipping_provider_pricing_template_destination_group_members), 0),
-  true
-);
 
-SELECT setval(
-  pg_get_serial_sequence('shipping_provider_pricing_template_matrix','id'),
-  COALESCE((SELECT MAX(id) FROM shipping_provider_pricing_template_matrix), 0),
-  true
-);
 
 SELECT setval(
   pg_get_serial_sequence('items','id'),

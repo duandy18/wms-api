@@ -56,11 +56,6 @@ async def seed_in_conn(conn) -> None:
     在已有连接/事务里执行 seed（pytest/conftest 调用）
     调用方保证已 TRUNCATE 干净，并且 SET search_path TO public
 
-    ⚠️ 注意（与现有测试合同对齐）：
-    - baseline 可以写 stocks
-    - 但 baseline 不应写 stock_ledger（部分测试要求 baseline ledger_sum == 0）
-    - opening ledger 仅作为 Phase 3 的“体检解释层”，应放在 pytest 结束后再补（Makefile 已制度化）
-
     当前权限基线：
     - 运行时权限真相源 = user_permissions
     - 不再创建 roles / user_roles / role_permissions
@@ -68,19 +63,14 @@ async def seed_in_conn(conn) -> None:
     """
     root = _repo_root()
     base_sql_path = root / "tests" / "fixtures" / "base_seed.sql"
-    shipping_sql_path = root / "tests" / "fixtures" / "shipping_seed.sql"
 
-    # 1) 主数据/库存基线
+    # 1) 主数据基线
     await conn.execute(text(_load_sql(base_sql_path)))
 
-    # 2) 运费域最小基线（让 quote/zone brackets 测试可跑）
-    if shipping_sql_path.exists():
-        await conn.execute(text(_load_sql(shipping_sql_path)))
-
-    # 3) admin 用户（可登录）
+    # 2) admin 用户（可登录）
     await ensure_admin_user(username="admin", password="admin123", full_name="Dev Admin")
 
-    # 4) 权限字典
+    # 3) 权限字典
     names = discover_permission_names()
 
     await conn.execute(
@@ -98,7 +88,7 @@ async def seed_in_conn(conn) -> None:
     user_id = (await conn.execute(text("SELECT id FROM users WHERE username='admin' LIMIT 1"))).scalar_one()
     user_id = int(user_id)
 
-    # 5) 运行时权限真相源：admin 直配全部 permissions
+    # 4) 运行时权限真相源：admin 直配全部 permissions
     # 先清再灌，确保测试基线确定且可重复。
     await conn.execute(
         text(

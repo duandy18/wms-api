@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import Boolean, DateTime, Integer, String, UniqueConstraint, func
-from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
+from sqlalchemy.orm import Mapped, mapped_column, validates
 
 from app.db.base import Base
 
@@ -16,7 +16,7 @@ class ShippingProvider(Base):
 
     语义说明：
     - 本表一行 = 实际合作的运输网点（非快递公司总部）
-    - 与仓库为 M:N 关系，通过 warehouse_shipping_providers 表表达
+    - WMS 仅保留本地物流网点映射，用于 shipping_records 同步与筛选。
     - shipping_provider_code 为物流网点号码 / 网点编码（由网点提供，仍需规范化且全局唯一）
     - company_code / resource_code 为电子面单固定接入参数，不承载店铺维度配置
     """
@@ -71,19 +71,6 @@ class ShippingProvider(Base):
         onupdate=func.now(),
     )
 
-    contacts = relationship(
-        "ShippingProviderContact",
-        back_populates="shipping_provider",
-        lazy="selectin",
-        order_by="(desc(ShippingProviderContact.is_primary), ShippingProviderContact.id)",
-    )
-
-    warehouse_shipping_providers = relationship(
-        "WarehouseShippingProvider",
-        back_populates="shipping_provider",
-        lazy="selectin",
-        passive_deletes=True,
-    )
 
     @validates("shipping_provider_code")
     def _validate_shipping_provider_code(self, _key: str, value: str) -> str:
