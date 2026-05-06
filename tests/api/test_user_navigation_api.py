@@ -26,16 +26,17 @@ async def _reset_navigation_registry_state(session: AsyncSession) -> None:
         text(
             """
             UPDATE page_registry
-               SET is_active = TRUE
+               SET is_active = CASE
+                 WHEN code IN (
+                   'shipping_assist',
+                   'shipping_assist.shipping',
+                   'shipping_assist.shipping.records'
+                 )
+                 THEN TRUE
+                 ELSE FALSE
+               END
              WHERE code = 'shipping_assist'
-                OR (
-                  code LIKE 'shipping_assist.%'
-                  AND code NOT IN (
-                    'shipping_assist.shipping.quote',
-                    'shipping_assist.settings',
-                    'shipping_assist.settings.waybill'
-                  )
-                )
+                OR code LIKE 'shipping_assist.%'
             """
         )
     )
@@ -95,14 +96,13 @@ async def _reset_navigation_registry_state(session: AsyncSession) -> None:
         text(
             """
             UPDATE page_route_prefixes
-               SET is_active = TRUE
-             WHERE (
-                    route_prefix LIKE '/shipping-assist/%'
-                    AND route_prefix NOT IN (
-                      '/shipping-assist/shipping/quote',
-                      '/shipping-assist/settings/waybill'
-                    )
-                  )
+               SET is_active = CASE
+                 WHEN route_prefix = '/shipping-assist/shipping/records'
+                   OR route_prefix LIKE '/inventory-adjustment%'
+                 THEN TRUE
+                 ELSE FALSE
+               END
+             WHERE route_prefix LIKE '/shipping-assist/%'
                 OR route_prefix LIKE '/inventory-adjustment%'
             """
         )
@@ -370,7 +370,7 @@ async def test_my_navigation_route_prefix_mapping_and_effective_permissions(clie
     nodes = _walk_pages(data["pages"])
     route_map = _index_route_prefixes(data["route_prefixes"])
 
-    pricing_page = nodes["shipping_assist.pricing.bindings"]
+    shipping_records_page = nodes["shipping_assist.shipping.records"]
     items_page = nodes["pms.items"]
     suppliers_page = nodes["pms.suppliers"]
     fsku_rules_page = nodes["oms.fsku_rules"]
@@ -378,8 +378,8 @@ async def test_my_navigation_route_prefix_mapping_and_effective_permissions(clie
     warehouses_page = nodes["wms.warehouses"]
     inventory_adjustment_page = nodes["wms.inventory_adjustment.summary"]
 
-    assert pricing_page["effective_read_permission"] == "page.shipping_assist.read"
-    assert pricing_page["effective_write_permission"] == "page.shipping_assist.write"
+    assert shipping_records_page["effective_read_permission"] == "page.shipping_assist.read"
+    assert shipping_records_page["effective_write_permission"] == "page.shipping_assist.write"
 
     assert items_page["effective_read_permission"] == "page.pms.read"
     assert items_page["effective_write_permission"] == "page.pms.write"
@@ -399,7 +399,7 @@ async def test_my_navigation_route_prefix_mapping_and_effective_permissions(clie
     assert inventory_adjustment_page["effective_read_permission"] == "page.wms.read"
     assert inventory_adjustment_page["effective_write_permission"] == "page.wms.write"
 
-    pricing_route = route_map.get("/shipping-assist/pricing/bindings")
+    shipping_records_route = route_map.get("/shipping-assist/shipping/records")
     items_route = route_map.get("/items")
     suppliers_route = route_map.get("/suppliers")
     fsku_rules_route = route_map.get("/oms/fskus")
@@ -407,7 +407,7 @@ async def test_my_navigation_route_prefix_mapping_and_effective_permissions(clie
     warehouses_route = route_map.get("/warehouses")
     inventory_adjustment_route = route_map.get("/inventory-adjustment")
 
-    assert pricing_route is not None, "/shipping-assist/pricing/bindings should exist in route_prefixes"
+    assert shipping_records_route is not None, "/shipping-assist/shipping/records should exist in route_prefixes"
     assert items_route is not None, "/items should exist in route_prefixes"
     assert suppliers_route is not None, "/suppliers should exist in route_prefixes"
     assert fsku_rules_route is not None, "/oms/fskus should exist in route_prefixes"
@@ -415,7 +415,7 @@ async def test_my_navigation_route_prefix_mapping_and_effective_permissions(clie
     assert warehouses_route is not None, "/warehouses should exist in route_prefixes"
     assert inventory_adjustment_route is not None, "/inventory-adjustment should exist in route_prefixes"
 
-    assert pricing_route["page_code"] == "shipping_assist.pricing.bindings"
+    assert shipping_records_route["page_code"] == "shipping_assist.shipping.records"
     assert items_route["page_code"] == "pms.items"
     assert suppliers_route["page_code"] == "pms.suppliers"
     assert fsku_rules_route["page_code"] == "oms.fsku_rules"
@@ -423,8 +423,8 @@ async def test_my_navigation_route_prefix_mapping_and_effective_permissions(clie
     assert warehouses_route["page_code"] == "wms.warehouses"
     assert inventory_adjustment_route["page_code"] == "wms.inventory_adjustment.summary"
 
-    assert pricing_route["effective_read_permission"] == "page.shipping_assist.read"
-    assert pricing_route["effective_write_permission"] == "page.shipping_assist.write"
+    assert shipping_records_route["effective_read_permission"] == "page.shipping_assist.read"
+    assert shipping_records_route["effective_write_permission"] == "page.shipping_assist.write"
 
     assert items_route["effective_read_permission"] == "page.pms.read"
     assert items_route["effective_write_permission"] == "page.pms.write"
@@ -493,32 +493,18 @@ async def test_my_navigation_filters_to_only_directly_visible_parent_tree(
     child_codes = [child["code"] for child in parent["children"]]
     assert child_codes == [
         "shipping_assist.shipping",
-        "shipping_assist.pricing",
-        "shipping_assist.billing",
     ]
 
     nodes = _walk_pages(pages)
     assert _child_codes(nodes["shipping_assist.shipping"]) == [
         "shipping_assist.shipping.records",
     ]
-    assert _child_codes(nodes["shipping_assist.pricing"]) == [
-        "shipping_assist.pricing.providers",
-        "shipping_assist.pricing.bindings",
-        "shipping_assist.pricing.templates",
-    ]
-    assert _child_codes(nodes["shipping_assist.billing"]) == [
-        "shipping_assist.billing.items",
-        "shipping_assist.billing.reconciliation",
-    ]
+    assert "shipping_assist.pricing" not in nodes
+    assert "shipping_assist.billing" not in nodes
 
     assert all(item["page_code"].startswith("shipping_assist.") for item in route_prefixes)
     assert [item["route_prefix"] for item in route_prefixes] == [
         "/shipping-assist/shipping/records",
-        "/shipping-assist/pricing/providers",
-        "/shipping-assist/pricing/bindings",
-        "/shipping-assist/pricing/templates",
-        "/shipping-assist/billing/items",
-        "/shipping-assist/billing/reconciliation",
     ]
 
 
@@ -574,30 +560,16 @@ async def test_my_navigation_contains_shipping_assist_level3_tree(client: AsyncC
 
     assert _child_codes(root) == [
         "shipping_assist.shipping",
-        "shipping_assist.pricing",
-        "shipping_assist.billing",
     ]
 
     assert _child_codes(nodes["shipping_assist.shipping"]) == [
         "shipping_assist.shipping.records",
     ]
-    assert _child_codes(nodes["shipping_assist.pricing"]) == [
-        "shipping_assist.pricing.providers",
-        "shipping_assist.pricing.bindings",
-        "shipping_assist.pricing.templates",
-    ]
-    assert _child_codes(nodes["shipping_assist.billing"]) == [
-        "shipping_assist.billing.items",
-        "shipping_assist.billing.reconciliation",
-    ]
+    assert "shipping_assist.pricing" not in nodes
+    assert "shipping_assist.billing" not in nodes
 
     expected_route_map = {
         "/shipping-assist/shipping/records": "shipping_assist.shipping.records",
-        "/shipping-assist/pricing/providers": "shipping_assist.pricing.providers",
-        "/shipping-assist/pricing/bindings": "shipping_assist.pricing.bindings",
-        "/shipping-assist/pricing/templates": "shipping_assist.pricing.templates",
-        "/shipping-assist/billing/items": "shipping_assist.billing.items",
-        "/shipping-assist/billing/reconciliation": "shipping_assist.billing.reconciliation",
     }
 
     for route_prefix, page_code in expected_route_map.items():
@@ -610,6 +582,13 @@ async def test_my_navigation_contains_shipping_assist_level3_tree(client: AsyncC
     assert "/shipping-assist/reports" not in route_map
     assert "/shipping-assist/shipping/quote" not in route_map
     assert "/shipping-assist/settings/waybill" not in route_map
+    assert "/shipping-assist/pricing/providers" not in route_map
+    assert "/shipping-assist/pricing/bindings" not in route_map
+    assert "/shipping-assist/pricing/templates" not in route_map
+    assert "/shipping-assist/billing/items" not in route_map
+    assert "/shipping-assist/billing/reconciliation" not in route_map
     assert "shipping_assist.shipping.quote" not in nodes
     assert "shipping_assist.settings" not in nodes
     assert "shipping_assist.settings.waybill" not in nodes
+    assert "shipping_assist.pricing" not in nodes
+    assert "shipping_assist.billing" not in nodes
