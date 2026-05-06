@@ -2,16 +2,12 @@
 # Domain move: Warehouse ORM belongs to WMS warehouses.
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, List, Optional
+from typing import Optional
 
 from sqlalchemy import Boolean, Integer, String, text
-from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
+from sqlalchemy.orm import Mapped, mapped_column, validates
 
 from app.db.base import Base
-from app.shipping_assist.providers.models.warehouse_shipping_provider import WarehouseShippingProvider  # noqa: F401
-
-if TYPE_CHECKING:
-    from app.shipping_assist.providers.models.warehouse_shipping_provider import WarehouseShippingProvider
 
 
 class WarehouseCode:
@@ -64,13 +60,6 @@ class Warehouse(Base):
     contact_phone: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     area_sqm: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
-    # ✅ Phase 1：仓库 × 快递公司（能力集合 / 事实绑定）
-    warehouse_shipping_providers: Mapped[List["WarehouseShippingProvider"]] = relationship(
-        "WarehouseShippingProvider",
-        back_populates="warehouse",
-        lazy="selectin",
-        passive_deletes=True,
-    )
 
     @validates("name")
     def _validate_name(self, _key: str, value: str) -> str:
