@@ -108,9 +108,10 @@ class WarehouseShippingProvider(Base):
         onupdate=func.now(),
     )
 
+    # WMS 仓库模型已不再反向暴露 warehouse_shipping_providers。
+    # 这里保留单向关系仅用于旧表/旧模型在清理完成前通过 mapper 配置。
     warehouse = relationship(
         "Warehouse",
-        back_populates="warehouse_shipping_providers",
         lazy="selectin",
     )
     shipping_provider = relationship(
