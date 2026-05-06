@@ -1,30 +1,11 @@
 # app/shipping_assist/__init__.py
 """
-TMS phase-1 module shell.
+WMS-side Shipping Assist package.
 
-本包当前只承载第一阶段模块边界冻结相关能力：
-- 领域边界
-- 子域所有权
-- 对象所有权
-- 当前文件归属冻结
+Current WMS responsibility:
+- shipping records read model
+- shipping record facts sync from Logistics
+- local shipping provider mapping for records/options
 
-后续 Task 2 起，再逐步承接 Shipment / Ledger / Quote 的应用服务收口。
+Quote, shipment execution, pricing, billing, and reconciliation have moved to Logistics.
 """
-
-from .phase1_boundary import (
-    DomainOwner,
-    FileOwnershipRule,
-    FrozenOwnership,
-    TmsSubdomain,
-    find_file_ownership,
-    get_frozen_ownership,
-)
-
-__all__ = [
-    "DomainOwner",
-    "FileOwnershipRule",
-    "FrozenOwnership",
-    "TmsSubdomain",
-    "find_file_ownership",
-    "get_frozen_ownership",
-]
