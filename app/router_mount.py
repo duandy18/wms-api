@@ -70,11 +70,7 @@ def mount_routers(app: FastAPI) -> None:
 
     from app.oms.router import router as oms_router
 
-    from app.shipping_assist.billing.router import router as tms_billing_router
-    from app.shipping_assist.pricing.router import router as tms_pricing_router
-    from app.shipping_assist.providers.router import router as tms_providers_router
     from app.shipping_assist.records.router import router as tms_records_router
-    from app.shipping_assist.reports.router import router as tms_reports_router
 
     # ---------------------------------------------------------------------------
     # scan routes
@@ -149,14 +145,10 @@ def mount_routers(app: FastAPI) -> None:
     app.include_router(suppliers_router)
     app.include_router(supplier_contacts_router)
 
-    app.include_router(tms_providers_router)
     app.include_router(geo_router)
 
-    app.include_router(tms_pricing_router)
 
-    app.include_router(tms_reports_router)
     app.include_router(tms_records_router)
-    app.include_router(tms_billing_router)
 
     app.include_router(stock_inventory_router)
 
