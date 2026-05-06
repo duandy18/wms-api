@@ -12,7 +12,7 @@ from app.shipping_assist.records import routes_cost_analysis
 from app.shipping_assist.records import routes_read
 from app.shipping_assist.records import routes_sync
 
-router = APIRouter(prefix="/shipping-assist/shipping/records", tags=["shipping-assist-records"])
+router = APIRouter(prefix="/shipping-assist/records", tags=["shipping-assist-records"])
 
 
 def _register_all_routes() -> None:

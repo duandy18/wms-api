@@ -122,7 +122,7 @@ async def test_sync_from_logistics_api_upserts_shipping_record_and_refreshes_fin
 
     headers = await _login_headers(client)
     resp = await client.post(
-        "/shipping-assist/shipping/records/sync-from-logistics",
+        "/shipping-assist/records/sync-from-logistics",
         headers=headers,
         json={
             "after_id": 0,
@@ -216,7 +216,7 @@ async def test_sync_from_logistics_api_returns_409_when_mapping_missing(
 
     headers = await _login_headers(client)
     resp = await client.post(
-        "/shipping-assist/shipping/records/sync-from-logistics",
+        "/shipping-assist/records/sync-from-logistics",
         headers=headers,
         json={"after_id": 0, "limit": 100},
     )
