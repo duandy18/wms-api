@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
-from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -58,4 +57,3 @@ class LogisticsShippingResultOut(_Base):
     logistics_completed_at: datetime
     shipping_record_ids: list[int] = Field(default_factory=list)
     packages_count: int
-    source_snapshot: dict[str, Any] = Field(default_factory=dict)

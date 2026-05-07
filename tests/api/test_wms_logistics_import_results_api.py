@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -45,7 +44,6 @@ async def _seed_export_record(
               logistics_status,
               logistics_request_id,
               logistics_request_no,
-              source_snapshot,
               created_at,
               updated_at
             )
@@ -58,7 +56,6 @@ async def _seed_export_record(
               :logistics_status,
               :logistics_request_id,
               :logistics_request_no,
-              CAST(:source_snapshot AS jsonb),
               :now,
               :now
             )
@@ -73,7 +70,6 @@ async def _seed_export_record(
             "logistics_status": logistics_status,
             "logistics_request_id": logistics_request_id,
             "logistics_request_no": logistics_request_no,
-            "source_snapshot": json.dumps({"seed": uniq}, ensure_ascii=False),
             "now": now,
         },
     )

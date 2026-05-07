@@ -1,12 +1,12 @@
 # app/wms/outbound/models/logistics_export_record.py
-# WMS -> Logistics 交接状态表模型。
+# WMS -> Logistics 交接状态表与交接数据表模型。
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 
 import sqlalchemy as sa
-from sqlalchemy import BigInteger, DateTime, String, Text, func, text
+from sqlalchemy import BigInteger, DateTime, Integer, String, Text, func, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -15,12 +15,16 @@ from app.db.base import Base
 
 class WmsLogisticsExportRecord(Base):
     """
-    wms_logistics_export_records：WMS 出库事实交接给 Logistics 的状态表。
+    wms_logistics_export_records：WMS 与 Logistics 之间的交接状态表。
 
+    只表达调用关系与状态：
     - WMS 订单出库完成：source_doc_type = ORDER_OUTBOUND
     - WMS 手工出库完成：source_doc_type = MANUAL_OUTBOUND
     - export_status：WMS 交接导出状态
     - logistics_status：Logistics 处理状态
+
+    发货请求所需的结构化数据不在本表，统一放在：
+    - wms_logistics_handoff_payloads
     """
 
     __tablename__ = "wms_logistics_export_records"
@@ -113,11 +117,205 @@ class WmsLogisticsExportRecord(Base):
         comment="最近一次失败原因",
     )
 
-    source_snapshot: Mapped[dict] = mapped_column(
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+
+class WmsLogisticsHandoffPayload(Base):
+    """
+    wms_logistics_handoff_payloads：WMS 给 Logistics 创建发货请求的数据合同表。
+
+    本表保存结构化交接数据：
+    - 平台 / 店铺 / 订单号
+    - 仓库快照
+    - 收件人地址快照
+    - WMS 出库完成事实
+    - WMS 已出库商品行 shipment_items
+
+    不保留旧快照字段。
+    """
+
+    __tablename__ = "wms_logistics_handoff_payloads"
+
+    __table_args__ = (
+        sa.ForeignKeyConstraint(
+            ["export_record_id"],
+            ["wms_logistics_export_records.id"],
+            name="fk_wms_logistics_handoff_payloads_export_record",
+            ondelete="CASCADE",
+        ),
+        sa.UniqueConstraint(
+            "export_record_id",
+            name="uq_wms_logistics_handoff_payloads_export_record_id",
+        ),
+        sa.UniqueConstraint(
+            "source_ref",
+            name="uq_wms_logistics_handoff_payloads_source_ref",
+        ),
+        sa.CheckConstraint(
+            "source_system = 'WMS'",
+            name="ck_wms_logistics_handoff_payloads_source_system",
+        ),
+        sa.CheckConstraint(
+            "request_source = 'API_IMPORT'",
+            name="ck_wms_logistics_handoff_payloads_request_source",
+        ),
+        sa.CheckConstraint(
+            "source_doc_type IN ('ORDER_OUTBOUND', 'MANUAL_OUTBOUND')",
+            name="ck_wms_logistics_handoff_payloads_doc_type",
+        ),
+        sa.CheckConstraint(
+            "jsonb_typeof(shipment_items) = 'array'",
+            name="ck_wms_logistics_handoff_payloads_shipment_items_array",
+        ),
+        sa.Index("ix_wms_logistics_handoff_payloads_doc", "source_doc_type", "source_doc_id"),
+        sa.Index("ix_wms_logistics_handoff_payloads_platform_store", "platform", "store_code"),
+        sa.Index("ix_wms_logistics_handoff_payloads_warehouse_id", "warehouse_id"),
+        sa.Index("ix_wms_logistics_handoff_payloads_outbound_event_id", "outbound_event_id"),
+    )
+
+    id: Mapped[int] = mapped_column(
+        BigInteger,
+        sa.Identity(always=False),
+        primary_key=True,
+    )
+
+    export_record_id: Mapped[int] = mapped_column(
+        BigInteger,
+        nullable=False,
+    )
+
+    source_system: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        server_default=text("'WMS'"),
+        comment="来源系统，当前固定 WMS",
+    )
+    request_source: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        server_default=text("'API_IMPORT'"),
+        comment="Logistics 请求来源，当前固定 API_IMPORT",
+    )
+
+    source_doc_type: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        comment="WMS 来源单据类型：ORDER_OUTBOUND / MANUAL_OUTBOUND",
+    )
+    source_doc_id: Mapped[int] = mapped_column(
+        BigInteger,
+        nullable=False,
+        comment="WMS 来源单据主键：orders.id 或 manual_outbound_docs.id",
+    )
+    source_doc_no: Mapped[str] = mapped_column(
+        String(128),
+        nullable=False,
+        comment="WMS 来源单据展示号：平台订单号或手工出库单号",
+    )
+    source_ref: Mapped[str] = mapped_column(
+        String(192),
+        nullable=False,
+        comment="WMS 到 Logistics 的稳定幂等键",
+    )
+
+    platform: Mapped[Optional[str]] = mapped_column(
+        String(32),
+        nullable=True,
+        comment="平台：PDD / TAOBAO / JD；手工出库为空",
+    )
+    store_code: Mapped[Optional[str]] = mapped_column(
+        String(64),
+        nullable=True,
+        comment="店铺编码；手工出库为空",
+    )
+    order_ref: Mapped[Optional[str]] = mapped_column(
+        String(128),
+        nullable=True,
+        comment="订单物流引用，如 ORD:PDD:STORE:EXT_ORDER_NO；手工出库可为空",
+    )
+    ext_order_no: Mapped[Optional[str]] = mapped_column(
+        String(128),
+        nullable=True,
+        comment="平台外部订单号；手工出库为空",
+    )
+
+    warehouse_id: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+        comment="WMS 出库仓库 ID 快照",
+    )
+    warehouse_name_snapshot: Mapped[Optional[str]] = mapped_column(
+        String(100),
+        nullable=True,
+        comment="WMS 出库仓库名称快照",
+    )
+
+    receiver_name: Mapped[Optional[str]] = mapped_column(
+        String(128),
+        nullable=True,
+        comment="收件人姓名快照",
+    )
+    receiver_phone: Mapped[Optional[str]] = mapped_column(
+        String(64),
+        nullable=True,
+        comment="收件人电话快照",
+    )
+    receiver_province: Mapped[Optional[str]] = mapped_column(
+        String(64),
+        nullable=True,
+        comment="收件省份快照",
+    )
+    receiver_city: Mapped[Optional[str]] = mapped_column(
+        String(64),
+        nullable=True,
+        comment="收件城市快照",
+    )
+    receiver_district: Mapped[Optional[str]] = mapped_column(
+        String(64),
+        nullable=True,
+        comment="收件区县快照",
+    )
+    receiver_address: Mapped[Optional[str]] = mapped_column(
+        String(255),
+        nullable=True,
+        comment="收件详细地址快照",
+    )
+    receiver_postcode: Mapped[Optional[str]] = mapped_column(
+        String(32),
+        nullable=True,
+        comment="收件邮编快照",
+    )
+
+    outbound_event_id: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+        comment="触发本次交接的 WMS OUTBOUND COMMIT 事件 ID",
+    )
+    outbound_source_ref: Mapped[Optional[str]] = mapped_column(
+        String(128),
+        nullable=True,
+        comment="WMS 出库事件 source_ref",
+    )
+    outbound_completed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        comment="WMS 库存出库完成时间，非物流发货完成时间",
+    )
+
+    shipment_items: Mapped[list[dict[str, Any]]] = mapped_column(
         JSONB,
         nullable=False,
-        server_default=text("'{}'::jsonb"),
-        comment="创建交接记录时的 WMS 来源快照",
+        server_default=text("'[]'::jsonb"),
+        comment="WMS 已出库商品行快照，供 Logistics 创建发货请求与人工规划包裹使用",
     )
 
     created_at: Mapped[datetime] = mapped_column(

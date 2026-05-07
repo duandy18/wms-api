@@ -335,17 +335,20 @@ async def test_manual_outbound_submit_writes_event_and_ledger(
             text(
                 """
                 SELECT
-                  source_doc_type,
-                  source_doc_id,
-                  source_doc_no,
-                  source_ref,
-                  export_status,
-                  logistics_status,
-                  source_snapshot ->> 'wms_event_id' AS wms_event_id,
-                  source_snapshot ->> 'wms_source_ref' AS wms_source_ref,
-                  source_snapshot ->> 'warehouse_id' AS snapshot_warehouse_id
-                FROM wms_logistics_export_records
-                WHERE source_ref = :source_ref
+                  r.source_doc_type,
+                  r.source_doc_id,
+                  r.source_doc_no,
+                  r.source_ref,
+                  r.export_status,
+                  r.logistics_status,
+                  p.outbound_event_id,
+                  p.outbound_source_ref,
+                  p.warehouse_id AS payload_warehouse_id,
+                  p.shipment_items
+                FROM wms_logistics_export_records r
+                JOIN wms_logistics_handoff_payloads p
+                  ON p.export_record_id = r.id
+                WHERE r.source_ref = :source_ref
                 LIMIT 1
                 """
             ),
@@ -360,9 +363,17 @@ async def test_manual_outbound_submit_writes_event_and_ledger(
     assert export_record["source_ref"] == f"WMS:MANUAL_OUTBOUND:{doc_id}"
     assert export_record["export_status"] == "PENDING"
     assert export_record["logistics_status"] == "NOT_IMPORTED"
-    assert int(export_record["wms_event_id"]) == event_id
-    assert export_record["wms_source_ref"] == data["source_ref"]
-    assert int(export_record["snapshot_warehouse_id"]) == warehouse_id
+    assert int(export_record["outbound_event_id"]) == event_id
+    assert export_record["outbound_source_ref"] == data["source_ref"]
+    assert int(export_record["payload_warehouse_id"]) == warehouse_id
+
+    shipment_items = export_record["shipment_items"]
+    assert isinstance(shipment_items, list)
+    assert len(shipment_items) == 1
+    assert shipment_items[0]["source_line_type"] == "MANUAL_OUTBOUND_LINE"
+    assert int(shipment_items[0]["source_line_id"]) == doc_line_id
+    assert int(shipment_items[0]["item_id"]) == item_id
+    assert int(shipment_items[0]["qty_outbound"]) == 2
 
 
 async def test_manual_outbound_submit_keeps_doc_released_when_partially_submitted(

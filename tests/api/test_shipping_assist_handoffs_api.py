@@ -39,63 +39,142 @@ async def _seed_handoff(
     exported_at = now if export_status == "EXPORTED" else None
     logistics_completed_at = now if logistics_status == "COMPLETED" else None
 
+    export_record_id = int(
+        (
+            await session.execute(
+                text(
+                    """
+                    INSERT INTO wms_logistics_export_records (
+                      source_doc_type,
+                      source_doc_id,
+                      source_doc_no,
+                      source_ref,
+                      export_status,
+                      logistics_status,
+                      logistics_request_id,
+                      logistics_request_no,
+                      exported_at,
+                      logistics_completed_at,
+                      last_attempt_at,
+                      last_error,
+                      created_at,
+                      updated_at
+                    )
+                    VALUES (
+                      :source_doc_type,
+                      :source_doc_id,
+                      :source_doc_no,
+                      :source_ref,
+                      :export_status,
+                      :logistics_status,
+                      :logistics_request_id,
+                      :logistics_request_no,
+                      :exported_at,
+                      :logistics_completed_at,
+                      :now,
+                      :last_error,
+                      :now,
+                      :now
+                    )
+                    RETURNING id
+                    """
+                ),
+                {
+                    "source_doc_type": source_doc_type,
+                    "source_doc_id": source_doc_id,
+                    "source_doc_no": doc_no,
+                    "source_ref": source_ref,
+                    "export_status": export_status,
+                    "logistics_status": logistics_status,
+                    "logistics_request_id": logistics_request_id,
+                    "logistics_request_no": logistics_request_no,
+                    "exported_at": exported_at,
+                    "logistics_completed_at": logistics_completed_at,
+                    "last_error": last_error,
+                    "now": now,
+                },
+            )
+        ).scalar_one()
+    )
+
     await session.execute(
         text(
             """
-            INSERT INTO wms_logistics_export_records (
+            INSERT INTO wms_logistics_handoff_payloads (
+              export_record_id,
               source_doc_type,
               source_doc_id,
               source_doc_no,
               source_ref,
-              export_status,
-              logistics_status,
-              logistics_request_id,
-              logistics_request_no,
-              exported_at,
-              logistics_completed_at,
-              last_attempt_at,
-              last_error,
-              source_snapshot,
+              platform,
+              store_code,
+              order_ref,
+              ext_order_no,
+              warehouse_id,
+              warehouse_name_snapshot,
+              receiver_name,
+              receiver_phone,
+              receiver_province,
+              receiver_city,
+              receiver_district,
+              receiver_address,
+              outbound_completed_at,
+              shipment_items,
               created_at,
               updated_at
             )
             VALUES (
+              :export_record_id,
               :source_doc_type,
               :source_doc_id,
               :source_doc_no,
               :source_ref,
-              :export_status,
-              :logistics_status,
-              :logistics_request_id,
-              :logistics_request_no,
-              :exported_at,
-              :logistics_completed_at,
+              :platform,
+              :store_code,
+              :order_ref,
+              :ext_order_no,
+              1,
+              'UT-HANDOFF-WH',
+              '张三',
+              '13800000000',
+              '浙江省',
+              '杭州市',
+              '余杭区',
+              '测试路 1 号',
               :now,
-              :last_error,
-              CAST(:source_snapshot AS jsonb),
+              CAST(:shipment_items AS jsonb),
               :now,
               :now
             )
             """
         ),
         {
+            "export_record_id": export_record_id,
             "source_doc_type": source_doc_type,
             "source_doc_id": source_doc_id,
             "source_doc_no": doc_no,
             "source_ref": source_ref,
-            "export_status": export_status,
-            "logistics_status": logistics_status,
-            "logistics_request_id": logistics_request_id,
-            "logistics_request_no": logistics_request_no,
-            "exported_at": exported_at,
-            "logistics_completed_at": logistics_completed_at,
-            "last_error": last_error,
-            "source_snapshot": json.dumps(
-                {
-                    "warehouse_id": 1,
-                    "receiver_province": "浙江省",
-                    "receiver_city": "杭州市",
-                },
+            "platform": "PDD" if source_doc_type == "ORDER_OUTBOUND" else None,
+            "store_code": "UT-HANDOFF" if source_doc_type == "ORDER_OUTBOUND" else None,
+            "order_ref": f"ORD:PDD:UT-HANDOFF:{doc_no}"
+            if source_doc_type == "ORDER_OUTBOUND"
+            else None,
+            "ext_order_no": doc_no if source_doc_type == "ORDER_OUTBOUND" else None,
+            "shipment_items": json.dumps(
+                [
+                    {
+                        "source_line_type": "ORDER_LINE"
+                        if source_doc_type == "ORDER_OUTBOUND"
+                        else "MANUAL_OUTBOUND_LINE",
+                        "source_line_id": 1,
+                        "source_line_no": 1,
+                        "item_id": 1,
+                        "item_sku_snapshot": "SKU-HANDOFF",
+                        "item_name_snapshot": "交接测试商品",
+                        "item_spec_snapshot": "1kg",
+                        "qty_outbound": 1,
+                    }
+                ],
                 ensure_ascii=False,
             ),
             "now": now,
@@ -134,7 +213,8 @@ async def test_shipping_assist_handoffs_lists_records(
     assert completed["export_status"] == "EXPORTED"
     assert completed["logistics_status"] == "COMPLETED"
     assert completed["logistics_request_no"] == "LSR-HANDOFF-0001"
-    assert completed["source_snapshot"]["receiver_city"] == "杭州市"
+    assert completed["receiver_city"] == "杭州市"
+    assert completed["shipment_items"][0]["item_name_snapshot"] == "交接测试商品"
 
 
 async def test_shipping_assist_handoffs_filters_by_status_and_source(
