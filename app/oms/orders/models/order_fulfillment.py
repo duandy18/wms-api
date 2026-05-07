@@ -19,8 +19,8 @@ class OrderFulfillment(Base):
     - planned_warehouse_id：服务归属快照（planned）
     - actual_warehouse_id：执行仓事实（actual）
     - execution_stage：显式执行阶段真相（PICK / SHIP；NULL = 未进入执行链路）
-    - ship_committed_at：进入出库裁决链路锚点（事实字段）
-    - shipped_at：出库完成时间（事实字段）
+    - outbound_committed_at：进入 WMS 出库提交 / 出库裁决链路的事实时间
+    - outbound_completed_at：WMS 库存出库完成时间；不是物流单号/面单完成时间
     - fulfillment_status：路由态/阻断态/人工干预语义（禁止再存 SHIP_COMMITTED/SHIPPED）
     - blocked_reasons：阻断原因（jsonb）
 
@@ -62,14 +62,16 @@ class OrderFulfillment(Base):
         nullable=True,
     )
 
-    ship_committed_at: Mapped[Optional[datetime]] = mapped_column(
+    outbound_committed_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
+        comment="WMS 出库提交/裁决链路进入时间；非物流发货时间",
     )
 
-    shipped_at: Mapped[Optional[datetime]] = mapped_column(
+    outbound_completed_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
+        comment="WMS 库存出库完成时间；非物流单号/面单完成时间",
     )
 
     updated_at: Mapped[datetime] = mapped_column(
