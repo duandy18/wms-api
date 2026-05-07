@@ -351,7 +351,7 @@ async def test_logistics_shipping_results_upserts_shipping_record_and_refreshes_
 
     completed_at = datetime.now(UTC).isoformat()
     resp = await client.post(
-        "/wms/outbound/logistics-shipping-results",
+        "/shipping-assist/handoffs/shipping-results",
         headers=headers,
         json={
             "source_ref": source_ref,
@@ -469,7 +469,7 @@ async def test_logistics_shipping_results_is_idempotent_by_package_key(
     }
 
     first = await client.post(
-        "/wms/outbound/logistics-shipping-results",
+        "/shipping-assist/handoffs/shipping-results",
         headers=headers,
         json=payload,
     )
@@ -488,7 +488,7 @@ async def test_logistics_shipping_results_is_idempotent_by_package_key(
         ],
     }
     second = await client.post(
-        "/wms/outbound/logistics-shipping-results",
+        "/shipping-assist/handoffs/shipping-results",
         headers=headers,
         json=second_payload,
     )
@@ -522,7 +522,7 @@ async def test_logistics_shipping_results_rejects_before_imported(
     )
 
     resp = await client.post(
-        "/wms/outbound/logistics-shipping-results",
+        "/shipping-assist/handoffs/shipping-results",
         headers=headers,
         json={
             "source_ref": source_ref,
@@ -552,7 +552,7 @@ async def test_logistics_shipping_results_rejects_missing_provider_mapping(
     )
 
     resp = await client.post(
-        "/wms/outbound/logistics-shipping-results",
+        "/shipping-assist/handoffs/shipping-results",
         headers=headers,
         json={
             "source_ref": source_ref,
@@ -592,7 +592,7 @@ async def test_logistics_shipping_results_returns_404_for_missing_source_ref(
     headers = await _login_admin_headers(client)
 
     resp = await client.post(
-        "/wms/outbound/logistics-shipping-results",
+        "/shipping-assist/handoffs/shipping-results",
         headers=headers,
         json={
             "source_ref": "WMS:ORDER_OUTBOUND:NOT_FOUND",
@@ -623,7 +623,7 @@ async def test_logistics_shipping_results_validates_unique_package_no(
     )
 
     resp = await client.post(
-        "/wms/outbound/logistics-shipping-results",
+        "/shipping-assist/handoffs/shipping-results",
         headers=headers,
         json={
             "source_ref": source_ref,

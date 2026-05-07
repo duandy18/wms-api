@@ -1,4 +1,10 @@
-# app/wms/outbound/repos/logistics_shipping_result_repo.py
+
+# app/shipping_assist/handoffs/repository_shipping_results.py
+#
+# 分拆说明：
+# - 本文件承载独立 Logistics 物流完成结果回写；
+# - 读取交接状态/交接 payload，写入 shipping_records 与 wms_logistics_export_records；
+# - shipping_records 触发 finance_shipping_cost_lines 刷新，仍保持现有事实链路。
 from __future__ import annotations
 
 from datetime import datetime

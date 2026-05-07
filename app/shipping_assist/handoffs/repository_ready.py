@@ -1,4 +1,10 @@
-# app/wms/outbound/repos/logistics_ready_repo.py
+
+# app/shipping_assist/handoffs/repository_ready.py
+#
+# 分拆说明：
+# - 本文件承载 Shipping Assist / Handoffs 的 ready 机器接口查询；
+# - 数据源是 wms_logistics_export_records + wms_logistics_handoff_payloads；
+# - 只返回可被独立 Logistics 导入的交接数据，不读取出库源表。
 from __future__ import annotations
 
 from typing import Any, Mapping
