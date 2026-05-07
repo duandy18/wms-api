@@ -31,6 +31,9 @@ from app.wms.outbound.repos.outbound_event_repo import (
     load_stocks_lot_for_update,
     update_stocks_lot_qty,
 )
+from app.wms.outbound.repos.logistics_export_record_repo import (
+    upsert_pending_logistics_export_record,
+)
 from app.wms.inventory_adjustment.count.services.count_freeze_guard_service import (
     ensure_warehouse_not_frozen,
 )
@@ -90,6 +93,48 @@ class ManualSubmitContext:
     doc_lines_by_id: Dict[int, Mapping[str, Any]]
     source_ref: str
     warehouse_id: int
+
+
+
+def _order_outbound_completed_after_submit(
+    *,
+    ctx: OrderSubmitContext,
+    progress_by_line: Dict[int, Dict[str, int]],
+    normalized_lines: List[Dict[str, Any]],
+) -> bool:
+    submitted_delta_by_line: Dict[int, int] = {}
+
+    for ln in normalized_lines:
+        order_line_id = int(ln["order_line_id"])
+        submitted_delta_by_line[order_line_id] = (
+            int(submitted_delta_by_line.get(order_line_id, 0))
+            + int(ln["qty_outbound"])
+        )
+
+    if not ctx.order_lines_by_id:
+        return False
+
+    for order_line_id, src in ctx.order_lines_by_id.items():
+        req_qty = int(src.get("req_qty") or 0)
+        already_submitted = int(
+            progress_by_line.get(int(order_line_id), {}).get("submitted_qty", 0)
+        )
+        newly_submitted = int(submitted_delta_by_line.get(int(order_line_id), 0))
+
+        if req_qty <= 0:
+            return False
+        if already_submitted + newly_submitted < req_qty:
+            return False
+
+    return True
+
+
+def _order_source_doc_no(order: Mapping[str, Any], *, order_id: int) -> str:
+    for key in ("ext_order_no", "order_no"):
+        value = order.get(key)
+        if value is not None and str(value).strip():
+            return str(value).strip()
+    return str(order_id)
 
 
 async def load_order_submit_context(
@@ -514,6 +559,27 @@ async def submit_order_outbound_event(
         normalized_lines=normalized,
     )
 
+    if _order_outbound_completed_after_submit(
+        ctx=ctx,
+        progress_by_line=progress_by_line,
+        normalized_lines=normalized,
+    ):
+        await upsert_pending_logistics_export_record(
+            session,
+            source_doc_type="ORDER_OUTBOUND",
+            source_doc_id=int(order_id),
+            source_doc_no=_order_source_doc_no(ctx.order, order_id=int(order_id)),
+            source_ref=f"WMS:ORDER_OUTBOUND:{int(order_id)}",
+            source_snapshot={
+                "order": dict(ctx.order),
+                "wms_event_id": int(event["id"]),
+                "wms_source_ref": str(event["source_ref"]),
+                "warehouse_id": int(event["warehouse_id"]),
+                "occurred_at": event["occurred_at"],
+                "lines": normalized,
+            },
+        )
+
     return OrderOutboundSubmitOut(
         status="OK",
         event_id=int(event["id"]),
@@ -560,6 +626,21 @@ async def submit_manual_outbound_event(
         for row in progress_rows
     ):
         await complete_manual_doc(session, doc_id=int(doc_id))
+        await upsert_pending_logistics_export_record(
+            session,
+            source_doc_type="MANUAL_OUTBOUND",
+            source_doc_id=int(doc_id),
+            source_doc_no=str(ctx.doc["doc_no"]),
+            source_ref=f"WMS:MANUAL_OUTBOUND:{int(doc_id)}",
+            source_snapshot={
+                "doc": dict(ctx.doc),
+                "wms_event_id": int(event["id"]),
+                "wms_source_ref": str(event["source_ref"]),
+                "warehouse_id": int(event["warehouse_id"]),
+                "occurred_at": event["occurred_at"],
+                "lines": normalized,
+            },
+        )
 
     return ManualOutboundSubmitOut(
         status="OK",

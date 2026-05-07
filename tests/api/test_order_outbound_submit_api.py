@@ -311,6 +311,40 @@ async def test_order_outbound_submit_writes_event_and_ledger(
     opts_data = opts.json()
     assert opts_data["items"] == []
 
+    export_record = (
+        await session.execute(
+            text(
+                """
+                SELECT
+                  source_doc_type,
+                  source_doc_id,
+                  source_doc_no,
+                  source_ref,
+                  export_status,
+                  logistics_status,
+                  source_snapshot ->> 'wms_event_id' AS wms_event_id,
+                  source_snapshot ->> 'wms_source_ref' AS wms_source_ref,
+                  source_snapshot ->> 'warehouse_id' AS snapshot_warehouse_id
+                FROM wms_logistics_export_records
+                WHERE source_ref = :source_ref
+                LIMIT 1
+                """
+            ),
+            {"source_ref": f"WMS:ORDER_OUTBOUND:{order_id}"},
+        )
+    ).mappings().first()
+
+    assert export_record is not None
+    assert export_record["source_doc_type"] == "ORDER_OUTBOUND"
+    assert int(export_record["source_doc_id"]) == int(order_id)
+    assert str(export_record["source_doc_no"]).startswith("OUT-API-")
+    assert export_record["source_ref"] == f"WMS:ORDER_OUTBOUND:{order_id}"
+    assert export_record["export_status"] == "PENDING"
+    assert export_record["logistics_status"] == "NOT_IMPORTED"
+    assert int(export_record["wms_event_id"]) == event_id
+    assert export_record["wms_source_ref"] == data["source_ref"]
+    assert int(export_record["snapshot_warehouse_id"]) == warehouse_id
+
 
 async def test_order_outbound_submit_rejects_duplicate_submit_with_409(
     client: AsyncClient,

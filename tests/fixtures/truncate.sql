@@ -41,6 +41,7 @@ TRUNCATE TABLE
   event_error_log,
 
   -- ===== shipping domain（避免每用例累积脏数据）=====
+  wms_logistics_export_records,
   shipping_records,
   shipping_providers,
 
