@@ -43,6 +43,13 @@ class ManualOutboundDocOut(BaseModel):
     recipient_name: Optional[str] = None
     recipient_id: Optional[int] = None
 
+    receiver_phone: Optional[str] = None
+    receiver_province: Optional[str] = None
+    receiver_city: Optional[str] = None
+    receiver_district: Optional[str] = None
+    receiver_address: Optional[str] = None
+    receiver_postcode: Optional[str] = None
+
     remark: Optional[str] = None
 
     created_by: Optional[int] = None
@@ -77,6 +84,13 @@ class ManualOutboundDocCreateIn(BaseModel):
     doc_type: str = Field(..., min_length=1, max_length=64)
 
     recipient_name: str = Field(..., min_length=1, max_length=255)
+    receiver_phone: str = Field(..., min_length=1, max_length=64)
+    receiver_province: str = Field(..., min_length=1, max_length=64)
+    receiver_city: str = Field(..., min_length=1, max_length=64)
+    receiver_district: Optional[str] = Field(default=None, max_length=64)
+    receiver_address: str = Field(..., min_length=1, max_length=255)
+    receiver_postcode: Optional[str] = Field(default=None, max_length=32)
+
     remark: Optional[str] = Field(default=None, max_length=255)
 
     lines: List[ManualOutboundDocCreateLineIn] = Field(default_factory=list)

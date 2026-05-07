@@ -269,7 +269,13 @@ async def load_manual_submit_context(
                       warehouse_id,
                       doc_no,
                       status,
-                      recipient_name
+                      recipient_name,
+                      receiver_phone,
+                      receiver_province,
+                      receiver_city,
+                      receiver_district,
+                      receiver_address,
+                      receiver_postcode
                     FROM manual_outbound_docs
                     WHERE id = :doc_id
                     LIMIT 1
@@ -781,12 +787,12 @@ async def submit_manual_outbound_event(
                 warehouse_id=int(event["warehouse_id"]),
             ),
             receiver_name=_clean_text(ctx.doc.get("recipient_name")),
-            receiver_phone=None,
-            receiver_province=None,
-            receiver_city=None,
-            receiver_district=None,
-            receiver_address=None,
-            receiver_postcode=None,
+            receiver_phone=_clean_text(ctx.doc.get("receiver_phone")),
+            receiver_province=_clean_text(ctx.doc.get("receiver_province")),
+            receiver_city=_clean_text(ctx.doc.get("receiver_city")),
+            receiver_district=_clean_text(ctx.doc.get("receiver_district")),
+            receiver_address=_clean_text(ctx.doc.get("receiver_address")),
+            receiver_postcode=_clean_text(ctx.doc.get("receiver_postcode")),
             outbound_event_id=int(event["id"]),
             outbound_source_ref=str(event["source_ref"]),
             outbound_completed_at=event["occurred_at"],

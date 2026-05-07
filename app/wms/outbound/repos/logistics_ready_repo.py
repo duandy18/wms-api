@@ -58,6 +58,11 @@ def _build_ready_where(
         "1 = 1",
         "p.outbound_event_id IS NOT NULL",
         "jsonb_array_length(p.shipment_items) > 0",
+        "NULLIF(BTRIM(COALESCE(p.receiver_name, '')), '') IS NOT NULL",
+        "NULLIF(BTRIM(COALESCE(p.receiver_phone, '')), '') IS NOT NULL",
+        "NULLIF(BTRIM(COALESCE(p.receiver_province, '')), '') IS NOT NULL",
+        "NULLIF(BTRIM(COALESCE(p.receiver_city, '')), '') IS NOT NULL",
+        "NULLIF(BTRIM(COALESCE(p.receiver_address, '')), '') IS NOT NULL",
     ]
 
     if source_doc_type is not None:
