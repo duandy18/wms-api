@@ -15,12 +15,32 @@ def _gen_doc_no() -> str:
     return f"MOB-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}-{uuid4().hex[:6].upper()}"
 
 
+def _clean_text(value: Any) -> str | None:
+    if value is None:
+        return None
+    s = str(value).strip()
+    return s or None
+
+
+def _require_text(value: Any, field_name: str) -> str:
+    s = _clean_text(value)
+    if not s:
+        raise ValueError(f"{field_name}_required")
+    return s
+
+
 async def create_manual_doc(
     session: AsyncSession,
     *,
     warehouse_id: int,
     doc_type: str,
     recipient_name: str,
+    receiver_phone: str,
+    receiver_province: str,
+    receiver_city: str,
+    receiver_district: str | None,
+    receiver_address: str,
+    receiver_postcode: str | None,
     remark: str | None,
     created_by: int | None,
     lines: List[Dict[str, Any]],
@@ -35,6 +55,12 @@ async def create_manual_doc(
                   doc_type,
                   status,
                   recipient_name,
+                  receiver_phone,
+                  receiver_province,
+                  receiver_city,
+                  receiver_district,
+                  receiver_address,
+                  receiver_postcode,
                   remark,
                   created_by,
                   created_at
@@ -45,6 +71,12 @@ async def create_manual_doc(
                   :doc_type,
                   'DRAFT',
                   :recipient_name,
+                  :receiver_phone,
+                  :receiver_province,
+                  :receiver_city,
+                  :receiver_district,
+                  :receiver_address,
+                  :receiver_postcode,
                   :remark,
                   :created_by,
                   now()
@@ -55,9 +87,15 @@ async def create_manual_doc(
             {
                 "warehouse_id": int(warehouse_id),
                 "doc_no": _gen_doc_no(),
-                "doc_type": str(doc_type).strip(),
-                "recipient_name": str(recipient_name).strip(),
-                "remark": str(remark).strip() if remark else None,
+                "doc_type": _require_text(doc_type, "doc_type"),
+                "recipient_name": _require_text(recipient_name, "recipient_name"),
+                "receiver_phone": _require_text(receiver_phone, "receiver_phone"),
+                "receiver_province": _require_text(receiver_province, "receiver_province"),
+                "receiver_city": _require_text(receiver_city, "receiver_city"),
+                "receiver_district": _clean_text(receiver_district),
+                "receiver_address": _require_text(receiver_address, "receiver_address"),
+                "receiver_postcode": _clean_text(receiver_postcode),
+                "remark": _clean_text(remark),
                 "created_by": int(created_by) if created_by is not None else None,
             },
         )
@@ -148,6 +186,12 @@ async def list_manual_docs(
                       d.status,
                       d.recipient_name,
                       d.recipient_id,
+                      d.receiver_phone,
+                      d.receiver_province,
+                      d.receiver_city,
+                      d.receiver_district,
+                      d.receiver_address,
+                      d.receiver_postcode,
                       d.remark,
                       d.created_by,
                       d.created_at,
@@ -187,6 +231,12 @@ async def get_manual_doc_head(
                       d.status,
                       d.recipient_name,
                       d.recipient_id,
+                      d.receiver_phone,
+                      d.receiver_province,
+                      d.receiver_city,
+                      d.receiver_district,
+                      d.receiver_address,
+                      d.receiver_postcode,
                       d.remark,
                       d.created_by,
                       d.created_at,
@@ -316,6 +366,42 @@ async def release_manual_doc(
     ).first()
     if not row or int(row[0]) <= 0:
         raise ValueError("manual_doc_has_no_lines")
+
+    head = (
+        (
+            await session.execute(
+                text(
+                    """
+                    SELECT
+                      recipient_name,
+                      receiver_phone,
+                      receiver_province,
+                      receiver_city,
+                      receiver_address
+                    FROM manual_outbound_docs
+                    WHERE id = :doc_id
+                    LIMIT 1
+                    """
+                ),
+                {"doc_id": int(doc_id)},
+            )
+        )
+        .mappings()
+        .first()
+    )
+    if head is None:
+        raise ValueError(f"manual_doc_not_found: id={doc_id}")
+
+    required_fields = [
+        ("recipient_name", head.get("recipient_name")),
+        ("receiver_phone", head.get("receiver_phone")),
+        ("receiver_province", head.get("receiver_province")),
+        ("receiver_city", head.get("receiver_city")),
+        ("receiver_address", head.get("receiver_address")),
+    ]
+    missing = [name for name, value in required_fields if _clean_text(value) is None]
+    if missing:
+        raise ValueError("manual_doc_receiver_incomplete: missing=" + ",".join(missing))
 
     upd = await session.execute(
         text(

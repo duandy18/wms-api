@@ -71,6 +71,12 @@ async def test_manual_outbound_docs_create_release_void(
             "warehouse_id": warehouse_id,
             "doc_type": "MANUAL_OUTBOUND",
             "recipient_name": f"张三-{uuid4().hex[:6]}",
+            "receiver_phone": "13800000000",
+            "receiver_province": "浙江省",
+            "receiver_city": "杭州市",
+            "receiver_district": "余杭区",
+            "receiver_address": "测试路 1 号",
+            "receiver_postcode": "310000",
             "remark": "整单备注",
             "lines": [
                 {

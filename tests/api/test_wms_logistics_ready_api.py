@@ -380,6 +380,12 @@ async def _seed_manual_ready_record(
               warehouse_id,
               warehouse_name_snapshot,
               receiver_name,
+              receiver_phone,
+              receiver_province,
+              receiver_city,
+              receiver_district,
+              receiver_address,
+              receiver_postcode,
               outbound_event_id,
               outbound_source_ref,
               outbound_completed_at,
@@ -396,6 +402,12 @@ async def _seed_manual_ready_record(
               :warehouse_id,
               :warehouse_name_snapshot,
               '李四',
+              '13900000000',
+              '浙江省',
+              '杭州市',
+              '西湖区',
+              '手工测试路 2 号',
+              '310000',
               9002,
               :outbound_source_ref,
               :now,
@@ -575,6 +587,12 @@ async def test_logistics_ready_returns_pending_and_failed_records(
     assert manual_row["source_doc_type"] == "MANUAL_OUTBOUND"
     assert manual_row["export_status"] == "FAILED"
     assert manual_row["receiver_name"] == "李四"
+    assert manual_row["receiver_phone"] == "13900000000"
+    assert manual_row["receiver_province"] == "浙江省"
+    assert manual_row["receiver_city"] == "杭州市"
+    assert manual_row["receiver_district"] == "西湖区"
+    assert manual_row["receiver_address"] == "手工测试路 2 号"
+    assert manual_row["receiver_postcode"] == "310000"
     assert manual_row["platform"] is None
     assert manual_row["outbound_event_id"] == 9002
     assert manual_row["shipment_items"][0]["qty_outbound"] == 1

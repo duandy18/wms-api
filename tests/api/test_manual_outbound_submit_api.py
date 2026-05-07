@@ -91,6 +91,12 @@ async def _seed_manual_doc_and_stock(
               doc_type,
               status,
               recipient_name,
+              receiver_phone,
+              receiver_province,
+              receiver_city,
+              receiver_district,
+              receiver_address,
+              receiver_postcode,
               remark,
               created_at
             )
@@ -100,6 +106,12 @@ async def _seed_manual_doc_and_stock(
               'MANUAL_OUTBOUND',
               'RELEASED',
               :recipient_name,
+              :receiver_phone,
+              :receiver_province,
+              :receiver_city,
+              :receiver_district,
+              :receiver_address,
+              :receiver_postcode,
               '整单备注',
               now()
             )
@@ -110,6 +122,12 @@ async def _seed_manual_doc_and_stock(
             "warehouse_id": int(warehouse_id),
             "doc_no": f"MOB-UT-{uniq}",
             "recipient_name": f"张三-{uniq}",
+            "receiver_phone": "13800000000",
+            "receiver_province": "浙江省",
+            "receiver_city": "杭州市",
+            "receiver_district": "余杭区",
+            "receiver_address": "测试路 1 号",
+            "receiver_postcode": "310000",
         },
     )
     doc_id = int(row.scalar_one())
@@ -344,6 +362,12 @@ async def test_manual_outbound_submit_writes_event_and_ledger(
                   p.outbound_event_id,
                   p.outbound_source_ref,
                   p.warehouse_id AS payload_warehouse_id,
+                  p.receiver_phone,
+                  p.receiver_province,
+                  p.receiver_city,
+                  p.receiver_district,
+                  p.receiver_address,
+                  p.receiver_postcode,
                   p.shipment_items
                 FROM wms_logistics_export_records r
                 JOIN wms_logistics_handoff_payloads p
@@ -366,6 +390,12 @@ async def test_manual_outbound_submit_writes_event_and_ledger(
     assert int(export_record["outbound_event_id"]) == event_id
     assert export_record["outbound_source_ref"] == data["source_ref"]
     assert int(export_record["payload_warehouse_id"]) == warehouse_id
+    assert export_record["receiver_phone"] == "13800000000"
+    assert export_record["receiver_province"] == "浙江省"
+    assert export_record["receiver_city"] == "杭州市"
+    assert export_record["receiver_district"] == "余杭区"
+    assert export_record["receiver_address"] == "测试路 1 号"
+    assert export_record["receiver_postcode"] == "310000"
 
     shipment_items = export_record["shipment_items"]
     assert isinstance(shipment_items, list)
