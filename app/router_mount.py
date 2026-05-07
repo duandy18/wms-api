@@ -72,6 +72,7 @@ def mount_routers(app: FastAPI) -> None:
 
     from app.oms.router import router as oms_router
 
+    from app.shipping_assist.handoffs.router import router as shipping_assist_handoffs_router
     from app.shipping_assist.records.router import router as tms_records_router
 
     # ---------------------------------------------------------------------------
@@ -152,6 +153,7 @@ def mount_routers(app: FastAPI) -> None:
 
 
 
+    app.include_router(shipping_assist_handoffs_router)
     app.include_router(tms_records_router)
 
     app.include_router(stock_inventory_router)

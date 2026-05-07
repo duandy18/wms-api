@@ -24,6 +24,7 @@ def test_retired_shipping_assist_runtime_routes_are_not_mounted() -> None:
 def test_shipping_assist_records_routes_remain_mounted() -> None:
     paths = _mounted_paths()
 
+    assert "/shipping-assist/handoffs" in paths
     assert "/shipping-assist/records" in paths
     assert "/shipping-assist/records/export" in paths
     assert "/shipping-assist/records/options" in paths
