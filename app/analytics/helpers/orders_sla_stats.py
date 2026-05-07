@@ -11,7 +11,7 @@ def normalize_window(
 ) -> tuple[datetime, datetime]:
     """
     规范化时间窗口：
-    - 默认：最近 7 天（基于 shipped_at）
+    - 默认：最近 7 天（基于 order_fulfillment.outbound_completed_at）
     - 若只给一端，自动补另一端
     """
     now = datetime.now(timezone.utc)

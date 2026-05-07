@@ -8,9 +8,9 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.deps import get_async_session as get_session
-from app.analytics.helpers.orders_sla_stats import normalize_window
 from app.analytics.contracts.orders_sla_stats import OrdersSlaStatsModel
+from app.analytics.helpers.orders_sla_stats import normalize_window
+from app.db.deps import get_async_session as get_session
 
 
 router = APIRouter(prefix="/orders/stats", tags=["orders-sla"])
@@ -24,11 +24,11 @@ def register(router: APIRouter) -> None:
     async def get_orders_sla_stats(
         time_from: Optional[datetime] = Query(
             None,
-            description="起始时间（含），用于过滤发货完成时间 order_fulfillment.shipped_at",
+            description="起始时间（含），用于过滤 WMS 出库完成时间 order_fulfillment.outbound_completed_at",
         ),
         time_to: Optional[datetime] = Query(
             None,
-            description="结束时间（含），用于过滤发货完成时间 order_fulfillment.shipped_at",
+            description="结束时间（含），用于过滤 WMS 出库完成时间 order_fulfillment.outbound_completed_at",
         ),
         platform: Optional[str] = Query(
             None,
@@ -41,18 +41,19 @@ def register(router: APIRouter) -> None:
         sla_hours: float = Query(
             24.0,
             ge=0.0,
-            description="SLA 阈值（小时），用于判断是否准时发货，默认 24 小时",
+            description="SLA 阈值（小时），用于判断是否准时完成 WMS 出库，默认 24 小时",
         ),
         session: AsyncSession = Depends(get_session),
     ) -> OrdersSlaStatsModel:
         """
-        订单发货 SLA 统计：
+        订单 WMS 出库 SLA 统计：
 
         - 以 orders.created_at 为下单时间；
-        - 以 order_fulfillment.shipped_at 为发货完成时间；
+        - 以 order_fulfillment.outbound_completed_at 为 WMS 出库完成时间；
         - 通过 order_fulfillment.order_id 关联 orders.id。
 
-        只统计在给定时间窗口内发货的订单（按 order_fulfillment.shipped_at 过滤）。
+        只统计在给定时间窗口内完成 WMS 出库的订单
+        （按 order_fulfillment.outbound_completed_at 过滤）。
 
         ✅ PROD-only（简化口径）：
         - 排除测试店铺（platform_test_stores.code='DEFAULT'，以 store_id 为事实锚点）
@@ -62,21 +63,21 @@ def register(router: APIRouter) -> None:
         plat = platform.upper().strip() if platform else None
 
         base_sql = """
-        WITH shipped AS (
+        WITH outbound_completed AS (
           SELECT
-            o.id                    AS order_id,
-            o.platform              AS platform,
-            o.store_code               AS store_code,
-            o.created_at            AS created_at,
-            f.shipped_at            AS shipped_at,
-            EXTRACT(EPOCH FROM (f.shipped_at - o.created_at)) / 3600.0
-                                    AS latency_hours
+            o.id                              AS order_id,
+            o.platform                        AS platform,
+            o.store_code                      AS store_code,
+            o.created_at                      AS created_at,
+            f.outbound_completed_at           AS outbound_completed_at,
+            EXTRACT(EPOCH FROM (f.outbound_completed_at - o.created_at)) / 3600.0
+                                              AS latency_hours
           FROM orders AS o
           JOIN order_fulfillment AS f
             ON f.order_id = o.id
-          WHERE f.shipped_at IS NOT NULL
-            AND f.shipped_at >= :start
-            AND f.shipped_at <= :end
+          WHERE f.outbound_completed_at IS NOT NULL
+            AND f.outbound_completed_at >= :start
+            AND f.outbound_completed_at <= :end
 
             -- ----------------- PROD-only：测试店铺门禁（store_id 级别） -----------------
             AND NOT EXISTS (
@@ -90,12 +91,12 @@ def register(router: APIRouter) -> None:
         )
         SELECT
           COUNT(*)                         AS total_orders,
-          AVG(latency_hours)              AS avg_hours,
+          AVG(latency_hours)               AS avg_hours,
           percentile_disc(0.95)
             WITHIN GROUP (ORDER BY latency_hours) AS p95_hours,
           COUNT(*) FILTER (WHERE latency_hours <= :sla_hours)
-                                          AS on_time_orders
-        FROM shipped
+                                           AS on_time_orders
+        FROM outbound_completed
         """
 
         params: dict[str, object] = {
@@ -145,6 +146,7 @@ def register(router: APIRouter) -> None:
             on_time_orders=on_time_orders,
             on_time_rate=on_time_rate,
         )
+
 
 register(router)
 

@@ -14,13 +14,13 @@ from tests.services._helpers import ensure_store
 pytestmark = pytest.mark.asyncio
 
 
-async def _seed_shipped_order(
+async def _seed_outbound_completed_order(
     session: AsyncSession,
     *,
     platform: str = "PDD",
     store_code: str = "UT-SLA-STORE",
     created_at: datetime,
-    shipped_at: datetime,
+    outbound_completed_at: datetime,
 ) -> int:
     store_id = await ensure_store(
         session,
@@ -70,54 +70,54 @@ async def _seed_shipped_order(
               order_id,
               actual_warehouse_id,
               execution_stage,
-              ship_committed_at,
-              shipped_at,
+              outbound_committed_at,
+              outbound_completed_at,
               updated_at
             )
             VALUES (
               :order_id,
               1,
               'SHIP',
-              :shipped_at,
-              :shipped_at,
-              :shipped_at
+              :outbound_completed_at,
+              :outbound_completed_at,
+              :outbound_completed_at
             )
             ON CONFLICT (order_id) DO UPDATE
                SET actual_warehouse_id = EXCLUDED.actual_warehouse_id,
                    execution_stage = EXCLUDED.execution_stage,
-                   ship_committed_at = EXCLUDED.ship_committed_at,
-                   shipped_at = EXCLUDED.shipped_at,
+                   outbound_committed_at = EXCLUDED.outbound_committed_at,
+                   outbound_completed_at = EXCLUDED.outbound_completed_at,
                    updated_at = EXCLUDED.updated_at
             """
         ),
         {
             "order_id": order_id,
-            "shipped_at": shipped_at,
+            "outbound_completed_at": outbound_completed_at,
         },
     )
     await session.commit()
     return order_id
 
 
-async def test_orders_sla_stats_uses_order_fulfillment_shipped_at(
+async def test_orders_sla_stats_uses_order_fulfillment_outbound_completed_at(
     client: AsyncClient,
     session: AsyncSession,
 ) -> None:
     now = datetime.now(timezone.utc).replace(microsecond=0)
     created_at = now - timedelta(hours=2)
-    shipped_at = now - timedelta(hours=1)
+    outbound_completed_at = now - timedelta(hours=1)
 
-    await _seed_shipped_order(
+    await _seed_outbound_completed_order(
         session,
         created_at=created_at,
-        shipped_at=shipped_at,
+        outbound_completed_at=outbound_completed_at,
     )
 
     resp = await client.get(
         "/orders/stats/sla",
         params={
-            "time_from": (shipped_at - timedelta(minutes=1)).isoformat(),
-            "time_to": (shipped_at + timedelta(minutes=1)).isoformat(),
+            "time_from": (outbound_completed_at - timedelta(minutes=1)).isoformat(),
+            "time_to": (outbound_completed_at + timedelta(minutes=1)).isoformat(),
             "platform": "PDD",
             "store_code": "UT-SLA-STORE",
             "sla_hours": 2,
@@ -133,18 +133,18 @@ async def test_orders_sla_stats_uses_order_fulfillment_shipped_at(
     assert 0.9 <= float(data["avg_ship_hours"]) <= 1.1
 
 
-async def test_orders_sla_stats_filters_by_shipped_at_window(
+async def test_orders_sla_stats_filters_by_outbound_completed_at_window(
     client: AsyncClient,
     session: AsyncSession,
 ) -> None:
     now = datetime.now(timezone.utc).replace(microsecond=0)
 
-    await _seed_shipped_order(
+    await _seed_outbound_completed_order(
         session,
         platform="PDD",
         store_code="UT-SLA-WINDOW",
         created_at=now - timedelta(hours=5),
-        shipped_at=now - timedelta(hours=4),
+        outbound_completed_at=now - timedelta(hours=4),
     )
 
     resp = await client.get(
