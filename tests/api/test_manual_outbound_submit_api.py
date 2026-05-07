@@ -330,6 +330,40 @@ async def test_manual_outbound_submit_writes_event_and_ledger(
     ).scalar_one()
     assert str(doc_status) == "COMPLETED"
 
+    export_record = (
+        await session.execute(
+            text(
+                """
+                SELECT
+                  source_doc_type,
+                  source_doc_id,
+                  source_doc_no,
+                  source_ref,
+                  export_status,
+                  logistics_status,
+                  source_snapshot ->> 'wms_event_id' AS wms_event_id,
+                  source_snapshot ->> 'wms_source_ref' AS wms_source_ref,
+                  source_snapshot ->> 'warehouse_id' AS snapshot_warehouse_id
+                FROM wms_logistics_export_records
+                WHERE source_ref = :source_ref
+                LIMIT 1
+                """
+            ),
+            {"source_ref": f"WMS:MANUAL_OUTBOUND:{doc_id}"},
+        )
+    ).mappings().first()
+
+    assert export_record is not None
+    assert export_record["source_doc_type"] == "MANUAL_OUTBOUND"
+    assert int(export_record["source_doc_id"]) == int(doc_id)
+    assert str(export_record["source_doc_no"]).startswith("MOB-UT-")
+    assert export_record["source_ref"] == f"WMS:MANUAL_OUTBOUND:{doc_id}"
+    assert export_record["export_status"] == "PENDING"
+    assert export_record["logistics_status"] == "NOT_IMPORTED"
+    assert int(export_record["wms_event_id"]) == event_id
+    assert export_record["wms_source_ref"] == data["source_ref"]
+    assert int(export_record["snapshot_warehouse_id"]) == warehouse_id
+
 
 async def test_manual_outbound_submit_keeps_doc_released_when_partially_submitted(
     client: AsyncClient,
@@ -379,6 +413,20 @@ async def test_manual_outbound_submit_keeps_doc_released_when_partially_submitte
         )
     ).scalar_one()
     assert str(doc_status) == "RELEASED"
+
+    export_count = (
+        await session.execute(
+            text(
+                """
+                SELECT COUNT(*)
+                FROM wms_logistics_export_records
+                WHERE source_ref = :source_ref
+                """
+            ),
+            {"source_ref": f"WMS:MANUAL_OUTBOUND:{doc_id}"},
+        )
+    ).scalar_one()
+    assert int(export_count) == 0
 
 
 async def test_manual_outbound_submit_rejects_lot_code_and_batch_code_extras(
