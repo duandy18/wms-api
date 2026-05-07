@@ -30,6 +30,8 @@ async def _reset_navigation_registry_state(session: AsyncSession) -> None:
                  WHEN code IN (
                    'shipping_assist',
                    'shipping_assist.handoffs',
+                   'shipping_assist.handoffs.status',
+                   'shipping_assist.handoffs.payload',
                    'shipping_assist.records'
                  )
                  THEN TRUE
@@ -99,6 +101,8 @@ async def _reset_navigation_registry_state(session: AsyncSession) -> None:
                SET is_active = CASE
                  WHEN route_prefix IN (
                    '/shipping-assist/handoffs',
+                   '/shipping-assist/handoffs/status',
+                   '/shipping-assist/handoffs/payload',
                    '/shipping-assist/records'
                  )
                    OR route_prefix LIKE '/inventory-adjustment%'
@@ -407,6 +411,8 @@ async def test_my_navigation_route_prefix_mapping_and_effective_permissions(clie
     assert inventory_adjustment_page["effective_write_permission"] == "page.wms.write"
 
     shipping_handoffs_route = route_map.get("/shipping-assist/handoffs")
+    shipping_handoffs_status_route = route_map.get("/shipping-assist/handoffs/status")
+    shipping_handoffs_payload_route = route_map.get("/shipping-assist/handoffs/payload")
     shipping_records_route = route_map.get("/shipping-assist/records")
     items_route = route_map.get("/items")
     suppliers_route = route_map.get("/suppliers")
@@ -416,6 +422,8 @@ async def test_my_navigation_route_prefix_mapping_and_effective_permissions(clie
     inventory_adjustment_route = route_map.get("/inventory-adjustment")
 
     assert shipping_handoffs_route is not None, "/shipping-assist/handoffs should exist in route_prefixes"
+    assert shipping_handoffs_status_route is not None, "/shipping-assist/handoffs/status should exist in route_prefixes"
+    assert shipping_handoffs_payload_route is not None, "/shipping-assist/handoffs/payload should exist in route_prefixes"
     assert shipping_records_route is not None, "/shipping-assist/records should exist in route_prefixes"
     assert items_route is not None, "/items should exist in route_prefixes"
     assert suppliers_route is not None, "/suppliers should exist in route_prefixes"
@@ -425,6 +433,8 @@ async def test_my_navigation_route_prefix_mapping_and_effective_permissions(clie
     assert inventory_adjustment_route is not None, "/inventory-adjustment should exist in route_prefixes"
 
     assert shipping_handoffs_route["page_code"] == "shipping_assist.handoffs"
+    assert shipping_handoffs_status_route["page_code"] == "shipping_assist.handoffs.status"
+    assert shipping_handoffs_payload_route["page_code"] == "shipping_assist.handoffs.payload"
     assert shipping_records_route["page_code"] == "shipping_assist.records"
     assert items_route["page_code"] == "pms.items"
     assert suppliers_route["page_code"] == "pms.suppliers"
@@ -435,6 +445,12 @@ async def test_my_navigation_route_prefix_mapping_and_effective_permissions(clie
 
     assert shipping_handoffs_route["effective_read_permission"] == "page.shipping_assist.read"
     assert shipping_handoffs_route["effective_write_permission"] == "page.shipping_assist.write"
+
+    assert shipping_handoffs_status_route["effective_read_permission"] == "page.shipping_assist.read"
+    assert shipping_handoffs_status_route["effective_write_permission"] == "page.shipping_assist.write"
+
+    assert shipping_handoffs_payload_route["effective_read_permission"] == "page.shipping_assist.read"
+    assert shipping_handoffs_payload_route["effective_write_permission"] == "page.shipping_assist.write"
 
     assert shipping_records_route["effective_read_permission"] == "page.shipping_assist.read"
     assert shipping_records_route["effective_write_permission"] == "page.shipping_assist.write"
@@ -517,6 +533,8 @@ async def test_my_navigation_filters_to_only_directly_visible_parent_tree(
     assert all(item["page_code"].startswith("shipping_assist.") for item in route_prefixes)
     assert [item["route_prefix"] for item in route_prefixes] == [
         "/shipping-assist/handoffs",
+        "/shipping-assist/handoffs/status",
+        "/shipping-assist/handoffs/payload",
         "/shipping-assist/records",
     ]
 
@@ -582,6 +600,8 @@ async def test_my_navigation_contains_shipping_assist_two_level_tree(client: Asy
 
     expected_route_map = {
         "/shipping-assist/handoffs": "shipping_assist.handoffs",
+        "/shipping-assist/handoffs/status": "shipping_assist.handoffs.status",
+        "/shipping-assist/handoffs/payload": "shipping_assist.handoffs.payload",
         "/shipping-assist/records": "shipping_assist.records",
     }
 
