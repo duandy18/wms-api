@@ -42,6 +42,59 @@ async def _ensure_warehouse(session: AsyncSession, warehouse_id: int = 1) -> int
     return int(warehouse_id)
 
 
+async def _insert_export_record(
+    session: AsyncSession,
+    *,
+    source_doc_type: str,
+    source_doc_id: int,
+    source_doc_no: str,
+    source_ref: str,
+    export_status: str,
+    logistics_status: str = "NOT_IMPORTED",
+) -> int:
+    now = datetime.now(UTC)
+    return int(
+        (
+            await session.execute(
+                text(
+                    """
+                    INSERT INTO wms_logistics_export_records (
+                      source_doc_type,
+                      source_doc_id,
+                      source_doc_no,
+                      source_ref,
+                      export_status,
+                      logistics_status,
+                      created_at,
+                      updated_at
+                    )
+                    VALUES (
+                      :source_doc_type,
+                      :source_doc_id,
+                      :source_doc_no,
+                      :source_ref,
+                      :export_status,
+                      :logistics_status,
+                      :now,
+                      :now
+                    )
+                    RETURNING id
+                    """
+                ),
+                {
+                    "source_doc_type": source_doc_type,
+                    "source_doc_id": int(source_doc_id),
+                    "source_doc_no": source_doc_no,
+                    "source_ref": source_ref,
+                    "export_status": export_status,
+                    "logistics_status": logistics_status,
+                    "now": now,
+                },
+            )
+        ).scalar_one()
+    )
+
+
 async def _seed_order_ready_record(
     session: AsyncSession,
     *,
@@ -152,43 +205,13 @@ async def _seed_order_ready_record(
     )
 
     source_ref = f"WMS:ORDER_OUTBOUND:{order_id}"
-    export_record_id = int(
-        (
-            await session.execute(
-                text(
-                    """
-                    INSERT INTO wms_logistics_export_records (
-                      source_doc_type,
-                      source_doc_id,
-                      source_doc_no,
-                      source_ref,
-                      export_status,
-                      logistics_status,
-                      created_at,
-                      updated_at
-                    )
-                    VALUES (
-                      'ORDER_OUTBOUND',
-                      :source_doc_id,
-                      :source_doc_no,
-                      :source_ref,
-                      :export_status,
-                      'NOT_IMPORTED',
-                      :now,
-                      :now
-                    )
-                    RETURNING id
-                    """
-                ),
-                {
-                    "source_doc_id": int(order_id),
-                    "source_doc_no": ext_order_no,
-                    "source_ref": source_ref,
-                    "export_status": export_status,
-                    "now": now,
-                },
-            )
-        ).scalar_one()
+    export_record_id = await _insert_export_record(
+        session,
+        source_doc_type="ORDER_OUTBOUND",
+        source_doc_id=int(order_id),
+        source_doc_no=ext_order_no,
+        source_ref=source_ref,
+        export_status=export_status,
     )
 
     shipment_items = [
@@ -225,6 +248,8 @@ async def _seed_order_ready_record(
               receiver_city,
               receiver_district,
               receiver_address,
+              outbound_event_id,
+              outbound_source_ref,
               outbound_completed_at,
               shipment_items,
               created_at,
@@ -248,6 +273,8 @@ async def _seed_order_ready_record(
               '杭州市',
               '余杭区',
               '测试路 1 号',
+              9001,
+              :outbound_source_ref,
               :now,
               CAST(:shipment_items AS jsonb),
               :now,
@@ -266,6 +293,7 @@ async def _seed_order_ready_record(
             "ext_order_no": ext_order_no,
             "warehouse_id": int(warehouse_id),
             "warehouse_name_snapshot": f"WH-{warehouse_id}",
+            "outbound_source_ref": f"ORD:{platform}:{store_code}:{ext_order_no}",
             "shipment_items": json.dumps(shipment_items, ensure_ascii=False),
             "now": now,
         },
@@ -318,43 +346,13 @@ async def _seed_manual_ready_record(
     )
 
     source_ref = f"WMS:MANUAL_OUTBOUND:{doc_id}"
-    export_record_id = int(
-        (
-            await session.execute(
-                text(
-                    """
-                    INSERT INTO wms_logistics_export_records (
-                      source_doc_type,
-                      source_doc_id,
-                      source_doc_no,
-                      source_ref,
-                      export_status,
-                      logistics_status,
-                      created_at,
-                      updated_at
-                    )
-                    VALUES (
-                      'MANUAL_OUTBOUND',
-                      :source_doc_id,
-                      :source_doc_no,
-                      :source_ref,
-                      :export_status,
-                      'NOT_IMPORTED',
-                      :now,
-                      :now
-                    )
-                    RETURNING id
-                    """
-                ),
-                {
-                    "source_doc_id": int(doc_id),
-                    "source_doc_no": doc_no,
-                    "source_ref": source_ref,
-                    "export_status": export_status,
-                    "now": now,
-                },
-            )
-        ).scalar_one()
+    export_record_id = await _insert_export_record(
+        session,
+        source_doc_type="MANUAL_OUTBOUND",
+        source_doc_id=int(doc_id),
+        source_doc_no=doc_no,
+        source_ref=source_ref,
+        export_status=export_status,
     )
 
     shipment_items = [
@@ -382,6 +380,8 @@ async def _seed_manual_ready_record(
               warehouse_id,
               warehouse_name_snapshot,
               receiver_name,
+              outbound_event_id,
+              outbound_source_ref,
               outbound_completed_at,
               shipment_items,
               created_at,
@@ -396,6 +396,8 @@ async def _seed_manual_ready_record(
               :warehouse_id,
               :warehouse_name_snapshot,
               '李四',
+              9002,
+              :outbound_source_ref,
               :now,
               CAST(:shipment_items AS jsonb),
               :now,
@@ -410,6 +412,7 @@ async def _seed_manual_ready_record(
             "source_ref": source_ref,
             "warehouse_id": int(warehouse_id),
             "warehouse_name_snapshot": f"WH-{warehouse_id}",
+            "outbound_source_ref": doc_no,
             "shipment_items": json.dumps(shipment_items, ensure_ascii=False),
             "now": now,
         },
@@ -423,43 +426,71 @@ async def _seed_exported_record(session: AsyncSession) -> str:
     now = datetime.now(UTC)
     uniq = uuid4().hex[:10]
     source_ref = f"WMS:ORDER_OUTBOUND:EXPORTED:{uniq}"
+    source_doc_no = f"EXPORTED-{uniq}"
 
-    export_record_id = int(
-        (
-            await session.execute(
-                text(
-                    """
-                    INSERT INTO wms_logistics_export_records (
-                      source_doc_type,
-                      source_doc_id,
-                      source_doc_no,
-                      source_ref,
-                      export_status,
-                      logistics_status,
-                      created_at,
-                      updated_at
-                    )
-                    VALUES (
-                      'ORDER_OUTBOUND',
-                      :source_doc_id,
-                      :source_doc_no,
-                      :source_ref,
-                      'EXPORTED',
-                      'IMPORTED',
-                      :now,
-                      :now
-                    )
-                    RETURNING id
-                    """
-                ),
-                {
-                    "source_doc_id": 900000000,
-                    "source_doc_no": f"EXPORTED-{uniq}",
-                    "source_ref": source_ref,
-                    "now": now,
-                },
+    export_record_id = await _insert_export_record(
+        session,
+        source_doc_type="ORDER_OUTBOUND",
+        source_doc_id=900000000,
+        source_doc_no=source_doc_no,
+        source_ref=source_ref,
+        export_status="EXPORTED",
+        logistics_status="IMPORTED",
+    )
+
+    await session.execute(
+        text(
+            """
+            INSERT INTO wms_logistics_handoff_payloads (
+              export_record_id,
+              source_doc_type,
+              source_doc_id,
+              source_doc_no,
+              source_ref,
+              outbound_event_id,
+              shipment_items,
+              created_at,
+              updated_at
             )
-        ).scalar_one()
+            VALUES (
+              :export_record_id,
+              'ORDER_OUTBOUND',
+              900000000,
+              :source_doc_no,
+              :source_ref,
+              9003,
+              '[]'::jsonb,
+              :now,
+              :now
+            )
+            """
+        ),
+        {
+            "export_record_id": export_record_id,
+            "source_doc_no": source_doc_no,
+            "source_ref": source_ref,
+            "now": now,
+        },
+    )
+
+    await session.commit()
+    return source_ref
+
+
+async def _seed_unimportable_ready_record(session: AsyncSession) -> str:
+    now = datetime.now(UTC)
+    uniq = uuid4().hex[:10]
+    source_ref = f"WMS:ORDER_OUTBOUND:DIRTY:{uniq}"
+    source_doc_id = int(int(uuid4().int % 900000000) + 1000)
+    source_doc_no = f"DIRTY-READY-{uniq}"
+
+    export_record_id = await _insert_export_record(
+        session,
+        source_doc_type="ORDER_OUTBOUND",
+        source_doc_id=source_doc_id,
+        source_doc_no=source_doc_no,
+        source_ref=source_ref,
+        export_status="PENDING",
     )
 
     await session.execute(
@@ -478,7 +509,7 @@ async def _seed_exported_record(session: AsyncSession) -> str:
             VALUES (
               :export_record_id,
               'ORDER_OUTBOUND',
-              900000000,
+              :source_doc_id,
               :source_doc_no,
               :source_ref,
               '[]'::jsonb,
@@ -489,7 +520,8 @@ async def _seed_exported_record(session: AsyncSession) -> str:
         ),
         {
             "export_record_id": export_record_id,
-            "source_doc_no": f"EXPORTED-{uniq}",
+            "source_doc_id": source_doc_id,
+            "source_doc_no": source_doc_no,
             "source_ref": source_ref,
             "now": now,
         },
@@ -507,6 +539,7 @@ async def test_logistics_ready_returns_pending_and_failed_records(
     _order_id, order_ref = await _seed_order_ready_record(session, export_status="PENDING")
     _doc_id, manual_ref = await _seed_manual_ready_record(session, export_status="FAILED")
     exported_ref = await _seed_exported_record(session)
+    dirty_ref = await _seed_unimportable_ready_record(session)
 
     resp = await client.get("/wms/outbound/logistics-ready", headers=headers)
 
@@ -519,9 +552,11 @@ async def test_logistics_ready_returns_pending_and_failed_records(
     assert order_ref in refs
     assert manual_ref in refs
     assert exported_ref not in refs
+    assert dirty_ref not in refs
 
     order_row = next(row for row in data["rows"] if row["source_ref"] == order_ref)
     assert order_row["source_system"] == "WMS"
+    assert order_row["request_source"] == "API_IMPORT"
     assert order_row["source_doc_type"] == "ORDER_OUTBOUND"
     assert order_row["platform"] == "PDD"
     assert order_row["store_code"] == "UT-READY"
@@ -531,13 +566,17 @@ async def test_logistics_ready_returns_pending_and_failed_records(
     assert order_row["receiver_city"] == "杭州市"
     assert order_row["receiver_district"] == "余杭区"
     assert order_row["receiver_address"] == "测试路 1 号"
+    assert order_row["outbound_event_id"] == 9001
     assert order_row["shipment_items"][0]["qty_outbound"] == 2
+    forbidden_response_keys = {"packages", "source_" + "snapshot"}
+    assert set(order_row).isdisjoint(forbidden_response_keys)
 
     manual_row = next(row for row in data["rows"] if row["source_ref"] == manual_ref)
     assert manual_row["source_doc_type"] == "MANUAL_OUTBOUND"
     assert manual_row["export_status"] == "FAILED"
     assert manual_row["receiver_name"] == "李四"
     assert manual_row["platform"] is None
+    assert manual_row["outbound_event_id"] == 9002
     assert manual_row["shipment_items"][0]["qty_outbound"] == 1
 
 

@@ -54,7 +54,11 @@ def _build_ready_where(
     export_status: str | None,
 ) -> tuple[str, dict[str, object]]:
     params: dict[str, object] = {}
-    clauses = ["1 = 1"]
+    clauses = [
+        "1 = 1",
+        "p.outbound_event_id IS NOT NULL",
+        "jsonb_array_length(p.shipment_items) > 0",
+    ]
 
     if source_doc_type is not None:
         clauses.append("r.source_doc_type = :source_doc_type")
