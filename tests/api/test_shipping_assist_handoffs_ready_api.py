@@ -553,7 +553,7 @@ async def test_logistics_ready_returns_pending_and_failed_records(
     exported_ref = await _seed_exported_record(session)
     dirty_ref = await _seed_unimportable_ready_record(session)
 
-    resp = await client.get("/wms/outbound/logistics-ready", headers=headers)
+    resp = await client.get("/shipping-assist/handoffs/ready", headers=headers)
 
     assert resp.status_code == 200, resp.text
     data = resp.json()
@@ -607,7 +607,7 @@ async def test_logistics_ready_filters_source_doc_type_and_export_status(
     _doc_id, manual_ref = await _seed_manual_ready_record(session, export_status="FAILED")
 
     resp = await client.get(
-        "/wms/outbound/logistics-ready",
+        "/shipping-assist/handoffs/ready",
         headers=headers,
         params={
             "source_doc_type": "MANUAL_OUTBOUND",
@@ -630,14 +630,14 @@ async def test_logistics_ready_rejects_invalid_filters(
     headers = await _login_admin_headers(client)
 
     bad_type = await client.get(
-        "/wms/outbound/logistics-ready",
+        "/shipping-assist/handoffs/ready",
         headers=headers,
         params={"source_doc_type": "ERP_OUTBOUND"},
     )
     assert bad_type.status_code == 422
 
     bad_status = await client.get(
-        "/wms/outbound/logistics-ready",
+        "/shipping-assist/handoffs/ready",
         headers=headers,
         params={"export_status": "EXPORTED"},
     )

@@ -115,7 +115,7 @@ async def test_logistics_import_results_marks_exported(
     source_ref = await _seed_export_record(session)
 
     resp = await client.post(
-        "/wms/outbound/logistics-import-results",
+        "/shipping-assist/handoffs/import-results",
         headers=headers,
         json={
             "source_ref": source_ref,
@@ -161,7 +161,7 @@ async def test_logistics_import_results_success_is_idempotent_for_same_request(
     )
 
     resp = await client.post(
-        "/wms/outbound/logistics-import-results",
+        "/shipping-assist/handoffs/import-results",
         headers=headers,
         json={
             "source_ref": source_ref,
@@ -193,7 +193,7 @@ async def test_logistics_import_results_rejects_success_with_different_request(
     )
 
     resp = await client.post(
-        "/wms/outbound/logistics-import-results",
+        "/shipping-assist/handoffs/import-results",
         headers=headers,
         json={
             "source_ref": source_ref,
@@ -215,7 +215,7 @@ async def test_logistics_import_results_marks_failed(
     source_ref = await _seed_export_record(session)
 
     resp = await client.post(
-        "/wms/outbound/logistics-import-results",
+        "/shipping-assist/handoffs/import-results",
         headers=headers,
         json={
             "source_ref": source_ref,
@@ -254,7 +254,7 @@ async def test_logistics_import_results_rejects_failed_after_exported(
     )
 
     resp = await client.post(
-        "/wms/outbound/logistics-import-results",
+        "/shipping-assist/handoffs/import-results",
         headers=headers,
         json={
             "source_ref": source_ref,
@@ -273,7 +273,7 @@ async def test_logistics_import_results_returns_404_for_missing_source_ref(
     headers = await _login_admin_headers(client)
 
     resp = await client.post(
-        "/wms/outbound/logistics-import-results",
+        "/shipping-assist/handoffs/import-results",
         headers=headers,
         json={
             "source_ref": "WMS:ORDER_OUTBOUND:NOT_FOUND",
@@ -292,7 +292,7 @@ async def test_logistics_import_results_validates_payload_contract(
     headers = await _login_admin_headers(client)
 
     missing_request = await client.post(
-        "/wms/outbound/logistics-import-results",
+        "/shipping-assist/handoffs/import-results",
         headers=headers,
         json={
             "source_ref": "WMS:ORDER_OUTBOUND:1",
@@ -302,7 +302,7 @@ async def test_logistics_import_results_validates_payload_contract(
     assert missing_request.status_code == 422
 
     missing_error = await client.post(
-        "/wms/outbound/logistics-import-results",
+        "/shipping-assist/handoffs/import-results",
         headers=headers,
         json={
             "source_ref": "WMS:ORDER_OUTBOUND:1",
