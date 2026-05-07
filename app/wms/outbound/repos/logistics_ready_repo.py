@@ -1,7 +1,6 @@
 # app/wms/outbound/repos/logistics_ready_repo.py
 from __future__ import annotations
 
-import json
 from typing import Any, Mapping
 
 from sqlalchemy import text
@@ -11,132 +10,41 @@ READY_EXPORT_STATUSES = ("PENDING", "FAILED")
 READY_SOURCE_DOC_TYPES = ("ORDER_OUTBOUND", "MANUAL_OUTBOUND")
 
 
-def _snapshot_dict(value: Any) -> dict[str, Any]:
-    if isinstance(value, dict):
-        return value
-    if value is None:
-        return {}
-    if isinstance(value, str):
-        try:
-            parsed = json.loads(value)
-        except json.JSONDecodeError:
-            return {}
-        return parsed if isinstance(parsed, dict) else {}
-    return {}
-
-
-def _int_or_none(value: Any) -> int | None:
-    if value is None:
-        return None
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def _clean_text(value: Any) -> str | None:
-    if value is None:
-        return None
-    s = str(value).strip()
-    return s or None
-
-
-def _build_items(snapshot: Mapping[str, Any]) -> list[dict[str, Any]]:
-    raw_lines = snapshot.get("lines")
-    if not isinstance(raw_lines, list):
-        return []
-
-    items: list[dict[str, Any]] = []
-    for idx, raw in enumerate(raw_lines, start=1):
-        if not isinstance(raw, Mapping):
-            continue
-
-        qty = raw.get("qty_outbound", raw.get("qty", 0))
-        items.append(
-            {
-                "line_no": int(raw.get("ref_line") or idx),
-                "item_id": _int_or_none(raw.get("item_id")),
-                "qty": int(qty or 0),
-                "lot_id": _int_or_none(raw.get("lot_id")),
-                "lot_code_snapshot": _clean_text(raw.get("lot_code_snapshot")),
-                "item_name_snapshot": _clean_text(raw.get("item_name_snapshot")),
-                "item_sku_snapshot": _clean_text(raw.get("item_sku_snapshot")),
-                "item_spec_snapshot": _clean_text(raw.get("item_spec_snapshot")),
-            }
-        )
-
-    return items
-
-
-def _warehouse_id_from_row(row: Mapping[str, Any], snapshot: Mapping[str, Any]) -> int | None:
-    if str(row["source_doc_type"]) == "ORDER_OUTBOUND":
-        value = row.get("order_actual_warehouse_id")
-        return _int_or_none(value) or _int_or_none(snapshot.get("warehouse_id"))
-    value = row.get("manual_warehouse_id")
-    return _int_or_none(value) or _int_or_none(snapshot.get("warehouse_id"))
+def _json_array(value: Any) -> list[dict[str, Any]]:
+    if isinstance(value, list):
+        return [dict(x) for x in value if isinstance(x, Mapping)]
+    return []
 
 
 def _row_to_ready_record(row: Mapping[str, Any]) -> dict[str, Any]:
-    snapshot = _snapshot_dict(row.get("source_snapshot"))
-    warehouse_id = _warehouse_id_from_row(row, snapshot)
-
-    if str(row["source_doc_type"]) == "ORDER_OUTBOUND":
-        receiver_name = _clean_text(row.get("receiver_name"))
-        receiver_phone = _clean_text(row.get("receiver_phone"))
-        province = _clean_text(row.get("province"))
-        city = _clean_text(row.get("city"))
-        district = _clean_text(row.get("district"))
-        address_detail = _clean_text(row.get("address_detail"))
-        platform = _clean_text(row.get("platform"))
-        store_code = _clean_text(row.get("store_code"))
-        platform_order_no = _clean_text(row.get("platform_order_no"))
-        outbound_completed_at = row.get("outbound_completed_at")
-    else:
-        receiver_name = _clean_text(row.get("manual_recipient_name"))
-        receiver_phone = None
-        province = None
-        city = None
-        district = None
-        address_detail = None
-        platform = None
-        store_code = None
-        platform_order_no = None
-        outbound_completed_at = snapshot.get("occurred_at")
-
-    source_ref = str(row["source_ref"])
-    packages = [
-        {
-            "source_package_ref": f"{source_ref}:PACKAGE:1",
-            "package_no": 1,
-            "warehouse_id": warehouse_id,
-            "weight_kg": None,
-            "items": _build_items(snapshot),
-        }
-    ]
-
     return {
-        "source_system": "WMS",
+        "source_system": str(row["source_system"]),
+        "request_source": str(row["request_source"]),
         "source_doc_type": str(row["source_doc_type"]),
         "source_doc_id": int(row["source_doc_id"]),
         "source_doc_no": str(row["source_doc_no"]),
-        "source_ref": source_ref,
+        "source_ref": str(row["source_ref"]),
         "export_status": str(row["export_status"]),
         "logistics_status": str(row["logistics_status"]),
-        "platform": platform,
-        "store_code": store_code,
-        "platform_order_no": platform_order_no,
-        "warehouse_id": warehouse_id,
-        "receiver_name": receiver_name,
-        "receiver_phone": receiver_phone,
-        "province": province,
-        "city": city,
-        "district": district,
-        "address_detail": address_detail,
-        "outbound_completed_at": outbound_completed_at,
+        "platform": row.get("platform"),
+        "store_code": row.get("store_code"),
+        "order_ref": row.get("order_ref"),
+        "ext_order_no": row.get("ext_order_no"),
+        "warehouse_id": int(row["warehouse_id"]) if row.get("warehouse_id") is not None else None,
+        "warehouse_name_snapshot": row.get("warehouse_name_snapshot"),
+        "receiver_name": row.get("receiver_name"),
+        "receiver_phone": row.get("receiver_phone"),
+        "receiver_province": row.get("receiver_province"),
+        "receiver_city": row.get("receiver_city"),
+        "receiver_district": row.get("receiver_district"),
+        "receiver_address": row.get("receiver_address"),
+        "receiver_postcode": row.get("receiver_postcode"),
+        "outbound_event_id": int(row["outbound_event_id"]) if row.get("outbound_event_id") is not None else None,
+        "outbound_source_ref": row.get("outbound_source_ref"),
+        "outbound_completed_at": row.get("outbound_completed_at"),
+        "shipment_items": _json_array(row.get("shipment_items")),
         "handoff_created_at": row["handoff_created_at"],
         "handoff_updated_at": row["handoff_updated_at"],
-        "packages": packages,
-        "source_snapshot": snapshot,
     }
 
 
@@ -179,6 +87,8 @@ async def count_logistics_ready_records(
                 f"""
                 SELECT COUNT(*)
                 FROM wms_logistics_export_records r
+                JOIN wms_logistics_handoff_payloads p
+                  ON p.export_record_id = r.id
                 WHERE {where_sql}
                 """
             ),
@@ -210,41 +120,40 @@ async def list_logistics_ready_records(
                 text(
                     f"""
                     SELECT
+                      p.source_system,
+                      p.request_source,
                       r.source_doc_type,
                       r.source_doc_id,
                       r.source_doc_no,
                       r.source_ref,
                       r.export_status,
                       r.logistics_status,
-                      r.source_snapshot,
+
+                      p.platform,
+                      p.store_code,
+                      p.order_ref,
+                      p.ext_order_no,
+                      p.warehouse_id,
+                      p.warehouse_name_snapshot,
+
+                      p.receiver_name,
+                      p.receiver_phone,
+                      p.receiver_province,
+                      p.receiver_city,
+                      p.receiver_district,
+                      p.receiver_address,
+                      p.receiver_postcode,
+
+                      p.outbound_event_id,
+                      p.outbound_source_ref,
+                      p.outbound_completed_at,
+                      p.shipment_items,
+
                       r.created_at AS handoff_created_at,
-                      r.updated_at AS handoff_updated_at,
-
-                      o.platform,
-                      o.store_code,
-                      o.ext_order_no AS platform_order_no,
-                      f.actual_warehouse_id AS order_actual_warehouse_id,
-                      f.outbound_completed_at AS outbound_completed_at,
-                      a.receiver_name,
-                      a.receiver_phone,
-                      a.province,
-                      a.city,
-                      a.district,
-                      a.detail AS address_detail,
-
-                      md.warehouse_id AS manual_warehouse_id,
-                      md.recipient_name AS manual_recipient_name
+                      r.updated_at AS handoff_updated_at
                     FROM wms_logistics_export_records r
-                    LEFT JOIN orders o
-                      ON r.source_doc_type = 'ORDER_OUTBOUND'
-                     AND o.id = r.source_doc_id
-                    LEFT JOIN order_fulfillment f
-                      ON f.order_id = o.id
-                    LEFT JOIN order_address a
-                      ON a.order_id = o.id
-                    LEFT JOIN manual_outbound_docs md
-                      ON r.source_doc_type = 'MANUAL_OUTBOUND'
-                     AND md.id = r.source_doc_id
+                    JOIN wms_logistics_handoff_payloads p
+                      ON p.export_record_id = r.id
                     WHERE {where_sql}
                     ORDER BY r.created_at ASC, r.id ASC
                     LIMIT :limit OFFSET :offset

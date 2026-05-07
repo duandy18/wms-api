@@ -32,6 +32,7 @@ from app.wms.outbound.repos.outbound_event_repo import (
     update_stocks_lot_qty,
 )
 from app.wms.outbound.repos.logistics_export_record_repo import (
+    upsert_logistics_handoff_payload,
     upsert_pending_logistics_export_record,
 )
 from app.wms.inventory_adjustment.count.services.count_freeze_guard_service import (
@@ -137,6 +138,99 @@ def _order_source_doc_no(order: Mapping[str, Any], *, order_id: int) -> str:
     return str(order_id)
 
 
+def _build_shipment_items(saved_lines: List[Mapping[str, Any]]) -> List[Dict[str, Any]]:
+    items: List[Dict[str, Any]] = []
+    for line in saved_lines:
+        order_line_id = line.get("order_line_id")
+        manual_doc_line_id = line.get("manual_doc_line_id")
+
+        if order_line_id is not None:
+            source_line_type = "ORDER_LINE"
+            source_line_id = int(order_line_id)
+        elif manual_doc_line_id is not None:
+            source_line_type = "MANUAL_OUTBOUND_LINE"
+            source_line_id = int(manual_doc_line_id)
+        else:
+            source_line_type = "UNKNOWN"
+            source_line_id = None
+
+        items.append(
+            {
+                "source_line_type": source_line_type,
+                "source_line_id": source_line_id,
+                "source_line_no": int(line["ref_line"]) if line.get("ref_line") is not None else None,
+                "item_id": int(line["item_id"]) if line.get("item_id") is not None else None,
+                "item_sku_snapshot": _clean_text(line.get("item_sku_snapshot")),
+                "item_name_snapshot": _clean_text(line.get("item_name_snapshot")),
+                "item_spec_snapshot": _clean_text(line.get("item_spec_snapshot")),
+                "qty_outbound": int(line["qty_outbound"]),
+            }
+        )
+
+    return items
+
+
+async def _load_warehouse_name_snapshot(
+    session: AsyncSession,
+    *,
+    warehouse_id: int,
+) -> str | None:
+    row = (
+        await session.execute(
+            text(
+                """
+                SELECT name
+                FROM warehouses
+                WHERE id = :warehouse_id
+                LIMIT 1
+                """
+            ),
+            {"warehouse_id": int(warehouse_id)},
+        )
+    ).scalar_one_or_none()
+
+    return _clean_text(row)
+
+
+async def _load_order_handoff_payload_context(
+    session: AsyncSession,
+    *,
+    order_id: int,
+) -> Mapping[str, Any]:
+    row = (
+        await session.execute(
+            text(
+                """
+                SELECT
+                  o.platform,
+                  o.store_code,
+                  o.ext_order_no,
+                  o.buyer_name,
+                  o.buyer_phone,
+                  a.receiver_name,
+                  a.receiver_phone,
+                  a.province,
+                  a.city,
+                  a.district,
+                  a.detail,
+                  a.zipcode
+                FROM orders o
+                LEFT JOIN order_address a
+                  ON a.order_id = o.id
+                WHERE o.id = :order_id
+                LIMIT 1
+                """
+            ),
+            {"order_id": int(order_id)},
+        )
+    ).mappings().first()
+
+    if row is None:
+        raise ValueError(f"order_not_found: id={order_id}")
+
+    return row
+
+
 async def load_order_submit_context(
     session: AsyncSession,
     *,
@@ -174,7 +268,8 @@ async def load_manual_submit_context(
                       id,
                       warehouse_id,
                       doc_no,
-                      status
+                      status,
+                      recipient_name
                     FROM manual_outbound_docs
                     WHERE id = :doc_id
                     LIMIT 1
@@ -564,20 +659,55 @@ async def submit_order_outbound_event(
         progress_by_line=progress_by_line,
         normalized_lines=normalized,
     ):
-        await upsert_pending_logistics_export_record(
+        source_doc_no = _order_source_doc_no(ctx.order, order_id=int(order_id))
+        export_record_id = await upsert_pending_logistics_export_record(
             session,
             source_doc_type="ORDER_OUTBOUND",
             source_doc_id=int(order_id),
-            source_doc_no=_order_source_doc_no(ctx.order, order_id=int(order_id)),
+            source_doc_no=source_doc_no,
             source_ref=f"WMS:ORDER_OUTBOUND:{int(order_id)}",
-            source_snapshot={
-                "order": dict(ctx.order),
-                "wms_event_id": int(event["id"]),
-                "wms_source_ref": str(event["source_ref"]),
-                "warehouse_id": int(event["warehouse_id"]),
-                "occurred_at": event["occurred_at"],
-                "lines": normalized,
-            },
+        )
+        order_payload = await _load_order_handoff_payload_context(
+            session,
+            order_id=int(order_id),
+        )
+        platform = _clean_text(order_payload.get("platform"))
+        store_code = _clean_text(order_payload.get("store_code"))
+        ext_order_no = _clean_text(order_payload.get("ext_order_no"))
+        order_ref = (
+            f"ORD:{str(platform).upper()}:{store_code}:{ext_order_no}"
+            if platform and store_code and ext_order_no
+            else None
+        )
+        await upsert_logistics_handoff_payload(
+            session,
+            export_record_id=export_record_id,
+            source_doc_type="ORDER_OUTBOUND",
+            source_doc_id=int(order_id),
+            source_doc_no=source_doc_no,
+            source_ref=f"WMS:ORDER_OUTBOUND:{int(order_id)}",
+            platform=platform,
+            store_code=store_code,
+            order_ref=order_ref,
+            ext_order_no=ext_order_no,
+            warehouse_id=int(event["warehouse_id"]),
+            warehouse_name_snapshot=await _load_warehouse_name_snapshot(
+                session,
+                warehouse_id=int(event["warehouse_id"]),
+            ),
+            receiver_name=_clean_text(order_payload.get("receiver_name"))
+            or _clean_text(order_payload.get("buyer_name")),
+            receiver_phone=_clean_text(order_payload.get("receiver_phone"))
+            or _clean_text(order_payload.get("buyer_phone")),
+            receiver_province=_clean_text(order_payload.get("province")),
+            receiver_city=_clean_text(order_payload.get("city")),
+            receiver_district=_clean_text(order_payload.get("district")),
+            receiver_address=_clean_text(order_payload.get("detail")),
+            receiver_postcode=_clean_text(order_payload.get("zipcode")),
+            outbound_event_id=int(event["id"]),
+            outbound_source_ref=str(event["source_ref"]),
+            outbound_completed_at=event["occurred_at"],
+            shipment_items=_build_shipment_items(saved_lines),
         )
 
     return OrderOutboundSubmitOut(
@@ -626,20 +756,41 @@ async def submit_manual_outbound_event(
         for row in progress_rows
     ):
         await complete_manual_doc(session, doc_id=int(doc_id))
-        await upsert_pending_logistics_export_record(
+        source_doc_no = str(ctx.doc["doc_no"])
+        export_record_id = await upsert_pending_logistics_export_record(
             session,
             source_doc_type="MANUAL_OUTBOUND",
             source_doc_id=int(doc_id),
-            source_doc_no=str(ctx.doc["doc_no"]),
+            source_doc_no=source_doc_no,
             source_ref=f"WMS:MANUAL_OUTBOUND:{int(doc_id)}",
-            source_snapshot={
-                "doc": dict(ctx.doc),
-                "wms_event_id": int(event["id"]),
-                "wms_source_ref": str(event["source_ref"]),
-                "warehouse_id": int(event["warehouse_id"]),
-                "occurred_at": event["occurred_at"],
-                "lines": normalized,
-            },
+        )
+        await upsert_logistics_handoff_payload(
+            session,
+            export_record_id=export_record_id,
+            source_doc_type="MANUAL_OUTBOUND",
+            source_doc_id=int(doc_id),
+            source_doc_no=source_doc_no,
+            source_ref=f"WMS:MANUAL_OUTBOUND:{int(doc_id)}",
+            platform=None,
+            store_code=None,
+            order_ref=None,
+            ext_order_no=None,
+            warehouse_id=int(event["warehouse_id"]),
+            warehouse_name_snapshot=await _load_warehouse_name_snapshot(
+                session,
+                warehouse_id=int(event["warehouse_id"]),
+            ),
+            receiver_name=_clean_text(ctx.doc.get("recipient_name")),
+            receiver_phone=None,
+            receiver_province=None,
+            receiver_city=None,
+            receiver_district=None,
+            receiver_address=None,
+            receiver_postcode=None,
+            outbound_event_id=int(event["id"]),
+            outbound_source_ref=str(event["source_ref"]),
+            outbound_completed_at=event["occurred_at"],
+            shipment_items=_build_shipment_items(saved_lines),
         )
 
     return ManualOutboundSubmitOut(

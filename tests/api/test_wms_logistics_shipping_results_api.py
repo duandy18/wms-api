@@ -184,46 +184,115 @@ async def _seed_order_exported_record(
     )
 
     source_ref = f"WMS:ORDER_OUTBOUND:{order_id}"
+    export_record_id = int(
+        (
+            await session.execute(
+                text(
+                    """
+                    INSERT INTO wms_logistics_export_records (
+                      source_doc_type,
+                      source_doc_id,
+                      source_doc_no,
+                      source_ref,
+                      export_status,
+                      logistics_status,
+                      logistics_request_id,
+                      logistics_request_no,
+                      created_at,
+                      updated_at
+                    )
+                    VALUES (
+                      'ORDER_OUTBOUND',
+                      :source_doc_id,
+                      :source_doc_no,
+                      :source_ref,
+                      :export_status,
+                      :logistics_status,
+                      :logistics_request_id,
+                      :logistics_request_no,
+                      :now,
+                      :now
+                    )
+                    RETURNING id
+                    """
+                ),
+                {
+                    "source_doc_id": int(order_id),
+                    "source_doc_no": ext_order_no,
+                    "source_ref": source_ref,
+                    "export_status": export_status,
+                    "logistics_status": logistics_status,
+                    "logistics_request_id": int(logistics_request_id),
+                    "logistics_request_no": logistics_request_no,
+                    "now": now,
+                },
+            )
+        ).scalar_one()
+    )
+
     await session.execute(
         text(
             """
-            INSERT INTO wms_logistics_export_records (
+            INSERT INTO wms_logistics_handoff_payloads (
+              export_record_id,
               source_doc_type,
               source_doc_id,
               source_doc_no,
               source_ref,
-              export_status,
-              logistics_status,
-              logistics_request_id,
-              logistics_request_no,
-              source_snapshot,
+              platform,
+              store_code,
+              order_ref,
+              ext_order_no,
+              warehouse_id,
+              warehouse_name_snapshot,
+              receiver_name,
+              receiver_phone,
+              receiver_province,
+              receiver_city,
+              receiver_district,
+              receiver_address,
+              outbound_completed_at,
+              shipment_items,
               created_at,
               updated_at
             )
             VALUES (
+              :export_record_id,
               'ORDER_OUTBOUND',
               :source_doc_id,
               :source_doc_no,
               :source_ref,
-              :export_status,
-              :logistics_status,
-              :logistics_request_id,
-              :logistics_request_no,
-              CAST(:source_snapshot AS jsonb),
+              :platform,
+              :store_code,
+              :order_ref,
+              :ext_order_no,
+              :warehouse_id,
+              :warehouse_name_snapshot,
+              '张三',
+              '13800000000',
+              '浙江省',
+              '杭州市',
+              '余杭区',
+              '测试路 1 号',
+              :now,
+              CAST(:shipment_items AS jsonb),
               :now,
               :now
             )
             """
         ),
         {
+            "export_record_id": export_record_id,
             "source_doc_id": int(order_id),
             "source_doc_no": ext_order_no,
             "source_ref": source_ref,
-            "export_status": export_status,
-            "logistics_status": logistics_status,
-            "logistics_request_id": int(logistics_request_id),
-            "logistics_request_no": logistics_request_no,
-            "source_snapshot": json.dumps({"warehouse_id": warehouse_id}, ensure_ascii=False),
+            "platform": platform,
+            "store_code": store_code,
+            "order_ref": f"ORD:{platform}:{store_code}:{ext_order_no}",
+            "ext_order_no": ext_order_no,
+            "warehouse_id": int(warehouse_id),
+            "warehouse_name_snapshot": f"WH-{warehouse_id}",
+            "shipment_items": "[]",
             "now": now,
         },
     )

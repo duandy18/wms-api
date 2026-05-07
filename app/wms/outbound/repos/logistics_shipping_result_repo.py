@@ -1,7 +1,6 @@
 # app/wms/outbound/repos/logistics_shipping_result_repo.py
 from __future__ import annotations
 
-import json
 from datetime import datetime
 from decimal import Decimal
 from typing import Any, Mapping
@@ -30,20 +29,6 @@ def _decimal_or_none(value: Decimal | int | float | str | None) -> Decimal | Non
     return Decimal(str(value))
 
 
-def _snapshot_dict(value: object | None) -> dict[str, Any]:
-    if isinstance(value, dict):
-        return value
-    if value is None:
-        return {}
-    if isinstance(value, str):
-        try:
-            parsed = json.loads(value)
-        except json.JSONDecodeError:
-            return {}
-        return parsed if isinstance(parsed, dict) else {}
-    return {}
-
-
 async def _load_shipping_result_context(
     session: AsyncSession,
     *,
@@ -62,29 +47,17 @@ async def _load_shipping_result_context(
                   r.logistics_status,
                   r.logistics_request_id,
                   r.logistics_request_no,
-                  r.source_snapshot,
 
-                  o.platform AS order_platform,
-                  o.store_code AS order_store_code,
-                  o.ext_order_no AS order_ext_order_no,
-                  f.actual_warehouse_id AS order_actual_warehouse_id,
-                  f.planned_warehouse_id AS order_planned_warehouse_id,
-                  a.province AS order_dest_province,
-                  a.city AS order_dest_city,
-
-                  md.warehouse_id AS manual_warehouse_id,
-                  md.doc_no AS manual_doc_no
+                  p.platform,
+                  p.store_code,
+                  p.order_ref,
+                  p.ext_order_no,
+                  p.warehouse_id,
+                  p.receiver_province,
+                  p.receiver_city
                 FROM wms_logistics_export_records r
-                LEFT JOIN orders o
-                  ON r.source_doc_type = 'ORDER_OUTBOUND'
-                 AND o.id = r.source_doc_id
-                LEFT JOIN order_fulfillment f
-                  ON f.order_id = o.id
-                LEFT JOIN order_address a
-                  ON a.order_id = o.id
-                LEFT JOIN manual_outbound_docs md
-                  ON r.source_doc_type = 'MANUAL_OUTBOUND'
-                 AND md.id = r.source_doc_id
+                JOIN wms_logistics_handoff_payloads p
+                  ON p.export_record_id = r.id
                 WHERE r.source_ref = :source_ref
                 FOR UPDATE OF r
                 """
@@ -96,50 +69,35 @@ async def _load_shipping_result_context(
     return dict(row) if row else None
 
 
-def _snapshot_warehouse_id(snapshot: Mapping[str, Any]) -> int | None:
-    value = snapshot.get("warehouse_id")
-    if value is None:
-        return None
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return None
-
-
 def _base_shipping_record_values(
     ctx: Mapping[str, Any],
 ) -> dict[str, object]:
     source_doc_type = str(ctx["source_doc_type"])
-    snapshot = _snapshot_dict(ctx.get("source_snapshot"))
 
     if source_doc_type == "ORDER_OUTBOUND":
-        platform = _clean_required(ctx.get("order_platform"), field="platform").upper()
-        store_code = _clean_required(ctx.get("order_store_code"), field="store_code")
-        ext_order_no = _clean_required(ctx.get("order_ext_order_no"), field="ext_order_no")
-        warehouse_id = (
-            ctx.get("order_actual_warehouse_id")
-            or ctx.get("order_planned_warehouse_id")
-            or _snapshot_warehouse_id(snapshot)
-        )
+        platform = _clean_required(ctx.get("platform"), field="platform").upper()
+        store_code = _clean_required(ctx.get("store_code"), field="store_code")
+        order_ref = _clean(ctx.get("order_ref"))
+        if order_ref is None:
+            ext_order_no = _clean_required(ctx.get("ext_order_no"), field="ext_order_no")
+            order_ref = f"ORD:{platform}:{store_code}:{ext_order_no}"
+
+        warehouse_id = ctx.get("warehouse_id")
         if warehouse_id is None:
             raise ValueError("warehouse_id_required")
 
         return {
             "platform": platform,
             "store_code": store_code,
-            "order_ref": f"ORD:{platform}:{store_code}:{ext_order_no}",
+            "order_ref": order_ref,
             "warehouse_id": int(warehouse_id),
-            "dest_province": _clean(ctx.get("order_dest_province")),
-            "dest_city": _clean(ctx.get("order_dest_city")),
-            "source_snapshot": snapshot,
+            "dest_province": _clean(ctx.get("receiver_province")),
+            "dest_city": _clean(ctx.get("receiver_city")),
         }
 
     if source_doc_type == "MANUAL_OUTBOUND":
-        doc_no = _clean_required(
-            ctx.get("manual_doc_no") or ctx.get("source_doc_no"),
-            field="manual_doc_no",
-        )
-        warehouse_id = ctx.get("manual_warehouse_id") or _snapshot_warehouse_id(snapshot)
+        doc_no = _clean_required(ctx.get("source_doc_no"), field="manual_doc_no")
+        warehouse_id = ctx.get("warehouse_id")
         if warehouse_id is None:
             raise ValueError("warehouse_id_required")
 
@@ -150,7 +108,6 @@ def _base_shipping_record_values(
             "warehouse_id": int(warehouse_id),
             "dest_province": None,
             "dest_city": None,
-            "source_snapshot": snapshot,
         }
 
     raise ValueError("unsupported_source_doc_type")
@@ -384,8 +341,7 @@ async def apply_logistics_shipping_results(
                  RETURNING
                    source_ref,
                    logistics_status,
-                   logistics_completed_at,
-                   source_snapshot
+                   logistics_completed_at
                 """
             ),
             {
@@ -408,5 +364,4 @@ async def apply_logistics_shipping_results(
         "logistics_completed_at": row["logistics_completed_at"],
         "shipping_record_ids": shipping_record_ids,
         "packages_count": len(shipping_record_ids),
-        "source_snapshot": _snapshot_dict(row["source_snapshot"]),
     }
