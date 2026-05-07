@@ -54,6 +54,7 @@ def mount_routers(app: FastAPI) -> None:
     from app.wms.outbound.routers.lot_candidates import router as outbound_lot_candidates_router
     from app.wms.outbound.routers.logistics_ready import router as logistics_ready_router
     from app.wms.outbound.routers.logistics_import_results import router as logistics_import_results_router
+    from app.wms.outbound.routers.logistics_shipping_results import router as logistics_shipping_results_router
     from app.wms.outbound.routers.print_jobs import router as print_jobs_router
     from app.procurement.routers.purchase_orders import router as purchase_orders_router
     from app.procurement.routers.purchase_reports import router as purchase_reports_router
@@ -109,6 +110,7 @@ def mount_routers(app: FastAPI) -> None:
     app.include_router(outbound_lot_candidates_router)
     app.include_router(logistics_ready_router)
     app.include_router(logistics_import_results_router)
+    app.include_router(logistics_shipping_results_router)
     app.include_router(outbound_summary_router)
     app.include_router(outbound_reversal_router)
 
