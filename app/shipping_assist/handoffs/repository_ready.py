@@ -63,6 +63,8 @@ def _build_ready_where(
     clauses = [
         "1 = 1",
         "p.outbound_event_id IS NOT NULL",
+        "NULLIF(BTRIM(COALESCE(p.outbound_source_ref, '')), '') IS NOT NULL",
+        "p.outbound_completed_at IS NOT NULL",
         "jsonb_array_length(p.shipment_items) > 0",
         "NULLIF(BTRIM(COALESCE(p.receiver_name, '')), '') IS NOT NULL",
         "NULLIF(BTRIM(COALESCE(p.receiver_phone, '')), '') IS NOT NULL",
