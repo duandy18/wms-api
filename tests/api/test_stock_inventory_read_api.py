@@ -124,6 +124,63 @@ async def test_stock_inventory_q_filter_uses_pms_export_item_search(
 
 
 @pytest.mark.asyncio
+async def test_stock_inventory_explain_uses_pms_export_item_metadata(
+    client: AsyncClient,
+    session: AsyncSession,
+) -> None:
+    headers = await _login_admin_headers(client)
+
+    item_id = 910003
+    warehouse_id = 1
+    lot_code = "UT-STOCK-EXPLAIN-001"
+
+    await ensure_wh_loc_item(session, wh=warehouse_id, loc=warehouse_id, item=item_id)
+    await session.execute(
+        text("UPDATE items SET expiry_policy='REQUIRED'::expiry_policy WHERE id=:i"),
+        {"i": int(item_id)},
+    )
+    await seed_supplier_lot_slot(
+        session,
+        item=item_id,
+        loc=warehouse_id,
+        lot_code=lot_code,
+        qty=6,
+        days=150,
+    )
+    await session.commit()
+
+    resp = await client.post(
+        "/stock/inventory/explain",
+        json={
+            "item_id": item_id,
+            "warehouse_id": warehouse_id,
+            "lot_code": lot_code,
+            "limit": 20,
+        },
+        headers=headers,
+    )
+    assert resp.status_code == 200, resp.text
+
+    data = resp.json()
+    assert data["anchor"]["item_id"] == item_id
+    assert data["anchor"]["item_name"] == f"ITEM-{item_id}"
+    assert data["anchor"]["lot_code"] == lot_code
+    assert data["anchor"]["base_item_uom_id"] is None or isinstance(
+        data["anchor"]["base_item_uom_id"], int
+    )
+    assert data["anchor"]["base_uom_name"] is None or isinstance(
+        data["anchor"]["base_uom_name"], str
+    )
+
+    rows = data["ledger_rows"]
+    assert rows, data
+    assert all(int(row["item_id"]) == item_id for row in rows)
+    assert all(row["item_name"] == f"ITEM-{item_id}" for row in rows)
+    assert all("batch_code" not in row for row in rows)
+
+
+
+@pytest.mark.asyncio
 async def test_stock_inventory_detail_returns_totals_and_slices(
     client: AsyncClient,
     session: AsyncSession,
