@@ -14,6 +14,9 @@ from app.oms.fsku.models.fsku import Fsku, FskuComponent
 from app.oms.fsku.services.fsku_service_errors import FskuBadInput, FskuConflict, FskuNotFound
 from app.oms.fsku.services.fsku_service_mapper import to_detail
 from app.oms.fsku.services.fsku_service_utils import normalize_code, normalize_shape, utc_now
+from app.pms.export.sku_codes.services.sku_code_read_service import (
+    PmsExportSkuCodeReadService,
+)
 
 
 _SKU_TOKEN = re.compile(r"^[A-Z0-9][A-Z0-9._-]{0,127}$")
@@ -145,61 +148,26 @@ def parse_fsku_expr(expr: object) -> ParsedExpression:
 
 
 def _resolve_component(db: Session, parsed: ParsedComponent) -> ResolvedComponent:
-    row = (
-        db.execute(
-            text(
-                """
-                WITH matched_code AS (
-                  SELECT
-                    c.id AS sku_code_id,
-                    c.item_id,
-                    c.code AS sku_code
-                  FROM item_sku_codes c
-                  WHERE lower(c.code) = lower(:code)
-                    AND c.is_active = TRUE
-                  ORDER BY c.is_primary DESC, c.id ASC
-                  LIMIT 1
-                ),
-                matched_uom AS (
-                  SELECT DISTINCT ON (u.item_id)
-                    u.id AS item_uom_id,
-                    u.item_id,
-                    COALESCE(NULLIF(u.display_name, ''), NULLIF(u.uom, ''), u.uom) AS uom_name
-                  FROM item_uoms u
-                  JOIN matched_code mc ON mc.item_id = u.item_id
-                  WHERE u.is_outbound_default = TRUE OR u.is_base = TRUE
-                  ORDER BY u.item_id, u.is_outbound_default DESC, u.is_base DESC, u.id ASC
-                )
-                SELECT
-                  mc.sku_code_id,
-                  mc.item_id,
-                  mc.sku_code,
-                  i.name AS item_name,
-                  mu.item_uom_id,
-                  mu.uom_name
-                FROM matched_code mc
-                JOIN items i ON i.id = mc.item_id
-                JOIN matched_uom mu ON mu.item_id = mc.item_id
-                """
-            ),
-            {"code": parsed.component_sku_code},
-        )
-        .mappings()
-        .first()
+    resolved = PmsExportSkuCodeReadService(
+        db
+    ).resolve_active_code_for_outbound_default(
+        code=parsed.component_sku_code,
+        enabled_only=True,
     )
 
-    if row is None:
+    if resolved is None:
         raise ValueError(f"组件 SKU 未命中启用商品编码或缺少出库/基础包装：{parsed.component_sku_code}")
 
     return ResolvedComponent(
         parsed=parsed,
-        resolved_item_id=int(row["item_id"]),
-        resolved_item_sku_code_id=int(row["sku_code_id"]),
-        resolved_item_uom_id=int(row["item_uom_id"]),
-        sku_code_snapshot=str(row["sku_code"]),
-        item_name_snapshot=str(row["item_name"]),
-        uom_snapshot=str(row["uom_name"]),
+        resolved_item_id=int(resolved.item_id),
+        resolved_item_sku_code_id=int(resolved.sku_code_id),
+        resolved_item_uom_id=int(resolved.item_uom_id),
+        sku_code_snapshot=str(resolved.sku_code),
+        item_name_snapshot=str(resolved.item_name),
+        uom_snapshot=str(resolved.uom_name),
     )
+
 
 
 def _parse_and_resolve(db: Session, *, fsku_expr: object) -> tuple[ParsedExpression, list[ResolvedComponent]]:
