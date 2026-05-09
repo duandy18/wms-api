@@ -6,7 +6,6 @@ from datetime import date, datetime, timezone
 from uuid import uuid4
 
 from fastapi import HTTPException
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.procurement.services.purchase_order_completion_sync import (
@@ -22,6 +21,7 @@ from app.wms.inbound.repos.barcode_resolve_repo import resolve_inbound_barcode
 from app.wms.inbound.repos.inbound_stock_write_repo import apply_inbound_stock
 from app.wms.inbound.repos.item_lookup_repo import get_item_policy_by_id
 from app.wms.inbound.repos.lot_resolve_repo import resolve_inbound_lot
+from app.wms.pms_projection.services.read_service import WmsPmsProjectionReadService
 from app.wms.shared.services.expiry_resolver import normalize_batch_dates_for_item
 
 UTC = timezone.utc
@@ -75,35 +75,22 @@ async def _require_ratio_to_base(
     item_id: int,
     uom_id: int,
 ) -> int:
-    row = await session.execute(
-        text(
-            """
-            SELECT ratio_to_base
-            FROM item_uoms
-            WHERE id = :uom_id
-              AND item_id = :item_id
-            LIMIT 1
-            """
-        ),
-        {
-            "uom_id": int(uom_id),
-            "item_id": int(item_id),
-        },
+    uom = await WmsPmsProjectionReadService(session).aget_uom_snapshot(
+        item_id=int(item_id),
+        item_uom_id=int(uom_id),
     )
-    m = row.mappings().first()
-    if m is None:
+    if uom is None:
         raise HTTPException(
             status_code=400,
             detail=f"uom_id 不存在或不属于该商品：item_id={int(item_id)} uom_id={int(uom_id)}",
         )
 
-    try:
-        ratio = int(m.get("ratio_to_base") or 0)
-    except Exception:
-        ratio = 0
-
+    ratio = int(uom.ratio_to_base)
     if ratio <= 0:
-        raise HTTPException(status_code=400, detail="item_uoms.ratio_to_base 非法（必须 >= 1）")
+        raise HTTPException(
+            status_code=400,
+            detail="wms_pms_item_uom_projection.ratio_to_base 非法（必须 >= 1）",
+        )
     return ratio
 
 
@@ -113,39 +100,23 @@ async def _load_item_display_snapshot(
     item_id: int,
     uom_id: int,
 ) -> tuple[str | None, str | None, str | None]:
-    row = (
-        await session.execute(
-            text(
-                """
-                SELECT
-                  i.name AS item_name_snapshot,
-                  i.spec AS item_spec_snapshot,
-                  COALESCE(NULLIF(iu.display_name, ''), iu.uom) AS actual_uom_name_snapshot
-                FROM items i
-                JOIN item_uoms iu
-                  ON iu.id = :uom_id
-                 AND iu.item_id = i.id
-                WHERE i.id = :item_id
-                LIMIT 1
-                """
-            ),
-            {
-                "item_id": int(item_id),
-                "uom_id": int(uom_id),
-            },
-        )
-    ).mappings().first()
+    reader = WmsPmsProjectionReadService(session)
+    item = await reader.aget_item_snapshot(item_id=int(item_id))
+    uom = await reader.aget_uom_snapshot(
+        item_id=int(item_id),
+        item_uom_id=int(uom_id),
+    )
 
-    if row is None:
+    if item is None or uom is None:
         raise HTTPException(
             status_code=422,
             detail=f"item_display_snapshot_not_found:{int(item_id)}:{int(uom_id)}",
         )
 
     return (
-        _norm_text(row["item_name_snapshot"]),
-        _norm_text(row["item_spec_snapshot"]),
-        _norm_text(row["actual_uom_name_snapshot"]),
+        _norm_text(item.name),
+        _norm_text(item.spec),
+        _norm_text(uom.uom_name),
     )
 
 
