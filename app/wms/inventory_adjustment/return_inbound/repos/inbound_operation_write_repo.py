@@ -7,6 +7,9 @@ from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.pms.export.items.contracts.barcode_probe import BarcodeProbeStatus
+from app.pms.export.items.services.barcode_probe_service import BarcodeProbeService
+from app.pms.export.uoms.services.uom_read_service import PmsExportUomReadService
 from app.wms.inbound.repos.item_lookup_repo import get_item_policy_by_id
 from app.wms.inbound.repos.lot_resolve_repo import resolve_inbound_lot
 from app.wms.inventory_adjustment.count.services.count_freeze_guard_service import (
@@ -51,37 +54,19 @@ async def _load_item_uom_snapshot(
     item_id: int,
     item_uom_id: int,
 ) -> tuple[int, str | None, int]:
-    row = (
-        await session.execute(
-            text(
-                """
-                SELECT
-                  iu.id AS actual_item_uom_id,
-                  COALESCE(NULLIF(iu.display_name, ''), iu.uom) AS actual_uom_name_snapshot,
-                  iu.ratio_to_base AS actual_ratio_to_base_snapshot
-                FROM item_uoms iu
-                WHERE iu.id = :item_uom_id
-                  AND iu.item_id = :item_id
-                LIMIT 1
-                """
-            ),
-            {
-                "item_uom_id": int(item_uom_id),
-                "item_id": int(item_id),
-            },
-        )
-    ).mappings().first()
-
-    if row is None:
+    uom = await PmsExportUomReadService(session).aget_by_id(
+        item_uom_id=int(item_uom_id),
+    )
+    if uom is None or int(uom.item_id) != int(item_id):
         raise HTTPException(
             status_code=409,
             detail=f"actual_item_uom_not_found_or_item_mismatch:{item_id}:{item_uom_id}",
         )
 
     return (
-        int(row["actual_item_uom_id"]),
-        row["actual_uom_name_snapshot"],
-        int(row["actual_ratio_to_base_snapshot"]),
+        int(uom.id),
+        str(uom.uom_name or uom.display_name or uom.uom or "").strip() or None,
+        int(uom.ratio_to_base),
     )
 
 
@@ -92,42 +77,33 @@ async def _resolve_barcode_uom_snapshot(
     barcode: str,
 ) -> tuple[int, str | None, int]:
     code = (barcode or "").strip()
-    row = (
-        await session.execute(
-            text(
-                """
-                SELECT
-                  iu.id AS actual_item_uom_id,
-                  COALESCE(NULLIF(iu.display_name, ''), iu.uom) AS actual_uom_name_snapshot,
-                  iu.ratio_to_base AS actual_ratio_to_base_snapshot
-                FROM item_barcodes ib
-                JOIN item_uoms iu
-                  ON iu.id = ib.item_uom_id
-                 AND iu.item_id = ib.item_id
-                WHERE ib.barcode = :barcode
-                  AND ib.active = TRUE
-                  AND ib.item_id = :item_id
-                ORDER BY ib.is_primary DESC, ib.id ASC
-                LIMIT 1
-                """
-            ),
-            {
-                "barcode": code,
-                "item_id": int(item_id),
-            },
-        )
-    ).mappings().first()
+    probe = await BarcodeProbeService(session).aprobe(barcode=code)
 
-    if row is None:
+    if (
+        probe.status != BarcodeProbeStatus.BOUND
+        or probe.active is not True
+        or probe.item_id is None
+        or probe.item_uom_id is None
+        or int(probe.item_id) != int(item_id)
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail=f"barcode_unbound_or_item_mismatch:{code}",
+        )
+
+    uom = await PmsExportUomReadService(session).aget_by_id(
+        item_uom_id=int(probe.item_uom_id),
+    )
+    if uom is None or int(uom.item_id) != int(item_id):
         raise HTTPException(
             status_code=422,
             detail=f"barcode_unbound_or_item_mismatch:{code}",
         )
 
     return (
-        int(row["actual_item_uom_id"]),
-        row["actual_uom_name_snapshot"],
-        int(row["actual_ratio_to_base_snapshot"]),
+        int(uom.id),
+        str(uom.uom_name or uom.display_name or uom.uom or "").strip() or None,
+        int(uom.ratio_to_base),
     )
 
 
