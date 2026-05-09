@@ -188,10 +188,10 @@ async def get_inbound_event_detail(
         SELECT
             iel.line_no,
             iel.item_id,
-            it.name AS item_name,
-            it.sku AS item_sku,
+            iel.item_name_snapshot AS item_name,
+            NULL::text AS item_sku,
             iel.actual_uom_id,
-            COALESCE(NULLIF(iu.display_name, ''), iu.uom) AS actual_uom_name,
+            iel.actual_uom_name_snapshot AS actual_uom_name,
             iel.barcode_input,
             iel.actual_qty_input,
             iel.actual_ratio_to_base_snapshot,
@@ -204,10 +204,6 @@ async def get_inbound_event_detail(
             iel.po_line_id,
             iel.remark
           FROM inbound_event_lines AS iel
-          LEFT JOIN items AS it
-            ON it.id = iel.item_id
-          LEFT JOIN item_uoms AS iu
-            ON iu.id = iel.actual_uom_id
           LEFT JOIN lots AS lo
             ON lo.id = iel.lot_id
          WHERE iel.event_id = :event_id
