@@ -9,6 +9,9 @@ from typing import Optional
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.pms.export.items.contracts.item_policy import ItemPolicy
+from app.pms.export.items.services.item_read_service import ItemReadService
+
 
 def normalize_lot_code(code: str | None) -> tuple[str, str]:
     """
@@ -145,33 +148,42 @@ def _shift_date_by_shelf_life(
     return None
 
 
+async def _load_item_policy(
+    session: AsyncSession,
+    *,
+    item_id: int,
+) -> ItemPolicy:
+    policy = await ItemReadService(session).aget_policy_by_id(item_id=int(item_id))
+    if policy is None:
+        raise ValueError("item_not_found")
+    return policy
+
+
+def _item_policy_expiry_context(policy: ItemPolicy) -> tuple[str, int | None, str | None]:
+    expiry_policy = str(policy.expiry_policy or "").strip().upper()
+    shelf_life_value = _normalize_positive_int(policy.shelf_life_value)
+    shelf_life_unit = _normalize_shelf_life_unit(policy.shelf_life_unit)
+    return expiry_policy, shelf_life_value, shelf_life_unit
+
+
+def _item_policy_snapshot_params(policy: ItemPolicy) -> dict[str, object]:
+    return {
+        "item_lot_source_policy_snapshot": str(policy.lot_source_policy),
+        "item_expiry_policy_snapshot": str(policy.expiry_policy),
+        "item_derivation_allowed_snapshot": bool(policy.derivation_allowed),
+        "item_uom_governance_enabled_snapshot": bool(policy.uom_governance_enabled),
+        "item_shelf_life_value_snapshot": _normalize_positive_int(policy.shelf_life_value),
+        "item_shelf_life_unit_snapshot": _normalize_shelf_life_unit(policy.shelf_life_unit),
+    }
+
+
 async def _load_item_expiry_context(
     session: AsyncSession,
     *,
     item_id: int,
 ) -> tuple[str, int | None, str | None]:
-    row = await session.execute(
-        text(
-            """
-            SELECT
-                expiry_policy,
-                shelf_life_value,
-                shelf_life_unit
-              FROM items
-             WHERE id = :i
-             LIMIT 1
-            """
-        ),
-        {"i": int(item_id)},
-    )
-    got = row.mappings().first()
-    if got is None:
-        raise ValueError("item_not_found")
-
-    expiry_policy = str(got["expiry_policy"] or "").strip().upper()
-    shelf_life_value = _normalize_positive_int(got["shelf_life_value"])
-    shelf_life_unit = _normalize_shelf_life_unit(got["shelf_life_unit"])
-    return expiry_policy, shelf_life_value, shelf_life_unit
+    policy = await _load_item_policy(session, item_id=int(item_id))
+    return _item_policy_expiry_context(policy)
 
 
 async def _load_item_expiry_policy(
@@ -299,6 +311,9 @@ async def ensure_internal_lot_singleton(
     if got0 is not None:
         return int(got0)
 
+    item_policy = await _load_item_policy(session, item_id=int(item_id))
+    policy_snapshot = _item_policy_snapshot_params(item_policy)
+
     row = await session.execute(
         text(
             """
@@ -316,26 +331,31 @@ async def ensure_internal_lot_singleton(
                 item_shelf_life_value_snapshot,
                 item_shelf_life_unit_snapshot
             )
-            SELECT
+            VALUES (
                 :w,
                 :i,
                 'INTERNAL',
                 NULL,
                 :rid,
                 :rln,
-                it.lot_source_policy,
-                it.expiry_policy,
-                it.derivation_allowed,
-                it.uom_governance_enabled,
-                it.shelf_life_value,
-                it.shelf_life_unit
-              FROM items it
-             WHERE it.id = :i
+                :item_lot_source_policy_snapshot,
+                :item_expiry_policy_snapshot,
+                :item_derivation_allowed_snapshot,
+                :item_uom_governance_enabled_snapshot,
+                :item_shelf_life_value_snapshot,
+                :item_shelf_life_unit_snapshot
+            )
             ON CONFLICT DO NOTHING
             RETURNING id
             """
         ),
-        {"w": int(warehouse_id), "i": int(item_id), "rid": rid, "rln": rln},
+        {
+            "w": int(warehouse_id),
+            "i": int(item_id),
+            "rid": rid,
+            "rln": rln,
+            **policy_snapshot,
+        },
     )
     got = row.scalar_one_or_none()
     if got is not None:
@@ -382,10 +402,9 @@ async def ensure_lot_full(
     code_raw, _code_lookup = normalize_lot_code(lot_code)
     pd = _normalize_date_value(production_date)
     ed = _normalize_date_value(expiry_date)
-    expiry_policy, shelf_life_value, shelf_life_unit = await _load_item_expiry_context(
-        session,
-        item_id=int(item_id),
-    )
+    item_policy = await _load_item_policy(session, item_id=int(item_id))
+    expiry_policy, shelf_life_value, shelf_life_unit = _item_policy_expiry_context(item_policy)
+    policy_snapshot = _item_policy_snapshot_params(item_policy)
 
     if expiry_policy == "REQUIRED":
         if ed is None and pd is not None:
@@ -455,7 +474,7 @@ async def ensure_lot_full(
                     item_shelf_life_value_snapshot,
                     item_shelf_life_unit_snapshot
                 )
-                SELECT
+                VALUES (
                     :w,
                     :i,
                     'SUPPLIER',
@@ -464,14 +483,13 @@ async def ensure_lot_full(
                     :ed,
                     NULL,
                     NULL,
-                    it.lot_source_policy,
-                    it.expiry_policy,
-                    it.derivation_allowed,
-                    it.uom_governance_enabled,
-                    it.shelf_life_value,
-                    it.shelf_life_unit
-                  FROM items it
-                 WHERE it.id = :i
+                    :item_lot_source_policy_snapshot,
+                    :item_expiry_policy_snapshot,
+                    :item_derivation_allowed_snapshot,
+                    :item_uom_governance_enabled_snapshot,
+                    :item_shelf_life_value_snapshot,
+                    :item_shelf_life_unit_snapshot
+                )
                 ON CONFLICT (warehouse_id, item_id, production_date)
                 WHERE lot_code_source = 'SUPPLIER'
                   AND item_expiry_policy_snapshot = 'REQUIRED'
@@ -486,6 +504,7 @@ async def ensure_lot_full(
                 "code_raw": code_raw,
                 "pd": pd,
                 "ed": ed,
+                **policy_snapshot,
             },
         )
         got = row.scalar_one_or_none()
