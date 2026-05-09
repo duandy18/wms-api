@@ -6,7 +6,7 @@ from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.pms.export.items.services.item_read_service import ItemReadService
+from app.wms.pms_projection.services.read_service import WmsPmsProjectionReadService
 from app.wms.shared.services.expiry_rules import (
     ShelfLife,
     ShelfLifeUnit,
@@ -117,10 +117,11 @@ async def normalize_batch_dates_for_item(
     if production_date is None and expiry_date is None:
         return None, None, None
 
-    svc = ItemReadService(session)
-    policy = await svc.aget_policy_by_id(item_id=int(item_id))
+    policy = await WmsPmsProjectionReadService(session).aget_policy_snapshot(
+        item_id=int(item_id),
+    )
     if policy is None:
-        # 未找到 item：保守返回原值，不在共享层擅自抛错
+        # 未找到 item policy projection：保守返回原值，不在共享层擅自抛错
         if production_date is not None and expiry_date is not None:
             if production_date > expiry_date:
                 raise ValueError("production_date cannot be later than expiry_date")
