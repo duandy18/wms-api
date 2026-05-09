@@ -6,6 +6,21 @@ from typing import Any, Dict, List, Mapping
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.pms.export.items.services.item_read_service import ItemReadService
+from app.pms.export.uoms.contracts.uom import PmsExportUom
+from app.pms.export.uoms.services.uom_read_service import PmsExportUomReadService
+
+
+def _pick_base_uom(rows: list[PmsExportUom]) -> PmsExportUom | None:
+    if not rows:
+        return None
+
+    for row in rows:
+        if bool(row.is_base):
+            return row
+
+    return rows[0]
+
 
 async def load_order_outbound_head(
     session: AsyncSession,
@@ -58,44 +73,27 @@ async def load_order_outbound_lines(
     order_id: int,
 ) -> List[Dict[str, Any]]:
     """
-    订单出库页：读取订单行（来源真相 = order_lines + item display）
+    订单出库页：读取订单行（来源真相 = order_lines + PMS export display）
 
     说明：
-    - 核心真相是 order_lines
-    - 为作业页补充商品展示字段：sku / name / spec / base_uom
-    - 单位优先取 base_uom；若异常缺失，则退回该商品第一条 item_uom
+    - 核心真相是 order_lines；
+    - 商品展示字段 sku / name / spec 通过 PMS export ItemReadService 读取；
+    - base_uom 展示通过 PMS export UOM read service 读取；
+    - 不直接 JOIN PMS 内部 items / item_uoms 表。
     """
-    rows = (
+    line_rows = (
         (
             await session.execute(
                 text(
                     """
                     SELECT
-                      ol.id,
-                      ol.order_id,
-                      ol.item_id,
-                      ol.req_qty,
-                      i.sku AS item_sku,
-                      i.name AS item_name,
-                      i.spec AS item_spec,
-                      u.base_uom_id,
-                      u.base_uom_name
-                    FROM order_lines ol
-                    JOIN items i
-                      ON i.id = ol.item_id
-                    LEFT JOIN LATERAL (
-                      SELECT
-                        iu.id AS base_uom_id,
-                        COALESCE(NULLIF(BTRIM(iu.display_name), ''), iu.uom) AS base_uom_name
-                      FROM item_uoms iu
-                      WHERE iu.item_id = ol.item_id
-                      ORDER BY
-                        CASE WHEN iu.is_base THEN 0 ELSE 1 END,
-                        iu.id ASC
-                      LIMIT 1
-                    ) u ON TRUE
-                    WHERE ol.order_id = :oid
-                    ORDER BY ol.id ASC
+                      id,
+                      order_id,
+                      item_id,
+                      req_qty
+                    FROM order_lines
+                    WHERE order_id = :oid
+                    ORDER BY id ASC
                     """
                 ),
                 {"oid": int(order_id)},
@@ -104,4 +102,38 @@ async def load_order_outbound_lines(
         .mappings()
         .all()
     )
-    return [dict(r) for r in rows]
+
+    lines = [dict(r) for r in line_rows]
+    item_ids = sorted(
+        {
+            int(r["item_id"])
+            for r in lines
+            if r.get("item_id") is not None and int(r["item_id"]) > 0
+        }
+    )
+
+    item_map = await ItemReadService(session).aget_basics_by_item_ids(item_ids=item_ids)
+    uom_rows = await PmsExportUomReadService(session).alist_uoms(item_ids=item_ids)
+
+    uoms_by_item_id: Dict[int, List[PmsExportUom]] = {}
+    for row in uom_rows:
+        uoms_by_item_id.setdefault(int(row.item_id), []).append(row)
+
+    out: List[Dict[str, Any]] = []
+    for row in lines:
+        item_id = int(row["item_id"])
+        item = item_map.get(item_id)
+        base_uom = _pick_base_uom(uoms_by_item_id.get(item_id, []))
+
+        out.append(
+            {
+                **row,
+                "item_sku": item.sku if item is not None else None,
+                "item_name": item.name if item is not None else None,
+                "item_spec": item.spec if item is not None else None,
+                "base_uom_id": int(base_uom.id) if base_uom is not None else None,
+                "base_uom_name": base_uom.uom_name if base_uom is not None else None,
+            }
+        )
+
+    return out
