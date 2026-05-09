@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import Any
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.pms.export.items.services.item_read_service import ItemReadService
+from app.pms.export.uoms.services.uom_read_service import PmsExportUomReadService
 
 
 SUMMARY_CTE = """
@@ -255,6 +259,72 @@ def _build_where(
     return "WHERE " + " AND ".join(clauses), params
 
 
+def _clean_item_ids(values: Iterable[int] | None) -> list[int]:
+    if values is None:
+        return []
+
+    out: set[int] = set()
+    for value in values:
+        if value is None:
+            continue
+        item_id = int(value)
+        if item_id > 0:
+            out.add(item_id)
+    return sorted(out)
+
+
+async def _enrich_summary_ledger_rows(
+    session: AsyncSession,
+    *,
+    rows: Iterable[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """
+    为库存调节汇总详情的 ledger_rows 补齐商品展示字段。
+
+    WMS 事实仍来自 stock_ledger / lots；
+    商品名和基础单位展示通过 PMS export read service 获取，
+    不在 WMS summary repo 里直接读取 PMS owner items / item_uoms。
+    """
+    out = [dict(row) for row in rows]
+    item_ids = _clean_item_ids(row.get("item_id") for row in out)
+
+    if not item_ids:
+        return out
+
+    item_map = await ItemReadService(session).aget_basics_by_item_ids(item_ids=item_ids)
+
+    base_uom_map: dict[int, dict[str, object | None]] = {
+        item_id: {"base_item_uom_id": None, "base_uom_name": None}
+        for item_id in item_ids
+    }
+    uoms = await PmsExportUomReadService(session).alist_uoms(item_ids=item_ids)
+    for uom in uoms:
+        if not bool(getattr(uom, "is_base", False)):
+            continue
+
+        item_id = int(uom.item_id)
+        if item_id not in base_uom_map:
+            continue
+        if base_uom_map[item_id]["base_item_uom_id"] is not None:
+            continue
+
+        base_uom_map[item_id] = {
+            "base_item_uom_id": int(uom.id),
+            "base_uom_name": str(uom.uom_name or uom.display_name or uom.uom or "").strip() or None,
+        }
+
+    for row in out:
+        item_id = int(row["item_id"])
+        item = item_map.get(item_id)
+        base_uom = base_uom_map.get(item_id, {})
+
+        row["item_name"] = str(item.name).strip() if item is not None and str(item.name or "").strip() else None
+        row["base_item_uom_id"] = base_uom.get("base_item_uom_id")
+        row["base_uom_name"] = base_uom.get("base_uom_name")
+
+    return out
+
+
 async def list_inventory_adjustment_summary_rows(
     session: AsyncSession,
     *,
@@ -406,11 +476,8 @@ async def list_inventory_adjustment_summary_ledger_rows(
           l.trace_id,
           l.warehouse_id,
           l.item_id,
-          i.name AS item_name,
           l.lot_id,
           lo.lot_code,
-          iu.id AS base_item_uom_id,
-          COALESCE(NULLIF(iu.display_name, ''), iu.uom) AS base_uom_name,
           l.reason,
           l.reason_canon,
           l.sub_reason,
@@ -421,11 +488,6 @@ async def list_inventory_adjustment_summary_ledger_rows(
         FROM target_event t
         JOIN stock_ledger l
           ON l.event_id = t.event_id
-        LEFT JOIN items i
-          ON i.id = l.item_id
-        LEFT JOIN item_uoms iu
-          ON iu.item_id = l.item_id
-         AND iu.is_base IS TRUE
         LEFT JOIN lots lo
           ON lo.id = l.lot_id
         ORDER BY l.ref_line ASC, l.id ASC
@@ -440,7 +502,10 @@ async def list_inventory_adjustment_summary_ledger_rows(
             },
         )
     ).mappings().all()
-    return [dict(r) for r in rows]
+    return await _enrich_summary_ledger_rows(
+        session,
+        rows=[dict(r) for r in rows],
+    )
 
 
 __all__ = [
