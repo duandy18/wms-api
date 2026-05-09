@@ -8,6 +8,8 @@ from sqlalchemy import case, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.pms.export.items.services.item_read_service import ItemReadService
+from app.pms.export.uoms.services.uom_read_service import PmsExportUomReadService
 from app.wms.inventory_adjustment.count.models.count_doc import (
     CountDoc,
     CountDocLine,
@@ -287,34 +289,24 @@ class CountDocRepo:
         *,
         item_ids: Sequence[int],
     ) -> dict[int, dict[str, Any]]:
-        ids = [int(x) for x in item_ids]
+        ids = sorted({int(x) for x in item_ids if x is not None and int(x) > 0})
         if not ids:
             return {}
 
-        rows = await session.execute(
-            text(
-                """
-                SELECT
-                  iu.item_id,
-                  iu.id AS base_item_uom_id,
-                  COALESCE(NULLIF(iu.display_name, ''), iu.uom) AS base_uom_name
-                FROM item_uoms iu
-                WHERE iu.item_id = ANY(:item_ids)
-                  AND iu.is_base IS TRUE
-                """
-            ),
-            {"item_ids": ids},
-        )
+        uoms = await PmsExportUomReadService(session).alist_uoms(item_ids=ids)
 
         out: dict[int, dict[str, Any]] = {}
-        for row in rows.mappings().all():
-            out[int(row["item_id"])] = {
-                "base_item_uom_id": (
-                    int(row["base_item_uom_id"])
-                    if row.get("base_item_uom_id") is not None
-                    else None
-                ),
-                "base_uom_name": row.get("base_uom_name"),
+        for uom in uoms:
+            if not bool(getattr(uom, "is_base", False)):
+                continue
+
+            item_id = int(uom.item_id)
+            if item_id in out:
+                continue
+
+            out[item_id] = {
+                "base_item_uom_id": int(uom.id),
+                "base_uom_name": str(uom.uom_name or uom.display_name or uom.uom or "").strip() or None,
             }
         return out
 
@@ -361,12 +353,10 @@ class CountDocRepo:
                   :doc_id AS doc_id,
                   ROW_NUMBER() OVER (ORDER BY s.item_id ASC) AS line_no,
                   s.item_id,
-                  MAX(i.name) AS item_name_snapshot,
-                  MAX(i.spec) AS item_spec_snapshot,
+                  NULL::text AS item_name_snapshot,
+                  NULL::text AS item_spec_snapshot,
                   SUM(s.qty) AS snapshot_qty_base
                   FROM stocks_lot s
-                  JOIN items i
-                    ON i.id = s.item_id
                  WHERE s.warehouse_id = :warehouse_id
                  GROUP BY s.item_id
                 HAVING SUM(s.qty) > 0
@@ -377,6 +367,49 @@ class CountDocRepo:
                 "warehouse_id": int(doc.warehouse_id),
             },
         )
+
+        line_rows = (
+            await session.execute(
+                text(
+                    """
+                    SELECT id, item_id
+                      FROM count_doc_lines
+                     WHERE doc_id = :doc_id
+                     ORDER BY line_no ASC, id ASC
+                    """
+                ),
+                {"doc_id": int(doc_id)},
+            )
+        ).mappings().all()
+
+        item_ids = sorted({int(row["item_id"]) for row in line_rows})
+        item_map = await ItemReadService(session).aget_basics_by_item_ids(item_ids=item_ids)
+
+        for row in line_rows:
+            item_id = int(row["item_id"])
+            item = item_map.get(item_id)
+            if item is None:
+                continue
+
+            await session.execute(
+                text(
+                    """
+                    UPDATE count_doc_lines
+                       SET item_name_snapshot = :item_name_snapshot,
+                           item_spec_snapshot = :item_spec_snapshot
+                     WHERE id = :line_id
+                    """
+                ),
+                {
+                    "line_id": int(row["id"]),
+                    "item_name_snapshot": str(item.name).strip() if str(item.name or "").strip() else None,
+                    "item_spec_snapshot": (
+                        str(item.spec).strip()
+                        if getattr(item, "spec", None) is not None and str(item.spec or "").strip()
+                        else None
+                    ),
+                },
+            )
 
         await session.execute(
             text(
@@ -476,33 +509,19 @@ class CountDocRepo:
             if line is None:
                 raise LookupError(f"count_doc_line_not_found:{line_id}")
 
-            base_uom_row = (
-                await session.execute(
-                    text(
-                        """
-                        SELECT
-                          iu.id,
-                          COALESCE(NULLIF(iu.display_name, ''), iu.uom) AS uom_name_snapshot
-                          FROM item_uoms iu
-                         WHERE iu.item_id = :item_id
-                           AND iu.is_base IS TRUE
-                         ORDER BY iu.id ASC
-                         LIMIT 1
-                        """
-                    ),
-                    {
-                        "item_id": int(line.item_id),
-                    },
-                )
-            ).mappings().first()
-            if base_uom_row is None:
+            base_uom_map = await self.get_base_uom_map(
+                session,
+                item_ids=[int(line.item_id)],
+            )
+            base_uom = base_uom_map.get(int(line.item_id))
+            if base_uom is None or base_uom.get("base_item_uom_id") is None:
                 raise LookupError(f"count_doc_line_base_uom_not_found:item_id={int(line.item_id)}")
 
             counted_qty_base = int(counted_qty_input)
             diff_qty_base = int(counted_qty_base) - int(line.snapshot_qty_base)
 
-            line.counted_item_uom_id = int(base_uom_row["id"])
-            line.counted_uom_name_snapshot = str(base_uom_row["uom_name_snapshot"])
+            line.counted_item_uom_id = int(base_uom["base_item_uom_id"])
+            line.counted_uom_name_snapshot = str(base_uom["base_uom_name"])
             line.counted_ratio_to_base_snapshot = 1
             line.counted_qty_input = int(counted_qty_input)
             line.counted_qty_base = int(counted_qty_base)
