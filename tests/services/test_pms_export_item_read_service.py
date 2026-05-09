@@ -5,6 +5,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.pms.export.items.contracts.item_query import ItemReadQuery
 from app.pms.export.items.services.item_read_service import ItemReadService
 
 pytestmark = pytest.mark.asyncio
@@ -103,3 +104,34 @@ async def test_item_read_service_aget_basics_by_item_ids_returns_items_table_fie
             str(row["category"]).strip() if row["category"] is not None else None
         )
         assert not hasattr(basic, "primary_barcode")
+
+async def test_item_read_service_alist_basic_filters_enabled_and_keyword(
+    session: AsyncSession,
+) -> None:
+    row = (
+        await session.execute(
+            text(
+                """
+                SELECT id, sku, name
+                FROM items
+                WHERE enabled IS TRUE
+                ORDER BY id
+                LIMIT 1
+                """
+            )
+        )
+    ).mappings().first()
+
+    assert row is not None
+
+    got = await ItemReadService(session).alist_basic(
+        query=ItemReadQuery(
+            enabled=True,
+            q=str(row["sku"]),
+            limit=500,
+        )
+    )
+
+    assert any(item.id == int(row["id"]) for item in got)
+    assert all(item.enabled is True for item in got)
+    assert len(got) <= 500

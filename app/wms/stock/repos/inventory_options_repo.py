@@ -5,12 +5,8 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-
-def _norm_text(v: str | None) -> str | None:
-    if v is None:
-        return None
-    s = str(v).strip()
-    return s or None
+from app.pms.export.items.contracts.item_query import ItemReadQuery
+from app.pms.export.items.services.item_read_service import ItemReadService
 
 
 async def list_active_warehouses(
@@ -41,28 +37,21 @@ async def list_public_items(
     q: str | None,
     limit: int,
 ) -> list[dict[str, Any]]:
-    cond = ["i.enabled = TRUE"]
-    params: dict[str, Any] = {"limit": int(limit)}
-
-    q_norm = _norm_text(q)
-    if q_norm is not None:
-        cond.append("(i.name ILIKE :q OR i.sku ILIKE :q)")
-        params["q"] = f"%{q_norm}%"
-
-    sql = text(
-        f"""
-        SELECT
-            i.id,
-            i.sku,
-            i.name
-        FROM items AS i
-        WHERE {" AND ".join(cond)}
-        ORDER BY i.name ASC, i.id ASC
-        LIMIT :limit
-        """
+    items = await ItemReadService(session).alist_basic(
+        query=ItemReadQuery(
+            enabled=True,
+            q=q,
+            limit=int(limit),
+        )
     )
-    rows = (await session.execute(sql, params)).mappings().all()
-    return [dict(r) for r in rows]
+    return [
+        {
+            "id": int(item.id),
+            "sku": str(item.sku),
+            "name": str(item.name),
+        }
+        for item in items
+    ]
 
 
 __all__ = [

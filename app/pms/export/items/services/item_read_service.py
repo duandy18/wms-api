@@ -85,6 +85,36 @@ class ItemReadService:
         )
         return self._map_items_to_basic(rows)
 
+    async def alist_basic(self, *, query: ItemReadQuery | None = None) -> list[ItemBasic]:
+        """
+        PMS export async 商品基础读面。
+
+        用于 WMS / OMS / Procurement 等 async 调用方读取商品下拉和轻量展示信息；
+        不暴露 PMS owner ORM，不承载写入语义。
+        """
+        db = self._require_async_db()
+        q = query or ItemReadQuery()
+
+        stmt = select(Item)
+
+        if q.supplier_id is not None:
+            stmt = stmt.where(Item.supplier_id == int(q.supplier_id))
+        if q.enabled is not None:
+            stmt = stmt.where(Item.enabled.is_(bool(q.enabled)))
+
+        keyword = str(q.q or "").strip()
+        if keyword:
+            like_kw = f"%{keyword}%"
+            stmt = stmt.where(or_(Item.name.ilike(like_kw), Item.sku.ilike(like_kw)))
+
+        stmt = stmt.order_by(Item.name.asc(), Item.id.asc())
+
+        if q.limit is not None and int(q.limit) > 0:
+            stmt = stmt.limit(int(q.limit))
+
+        rows = (await db.execute(stmt)).scalars().all()
+        return self._map_items_to_basic(list(rows))
+
     def get_basic_by_id(self, *, item_id: int) -> ItemBasic | None:
         db = self._require_sync_db()
         obj = repo_get_item_by_id(db, int(item_id))

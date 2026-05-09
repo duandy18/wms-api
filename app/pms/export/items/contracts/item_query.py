@@ -20,7 +20,7 @@ class ItemReadQuery(BaseModel):
     supplier_id: Annotated[int | None, Field(default=None, ge=1)] = None
     enabled: bool | None = None
     q: str | None = None
-    limit: Annotated[int | None, Field(default=None, ge=1, le=200)] = None
+    limit: Annotated[int | None, Field(default=None, ge=1, le=500)] = None
 
     @field_validator("q", mode="before")
     @classmethod
