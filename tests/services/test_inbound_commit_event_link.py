@@ -302,3 +302,52 @@ async def test_inbound_event_detail_reads_line_snapshots_not_pms_current_state(s
     assert line.item_name != "MUTATED-CURRENT-NAME"
     assert line.actual_uom_name != "MUTATED-CURRENT-UOM"
     assert line.item_sku is None
+
+async def test_inbound_commit_rejects_uom_that_belongs_to_other_item(session):
+    picked = await _pick_seed_item_uom(session)
+
+    other_row = (
+        await session.execute(
+            text(
+                """
+                SELECT u.id AS uom_id
+                  FROM item_uoms u
+                 WHERE u.item_id <> :item_id
+                 ORDER BY u.id ASC
+                 LIMIT 1
+                """
+            ),
+            {"item_id": int(picked["item_id"])},
+        )
+    ).mappings().first()
+    assert other_row is not None, "expected another seeded item_uom"
+
+    payload = InboundCommitIn.model_validate(
+        {
+            "warehouse_id": int(picked["warehouse_id"]),
+            "source_type": "MANUAL",
+            "source_ref": None,
+            "occurred_at": date.today().isoformat() + "T00:00:00Z",
+            "remark": "ut inbound commit uom mismatch",
+            "lines": [
+                {
+                    "item_id": int(picked["item_id"]),
+                    "uom_id": int(other_row["uom_id"]),
+                    "qty_input": 1,
+                    "lot_code_input": None,
+                    "production_date": None,
+                    "expiry_date": None,
+                    "remark": "uom mismatch",
+                }
+            ],
+        }
+    )
+
+    import pytest
+    from fastapi import HTTPException
+
+    with pytest.raises(HTTPException) as exc_info:
+        await commit_inbound(session, payload=payload, user_id=None)
+
+    assert exc_info.value.status_code == 400
+    assert "uom_id 不存在或不属于该商品" in str(exc_info.value.detail)
