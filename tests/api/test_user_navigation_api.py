@@ -313,7 +313,7 @@ async def test_my_navigation_admin_contains_new_wms_tree_and_filters_legacy_shel
 
 
 @pytest.mark.asyncio
-async def test_my_navigation_masterdata_and_wms_warehouses_domain_codes_are_correct(
+async def test_my_navigation_masterdata_partners_and_wms_warehouses_domain_codes_are_correct(
     client: AsyncClient,
 ) -> None:
     headers = await _login_admin_headers(client)
@@ -325,24 +325,27 @@ async def test_my_navigation_masterdata_and_wms_warehouses_domain_codes_are_corr
     nodes = _walk_pages(data["pages"])
 
     pms_root = nodes.get("pms")
+    partners_root = nodes.get("partners")
     assert pms_root is not None, "pms parent should exist"
+    assert partners_root is not None, "partners parent should exist"
 
     items = nodes.get("pms.items")
-    suppliers = nodes.get("pms.suppliers")
+    suppliers = nodes.get("partners.suppliers")
     warehouses = nodes.get("wms.warehouses")
 
     assert items is not None, "pms.items should exist"
-    assert suppliers is not None, "pms.suppliers should exist"
+    assert suppliers is not None, "partners.suppliers should exist"
     assert warehouses is not None, "wms.warehouses should exist"
 
     assert items["parent_code"] == "pms"
-    assert suppliers["parent_code"] == "pms"
+    assert suppliers["parent_code"] == "partners"
     assert warehouses["parent_code"] == "wms"
 
     assert items["domain_code"] == "pms"
-    assert suppliers["domain_code"] == "pms"
+    assert suppliers["domain_code"] == "partners"
     assert warehouses["domain_code"] == "wms"
 
+    assert "pms.suppliers" not in nodes
     assert "wms.masterdata" not in nodes
     assert "wms.masterdata.warehouses" not in nodes
 
@@ -380,7 +383,7 @@ async def test_my_navigation_route_prefix_mapping_and_effective_permissions(clie
     shipping_handoffs_page = nodes["shipping_assist.handoffs"]
     shipping_records_page = nodes["shipping_assist.records"]
     items_page = nodes["pms.items"]
-    suppliers_page = nodes["pms.suppliers"]
+    suppliers_page = nodes["partners.suppliers"]
     fsku_rules_page = nodes["oms.fsku_rules"]
     inventory_page = nodes["wms.inventory.main"]
     warehouses_page = nodes["wms.warehouses"]
@@ -395,8 +398,8 @@ async def test_my_navigation_route_prefix_mapping_and_effective_permissions(clie
     assert items_page["effective_read_permission"] == "page.pms.read"
     assert items_page["effective_write_permission"] == "page.pms.write"
 
-    assert suppliers_page["effective_read_permission"] == "page.pms.read"
-    assert suppliers_page["effective_write_permission"] == "page.pms.write"
+    assert suppliers_page["effective_read_permission"] == "page.partners.read"
+    assert suppliers_page["effective_write_permission"] == "page.partners.write"
 
     assert fsku_rules_page["effective_read_permission"] == "page.oms.read"
     assert fsku_rules_page["effective_write_permission"] == "page.oms.write"
@@ -415,7 +418,7 @@ async def test_my_navigation_route_prefix_mapping_and_effective_permissions(clie
     shipping_handoffs_payload_route = route_map.get("/shipping-assist/handoffs/payload")
     shipping_records_route = route_map.get("/shipping-assist/records")
     items_route = route_map.get("/items")
-    suppliers_route = route_map.get("/suppliers")
+    suppliers_route = route_map.get("/partners/suppliers")
     fsku_rules_route = route_map.get("/oms/fskus")
     inventory_route = route_map.get("/inventory")
     warehouses_route = route_map.get("/warehouses")
@@ -426,7 +429,8 @@ async def test_my_navigation_route_prefix_mapping_and_effective_permissions(clie
     assert shipping_handoffs_payload_route is not None, "/shipping-assist/handoffs/payload should exist in route_prefixes"
     assert shipping_records_route is not None, "/shipping-assist/records should exist in route_prefixes"
     assert items_route is not None, "/items should exist in route_prefixes"
-    assert suppliers_route is not None, "/suppliers should exist in route_prefixes"
+    assert suppliers_route is not None, "/partners/suppliers should exist in route_prefixes"
+    assert "/suppliers" not in route_map
     assert fsku_rules_route is not None, "/oms/fskus should exist in route_prefixes"
     assert inventory_route is not None, "/inventory should exist in route_prefixes"
     assert warehouses_route is not None, "/warehouses should exist in route_prefixes"
@@ -437,7 +441,7 @@ async def test_my_navigation_route_prefix_mapping_and_effective_permissions(clie
     assert shipping_handoffs_payload_route["page_code"] == "shipping_assist.handoffs.payload"
     assert shipping_records_route["page_code"] == "shipping_assist.records"
     assert items_route["page_code"] == "pms.items"
-    assert suppliers_route["page_code"] == "pms.suppliers"
+    assert suppliers_route["page_code"] == "partners.suppliers"
     assert fsku_rules_route["page_code"] == "oms.fsku_rules"
     assert inventory_route["page_code"] == "wms.inventory.main"
     assert warehouses_route["page_code"] == "wms.warehouses"
@@ -458,8 +462,8 @@ async def test_my_navigation_route_prefix_mapping_and_effective_permissions(clie
     assert items_route["effective_read_permission"] == "page.pms.read"
     assert items_route["effective_write_permission"] == "page.pms.write"
 
-    assert suppliers_route["effective_read_permission"] == "page.pms.read"
-    assert suppliers_route["effective_write_permission"] == "page.pms.write"
+    assert suppliers_route["effective_read_permission"] == "page.partners.read"
+    assert suppliers_route["effective_write_permission"] == "page.partners.write"
 
     assert fsku_rules_route["effective_read_permission"] == "page.oms.read"
     assert fsku_rules_route["effective_write_permission"] == "page.oms.write"

@@ -53,7 +53,6 @@ async def test_pms_master_data_page_tree_and_routes(client: httpx.AsyncClient) -
         "pms.sku_coding",
         "pms.item_barcodes",
         "pms.item_uoms",
-        "pms.suppliers",
     ]
     assert [x["code"] for x in nodes["pms"]["children"]] == expected_children
 
@@ -62,7 +61,6 @@ async def test_pms_master_data_page_tree_and_routes(client: httpx.AsyncClient) -
     assert nodes["pms.categories"]["name"] == "商品分类编码"
     assert nodes["pms.item_attributes"]["name"] == "属性模板"
     assert nodes["pms.item_uoms"]["name"] == "包装单位"
-    assert nodes["pms.suppliers"]["name"] == "供应商管理"
 
     assert nodes["pms.sku_coding"]["name"] == "SKU 编码工具"
     assert [x["code"] for x in nodes["pms.sku_coding"].get("children", [])] == []
@@ -75,7 +73,6 @@ async def test_pms_master_data_page_tree_and_routes(client: httpx.AsyncClient) -
         "/items/sku-coding": "pms.sku_coding",
         "/item-barcodes": "pms.item_barcodes",
         "/item-uoms": "pms.item_uoms",
-        "/suppliers": "pms.suppliers",
     }
 
     for route_prefix, page_code in expected_routes.items():
@@ -85,5 +82,19 @@ async def test_pms_master_data_page_tree_and_routes(client: httpx.AsyncClient) -
         assert route["effective_read_permission"] == "page.pms.read"
         assert route["effective_write_permission"] == "page.pms.write"
 
-    retired_codes = {"wms.masterdata" + ".items", "wms.masterdata" + ".suppliers"}
+    assert nodes["partners"]["name"] == "合作方"
+    assert nodes["partners"]["domain_code"] == "partners"
+    assert [x["code"] for x in nodes["partners"]["children"]] == ["partners.suppliers"]
+    assert nodes["partners.suppliers"]["name"] == "供应商管理"
+    assert nodes["partners.suppliers"]["effective_read_permission"] == "page.partners.read"
+    assert nodes["partners.suppliers"]["effective_write_permission"] == "page.partners.write"
+
+    partners_route = routes.get("/partners/suppliers")
+    assert partners_route is not None, "/partners/suppliers should exist"
+    assert partners_route["page_code"] == "partners.suppliers"
+    assert partners_route["effective_read_permission"] == "page.partners.read"
+    assert partners_route["effective_write_permission"] == "page.partners.write"
+    assert "/suppliers" not in routes
+
+    retired_codes = {"wms.masterdata" + ".items", "wms.masterdata" + ".suppliers", "pms.suppliers"}
     assert retired_codes.isdisjoint(nodes.keys())

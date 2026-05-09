@@ -14,7 +14,7 @@ from app.oms.orders.models.order_item import OrderItem  # noqa: F401
 from app.pms.items.models.item_master import ItemAttributeValue, PmsBrand, PmsBusinessCategory  # noqa: F401
 from app.pms.items.models.item_sku_code import ItemSkuCode  # noqa: F401
 from app.pms.items.models.item_uom import ItemUOM  # noqa: F401
-from app.pms.suppliers.models.supplier import Supplier  # noqa: F401
+from app.partners.suppliers.models.supplier import Supplier  # noqa: F401
 
 if TYPE_CHECKING:
     from app.oms.orders.models.order import Order
@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from app.pms.items.models.item_master import ItemAttributeValue, PmsBrand, PmsBusinessCategory
     from app.pms.items.models.item_sku_code import ItemSkuCode
     from app.pms.items.models.item_uom import ItemUOM
-    from app.pms.suppliers.models.supplier import Supplier
+    from app.partners.suppliers.models.supplier import Supplier
 
 
 class LotSourcePolicy(str, enum.Enum):

@@ -29,8 +29,8 @@ def mount_routers(app: FastAPI) -> None:
         router as pms_public_item_aggregate_read_router,
     )
     from app.pms.public.items.routers.items_read import router as pms_public_items_read_router
-    from app.pms.public.suppliers.routers.suppliers_read import (
-        router as pms_public_suppliers_read_router,
+    from app.partners.export.suppliers.routers.suppliers_read import (
+        router as partners_export_suppliers_read_router,
     )
     from app.wms.analysis.routers.ledger_reconcile_v2 import router as ledger_reconcile_v2_router
     from app.oms.routers.meta_platforms import router as meta_router
@@ -61,8 +61,8 @@ def mount_routers(app: FastAPI) -> None:
     from app.wms.stock.routers.inventory import router as stock_inventory_router
     from app.wms.snapshot.routers.snapshot_v3 import router as snapshot_v3_router
     from app.wms.ledger.routers.stock_ledger import router as stock_ledger_router
-    from app.pms.suppliers.routers.supplier_contacts import router as supplier_contacts_router
-    from app.pms.suppliers.routers.suppliers import router as suppliers_router
+    from app.partners.suppliers.routers.supplier_contacts import router as supplier_contacts_router
+    from app.partners.suppliers.routers.suppliers import router as suppliers_router
     from app.user.routers.user import router as user_router
     from app.wms.warehouses.routers.warehouses import router as warehouses_router
 
@@ -128,11 +128,11 @@ def mount_routers(app: FastAPI) -> None:
     # - public 读面先挂
     # - /items/barcode-probe 先于 /items/{id}
     # - /items/aggregate 先于 /items/{id}
-    # - /public/items、/public/suppliers 独立前缀，不与 owner 冲突
+    # - /public/items、/partners/export/suppliers 独立前缀，不与 owner 冲突
     app.include_router(pms_public_item_aggregate_read_router)
     app.include_router(pms_public_items_read_router)
     app.include_router(pms_public_barcode_probe_router)
-    app.include_router(pms_public_suppliers_read_router)
+    app.include_router(partners_export_suppliers_read_router)
     app.include_router(item_aggregate_router)
     app.include_router(item_list_router)
     app.include_router(items_router)
