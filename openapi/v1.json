@@ -8488,6 +8488,298 @@
         }
       }
     },
+    "/pms/export/sku-codes": {
+      "get": {
+        "tags": [
+          "pms-export-sku-codes"
+        ],
+        "summary": "List Export Sku Codes",
+        "operationId": "list_export_sku_codes_pms_export_sku_codes_get",
+        "parameters": [
+          {
+            "name": "item_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              },
+              "description": "可重复：item_id=1&item_id=2",
+              "default": [],
+              "title": "Item Id"
+            },
+            "description": "可重复：item_id=1&item_id=2"
+          },
+          {
+            "name": "sku_code_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              },
+              "description": "可重复：sku_code_id=1&sku_code_id=2",
+              "default": [],
+              "title": "Sku Code Id"
+            },
+            "description": "可重复：sku_code_id=1&sku_code_id=2"
+          },
+          {
+            "name": "code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "精确 SKU code，大小写不敏感",
+              "title": "Code"
+            },
+            "description": "精确 SKU code，大小写不敏感"
+          },
+          {
+            "name": "active",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "默认只返回 active=true；传空则不过滤",
+              "default": true,
+              "title": "Active"
+            },
+            "description": "默认只返回 active=true；传空则不过滤"
+          },
+          {
+            "name": "primary_only",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "true 时只返回主编码",
+              "default": false,
+              "title": "Primary Only"
+            },
+            "description": "true 时只返回主编码"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PmsExportSkuCode"
+                  },
+                  "title": "Response List Export Sku Codes Pms Export Sku Codes Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/pms/export/sku-codes/resolve": {
+      "get": {
+        "tags": [
+          "pms-export-sku-codes"
+        ],
+        "summary": "Resolve Export Sku Code",
+        "operationId": "resolve_export_sku_code_pms_export_sku_codes_resolve_get",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "description": "SKU code，大小写不敏感",
+              "title": "Code"
+            },
+            "description": "SKU code，大小写不敏感"
+          },
+          {
+            "name": "enabled_only",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "默认只解析 enabled=true 的商品",
+              "default": true,
+              "title": "Enabled Only"
+            },
+            "description": "默认只解析 enabled=true 的商品"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PmsExportSkuCodeResolution"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/pms/export/sku-codes/{sku_code_id}": {
+      "get": {
+        "tags": [
+          "pms-export-sku-codes"
+        ],
+        "summary": "Get Export Sku Code",
+        "operationId": "get_export_sku_code_pms_export_sku_codes__sku_code_id__get",
+        "parameters": [
+          {
+            "name": "sku_code_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Sku Code Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PmsExportSkuCode"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/pms/export/items/{item_id}/sku-codes": {
+      "get": {
+        "tags": [
+          "pms-export-sku-codes"
+        ],
+        "summary": "List Export Item Sku Codes",
+        "operationId": "list_export_item_sku_codes_pms_export_items__item_id__sku_codes_get",
+        "parameters": [
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Item Id"
+            }
+          },
+          {
+            "name": "active",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "默认只返回 active=true；传空则不过滤",
+              "default": true,
+              "title": "Active"
+            },
+            "description": "默认只返回 active=true；传空则不过滤"
+          },
+          {
+            "name": "primary_only",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "true 时只返回主编码",
+              "default": false,
+              "title": "Primary Only"
+            },
+            "description": "true 时只返回主编码"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PmsExportSkuCode"
+                  },
+                  "title": "Response List Export Item Sku Codes Pms Export Items  Item Id  Sku Codes Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/pms/export/barcodes": {
       "get": {
         "tags": [
@@ -35074,6 +35366,189 @@
         ],
         "title": "PmsExportBarcode",
         "description": "PMS 对外条码读模型。\n\n定位：\n- 只读 export contract；\n- 不承载 owner 写入、改绑、设主条码语义；\n- barcode 绑定终态来自 item_barcodes；\n- 包装语义通过 item_uom_id 关联 item_uoms。"
+      },
+      "PmsExportSkuCode": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "item_id": {
+            "type": "integer",
+            "title": "Item Id"
+          },
+          "code": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Code"
+          },
+          "code_type": {
+            "type": "string",
+            "enum": [
+              "PRIMARY",
+              "ALIAS",
+              "LEGACY",
+              "MANUAL"
+            ],
+            "title": "Code Type"
+          },
+          "is_primary": {
+            "type": "boolean",
+            "title": "Is Primary"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          },
+          "effective_from": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective From"
+          },
+          "effective_to": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective To"
+          },
+          "remark": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remark"
+          },
+          "item_sku": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Item Sku"
+          },
+          "item_name": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Item Name"
+          },
+          "item_enabled": {
+            "type": "boolean",
+            "title": "Item Enabled"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "item_id",
+          "code",
+          "code_type",
+          "is_primary",
+          "is_active",
+          "item_sku",
+          "item_name",
+          "item_enabled"
+        ],
+        "title": "PmsExportSkuCode",
+        "description": "PMS 对外 SKU 编码读模型。\n\n定位：\n- 只读 export contract；\n- 不承载 owner 写入、停用、启用、主编码切换语义；\n- item_sku_codes 是编码治理真相表；\n- items.sku 只是当前主 SKU 投影。"
+      },
+      "PmsExportSkuCodeResolution": {
+        "properties": {
+          "sku_code_id": {
+            "type": "integer",
+            "title": "Sku Code Id"
+          },
+          "item_id": {
+            "type": "integer",
+            "title": "Item Id"
+          },
+          "sku_code": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Sku Code"
+          },
+          "code_type": {
+            "type": "string",
+            "enum": [
+              "PRIMARY",
+              "ALIAS",
+              "LEGACY",
+              "MANUAL"
+            ],
+            "title": "Code Type"
+          },
+          "is_primary": {
+            "type": "boolean",
+            "title": "Is Primary"
+          },
+          "item_sku": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Item Sku"
+          },
+          "item_name": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Item Name"
+          },
+          "item_uom_id": {
+            "type": "integer",
+            "title": "Item Uom Id"
+          },
+          "uom": {
+            "type": "string",
+            "title": "Uom"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "uom_name": {
+            "type": "string",
+            "title": "Uom Name"
+          },
+          "ratio_to_base": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Ratio To Base"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sku_code_id",
+          "item_id",
+          "sku_code",
+          "code_type",
+          "is_primary",
+          "item_sku",
+          "item_name",
+          "item_uom_id",
+          "uom",
+          "uom_name",
+          "ratio_to_base"
+        ],
+        "title": "PmsExportSkuCodeResolution",
+        "description": "PMS SKU 编码解析结果。\n\n用途：\n- OMS FSKU 表达式组件解析；\n- 通过 SKU code 得到稳定 item_id / sku_code_id；\n- 同时返回该商品出库默认包装或基础包装，用于生成 OMS FSKU 组件快照。"
       },
       "PmsExportUom": {
         "properties": {
