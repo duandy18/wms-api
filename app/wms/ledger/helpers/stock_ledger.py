@@ -12,12 +12,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.wms.shared.services.lot_code_contract import normalize_optional_lot_code
-from app.pms.items.models.item import Item
+from app.wms.pms_projection.models.projection import WmsPmsItemProjection
 from app.wms.stock.models.lot import Lot
 from app.wms.ledger.models.stock_ledger import StockLedger
 from app.wms.ledger.contracts.stock_ledger import LedgerQuery
 
-ITEMS_TABLE = Item.__table__
+PMS_ITEM_PROJECTION_TABLE = WmsPmsItemProjection.__table__
 
 
 def normalize_time_range(q: LedgerQuery) -> Tuple[datetime, datetime]:
@@ -233,7 +233,7 @@ def build_base_ids_stmt(q: LedgerQuery, time_from: datetime, time_to: datetime):
     按查询条件构造基础 SQL（只选中符合条件的 id 列表）：
 
     - 支持按 item_id / warehouse_id / lot_id / lot_code / reason / reason_canon / sub_reason / ref / trace_id / 时间过滤；
-    - 支持按 item_keyword 模糊匹配 items.name / items.sku；
+    - 支持按 item_keyword 模糊匹配 wms_pms_item_projection.name / sku；
     - 不再依赖 stock_id / batch_id，完全对齐当前 StockLedger 模型。
     """
     stmt = select(StockLedger.id).select_from(StockLedger)
@@ -242,11 +242,14 @@ def build_base_ids_stmt(q: LedgerQuery, time_from: datetime, time_to: datetime):
     # item_keyword 模糊搜索：name/sku
     if q.item_keyword:
         kw = f"%{q.item_keyword.strip()}%"
-        stmt = stmt.join(Item, Item.id == StockLedger.item_id)
+        stmt = stmt.join(
+            WmsPmsItemProjection,
+            WmsPmsItemProjection.item_id == StockLedger.item_id,
+        )
         conditions.append(
             sa.or_(
-                Item.name.ilike(kw),
-                Item.sku.ilike(kw),
+                WmsPmsItemProjection.name.ilike(kw),
+                WmsPmsItemProjection.sku.ilike(kw),
             )
         )
 
