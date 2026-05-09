@@ -11,6 +11,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.wms.shared.enums import MovementType
 from app.oms.orders.services.order_reconcile_service import OrderReconcileService
 from app.oms.services.order_service import OrderService
+from app.wms.inventory_adjustment.return_inbound.repos.inbound_operation_write_repo import (
+    _load_item_uom_snapshot,
+    _resolve_barcode_uom_snapshot,
+)
 from app.wms.inventory_adjustment.return_inbound.repos.inbound_receipt_write_repo import (
     _load_manual_line_snapshot,
 )
@@ -1005,3 +1009,109 @@ async def test_return_inbound_manual_line_snapshot_rejects_mismatched_uom(
 
     assert exc_info.value.status_code == 409
     assert "item_uom_item_mismatch" in str(exc_info.value.detail)
+
+@pytest.mark.asyncio
+async def test_return_inbound_operation_loads_uom_snapshot_through_pms_export(
+    session: AsyncSession,
+) -> None:
+    row = (
+        await session.execute(
+            text(
+                """
+                SELECT
+                  id AS item_uom_id,
+                  item_id,
+                  COALESCE(NULLIF(display_name, ''), uom) AS uom_name,
+                  ratio_to_base
+                FROM item_uoms
+                ORDER BY item_id ASC, id ASC
+                LIMIT 1
+                """
+            )
+        )
+    ).mappings().first()
+    assert row is not None
+
+    actual_item_uom_id, actual_uom_name_snapshot, actual_ratio = await _load_item_uom_snapshot(
+        session,
+        item_id=int(row["item_id"]),
+        item_uom_id=int(row["item_uom_id"]),
+    )
+
+    assert actual_item_uom_id == int(row["item_uom_id"])
+    assert actual_uom_name_snapshot == str(row["uom_name"])
+    assert actual_ratio == int(row["ratio_to_base"])
+
+
+@pytest.mark.asyncio
+async def test_return_inbound_operation_resolves_barcode_through_pms_export(
+    session: AsyncSession,
+) -> None:
+    row = (
+        await session.execute(
+            text(
+                """
+                SELECT
+                  ib.barcode,
+                  ib.item_id,
+                  ib.item_uom_id,
+                  COALESCE(NULLIF(u.display_name, ''), u.uom) AS uom_name,
+                  u.ratio_to_base
+                FROM item_barcodes ib
+                JOIN item_uoms u
+                  ON u.id = ib.item_uom_id
+                 AND u.item_id = ib.item_id
+                WHERE ib.active IS TRUE
+                ORDER BY ib.is_primary DESC, ib.id ASC
+                LIMIT 1
+                """
+            )
+        )
+    ).mappings().first()
+    if row is None:
+        pytest.skip("no active barcode seed available")
+
+    actual_item_uom_id, actual_uom_name_snapshot, actual_ratio = await _resolve_barcode_uom_snapshot(
+        session,
+        item_id=int(row["item_id"]),
+        barcode=str(row["barcode"]),
+    )
+
+    assert actual_item_uom_id == int(row["item_uom_id"])
+    assert actual_uom_name_snapshot == str(row["uom_name"])
+    assert actual_ratio == int(row["ratio_to_base"])
+
+
+@pytest.mark.asyncio
+async def test_return_inbound_operation_rejects_barcode_item_mismatch(
+    session: AsyncSession,
+) -> None:
+    row = (
+        await session.execute(
+            text(
+                """
+                SELECT
+                  ib.barcode,
+                  ib.item_id
+                FROM item_barcodes ib
+                WHERE ib.active IS TRUE
+                ORDER BY ib.is_primary DESC, ib.id ASC
+                LIMIT 1
+                """
+            )
+        )
+    ).mappings().first()
+    if row is None:
+        pytest.skip("no active barcode seed available")
+
+    from fastapi import HTTPException
+
+    with pytest.raises(HTTPException) as exc_info:
+        await _resolve_barcode_uom_snapshot(
+            session,
+            item_id=int(row["item_id"]) + 999999,
+            barcode=str(row["barcode"]),
+        )
+
+    assert exc_info.value.status_code == 422
+    assert "barcode_unbound_or_item_mismatch" in str(exc_info.value.detail)
