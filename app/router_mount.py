@@ -25,9 +25,6 @@ def mount_routers(app: FastAPI) -> None:
     from app.pms.items.routers.items import router as items_router
     from app.pms.sku_coding.routers.sku_coding import router as sku_coding_router
     from app.pms.export.items.routers.barcode_probe import router as pms_export_barcode_probe_router
-    from app.pms.export.items.routers.item_aggregate_read import (
-        router as pms_export_item_aggregate_read_router,
-    )
     from app.pms.export.items.routers.items_read import router as pms_export_items_read_router
     from app.pms.export.uoms.routers.uoms_read import router as pms_export_uoms_read_router
     from app.pms.export.barcodes.routers.barcodes_read import router as pms_export_barcodes_read_router
@@ -127,11 +124,10 @@ def mount_routers(app: FastAPI) -> None:
     app.include_router(warehouses_router)
 
     # PMS 相关：
-    # - public 读面先挂
+    # - PMS export 读面先挂，避免与 owner /items/{id} 类路由冲突
     # - /pms/export/items/barcode-probe 先于 /items/{id}
     # - /items/aggregate 先于 /items/{id}
     # - /pms/export/items、/pms/export/uoms、/pms/export/barcodes、/partners/export/suppliers 独立前缀，不与 owner 冲突
-    app.include_router(pms_export_item_aggregate_read_router)
     app.include_router(pms_export_items_read_router)
     app.include_router(pms_export_uoms_read_router)
     app.include_router(pms_export_barcodes_read_router)
