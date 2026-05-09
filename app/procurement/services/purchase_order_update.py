@@ -27,7 +27,7 @@ from app.procurement.services.purchase_order_create import (
     _load_items_map,
     _maybe_uom_id_from_raw,
     _require_qty_input_from_raw,
-    _require_supplier_snapshot_via_pms,
+    _require_supplier_snapshot_via_partners,
     _trim_or_none,
 )
 
@@ -51,7 +51,7 @@ async def _normalize_update_payload(
 
     purchaser_text = _normalize_purchaser_text(purchaser)
 
-    po_supplier_id, po_supplier_name = await _require_supplier_snapshot_via_pms(
+    po_supplier_id, po_supplier_name = await _require_supplier_snapshot_via_partners(
         session,
         supplier_id,
     )

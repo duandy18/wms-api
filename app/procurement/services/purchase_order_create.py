@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.procurement.models.purchase_order import PurchaseOrder
 from app.pms.public.items.contracts.item_basic import ItemBasic
 from app.pms.public.items.services.item_read_service import ItemReadService
-from app.pms.public.suppliers.services.supplier_read_service import SupplierReadService
+from app.partners.export.suppliers.services.supplier_read_service import SupplierReadService
 from app.procurement.repos.purchase_order_create_repo import (
     insert_purchase_order_head,
     insert_purchase_order_lines,
@@ -27,12 +27,12 @@ async def _load_items_map(session: AsyncSession, item_ids: List[int]) -> Dict[in
     return await svc.aget_basics_by_item_ids(item_ids=item_ids)
 
 
-async def _require_supplier_snapshot_via_pms(
+async def _require_supplier_snapshot_via_partners(
     session: AsyncSession,
     supplier_id: Optional[int],
 ) -> Tuple[int, str]:
     """
-    供应商真相直接来自 PMS public/service。
+    供应商真相直接来自 Partners export/service。
     返回：
     - supplier_id
     - supplier_name（用于 PO 快照）
@@ -111,7 +111,7 @@ async def create_po_v2(
     if not purchaser_text:
         raise ValueError("purchaser 不能为空：采购单必须填写采购人")
 
-    po_supplier_id, po_supplier_name = await _require_supplier_snapshot_via_pms(
+    po_supplier_id, po_supplier_name = await _require_supplier_snapshot_via_partners(
         session,
         supplier_id,
     )

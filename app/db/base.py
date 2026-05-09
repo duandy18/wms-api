@@ -102,8 +102,8 @@ def init_models(
 
     # ✅ 显式加载链：只放“主线真相表”的模型（避免把 legacy 表带进 metadata）
     explicit_chain = [
-        "app.pms.suppliers.models.supplier",
-        "app.pms.suppliers.models.supplier_contact",
+        "app.partners.suppliers.models.supplier",
+        "app.partners.suppliers.models.supplier_contact",
         "app.pms.sku_coding.models.sku_coding",
         "app.pms.items.models.item",
         "app.pms.items.models.item_uom",
@@ -137,7 +137,7 @@ def init_models(
         "app.finance.models",
         "app.pms.items.models",
         "app.pms.sku_coding.models",
-        "app.pms.suppliers.models",
+        "app.partners.suppliers.models",
         "app.wms.inventory_adjustment.return_inbound.models",
         "app.wms.inventory_adjustment.count.models",
         "app.wms.inbound.models",
