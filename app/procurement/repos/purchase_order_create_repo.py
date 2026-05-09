@@ -8,6 +8,8 @@ from typing import Any, Sequence
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.pms.export.uoms.contracts.uom import PmsExportUom
+from app.pms.export.uoms.services.uom_read_service import PmsExportUomReadService
 from app.procurement.models.purchase_order import PurchaseOrder
 from app.procurement.models.purchase_order_line import PurchaseOrderLine
 from app.procurement.repos.purchase_order_line_completion_repo import (
@@ -23,37 +25,30 @@ async def reserve_purchase_order_id(session: AsyncSession) -> int:
     return int(row.scalar_one())
 
 
+def _uom_name_snapshot(row: PmsExportUom) -> str:
+    name = str(row.uom_name or row.display_name or row.uom or "").strip()
+    if not name:
+        raise ValueError("PMS export uom_name/uom 不能为空")
+    return name
+
+
 async def require_item_uom_ratio_to_base(
     session: AsyncSession,
     *,
     item_id: int,
     uom_id: int,
 ) -> tuple[int, str]:
-    row = await session.execute(
-        text(
-            """
-            SELECT ratio_to_base, display_name, uom
-            FROM item_uoms
-            WHERE id = :uom_id AND item_id = :item_id
-            """
-        ),
-        {"uom_id": int(uom_id), "item_id": int(item_id)},
-    )
-    r = row.mappings().first()
-    if r is None:
+    row = await PmsExportUomReadService(session).aget_by_id(item_uom_id=int(uom_id))
+    if row is None or int(row.item_id) != int(item_id):
         raise ValueError(
             f"uom_id 不存在或不属于该商品：item_id={int(item_id)} uom_id={int(uom_id)}"
         )
 
-    ratio = int(r.get("ratio_to_base") or 0)
+    ratio = int(row.ratio_to_base or 0)
     if ratio <= 0:
-        raise ValueError("item_uoms.ratio_to_base 必须 >= 1")
+        raise ValueError("PMS export uom.ratio_to_base 必须 >= 1")
 
-    uom_name = str(r.get("display_name") or r.get("uom") or "").strip()
-    if not uom_name:
-        raise ValueError("item_uoms.display_name/uom 不能为空")
-
-    return ratio, uom_name
+    return ratio, _uom_name_snapshot(row)
 
 
 async def pick_default_purchase_uom(
@@ -62,71 +57,29 @@ async def pick_default_purchase_uom(
     item_id: int,
 ) -> tuple[int, int, str]:
     """
-    选择商品默认采购单位：
+    采购默认单位读取统一走 PMS export UOM service。
+
+    优先级：
     1) is_purchase_default = true
     2) is_base = true
-    3) 最小 id
+    3) 任意第一条 UOM
     返回：(uom_id, ratio_to_base, uom_name_snapshot)
     """
-    r1 = await session.execute(
-        text(
-            """
-            SELECT id, ratio_to_base, display_name, uom
-              FROM item_uoms
-             WHERE item_id = :i AND is_purchase_default = true
-             LIMIT 1
-            """
-        ),
-        {"i": int(item_id)},
-    )
-    m1 = r1.mappings().first()
-    if m1 is not None:
-        return (
-            int(m1["id"]),
-            int(m1["ratio_to_base"]),
-            str(m1.get("display_name") or m1.get("uom") or "").strip(),
-        )
+    svc = PmsExportUomReadService(session)
+    row = await svc.aget_purchase_default_or_base(item_id=int(item_id))
 
-    r2 = await session.execute(
-        text(
-            """
-            SELECT id, ratio_to_base, display_name, uom
-              FROM item_uoms
-             WHERE item_id = :i AND is_base = true
-             LIMIT 1
-            """
-        ),
-        {"i": int(item_id)},
-    )
-    m2 = r2.mappings().first()
-    if m2 is not None:
-        return (
-            int(m2["id"]),
-            int(m2["ratio_to_base"]),
-            str(m2.get("display_name") or m2.get("uom") or "").strip(),
-        )
+    if row is None:
+        rows = await svc.alist_by_item_id(item_id=int(item_id))
+        row = rows[0] if rows else None
 
-    r3 = await session.execute(
-        text(
-            """
-            SELECT id, ratio_to_base, display_name, uom
-              FROM item_uoms
-             WHERE item_id = :i
-             ORDER BY id
-             LIMIT 1
-            """
-        ),
-        {"i": int(item_id)},
-    )
-    m3 = r3.mappings().first()
-    if m3 is not None:
-        return (
-            int(m3["id"]),
-            int(m3["ratio_to_base"]),
-            str(m3.get("display_name") or m3.get("uom") or "").strip(),
-        )
+    if row is None:
+        raise ValueError(f"商品缺少 PMS export uoms：item_id={int(item_id)}")
 
-    raise ValueError(f"商品缺少 item_uoms：item_id={int(item_id)}")
+    ratio = int(row.ratio_to_base or 0)
+    if ratio <= 0:
+        raise ValueError("PMS export uom.ratio_to_base 必须 >= 1")
+
+    return int(row.id), ratio, _uom_name_snapshot(row)
 
 
 async def insert_purchase_order_head(
