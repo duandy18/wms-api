@@ -18,6 +18,11 @@ async def upsert_completion_rows_for_po(
     当前第一阶段主要用于：
     - 创建采购单后初始化 completion 行
     - 后续若采购单支持编辑，可复用为“按当前快照重建”
+
+    边界：
+    - completion 读模型以 purchase_order_lines 快照为来源；
+    - 不回查 PMS item_uoms；
+    - 采购单位名称使用 pol.purchase_uom_name_snapshot。
     """
     sql = text(
         """
@@ -62,7 +67,7 @@ async def upsert_completion_rows_for_po(
           pol.item_sku AS item_sku,
           pol.spec_text AS spec_text,
           pol.purchase_uom_id_snapshot AS purchase_uom_id_snapshot,
-          COALESCE(iu.display_name, iu.uom) AS purchase_uom_name_snapshot,
+          pol.purchase_uom_name_snapshot AS purchase_uom_name_snapshot,
           pol.purchase_ratio_to_base_snapshot AS purchase_ratio_to_base_snapshot,
           pol.qty_ordered_input AS qty_ordered_input,
           pol.qty_ordered_base AS qty_ordered_base,
@@ -77,8 +82,6 @@ async def upsert_completion_rows_for_po(
         FROM purchase_order_lines pol
         JOIN purchase_orders po
           ON po.id = pol.po_id
-        JOIN item_uoms iu
-          ON iu.id = pol.purchase_uom_id_snapshot
         WHERE po.id = :po_id
         ON CONFLICT (po_line_id) DO UPDATE
         SET
