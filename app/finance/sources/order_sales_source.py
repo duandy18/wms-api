@@ -8,6 +8,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.finance.services.common import to_decimal
+from app.pms.export.items.services.item_read_service import ItemReadService
 
 
 class OrderSalesSource:
@@ -20,6 +21,7 @@ class OrderSalesSource:
     - 不读取采购；
     - 不读取发货辅助；
     - 不计算利润。
+    - 商品展示维度通过 PMS export ItemReadService 后置补充，不直接 JOIN PMS 内部 items 表。
     """
 
     def __init__(self, session: AsyncSession) -> None:
@@ -87,6 +89,12 @@ class OrderSalesSource:
              )
         )
         """
+
+    async def _item_meta_by_ids(self, item_ids: list[int]) -> dict[int, object]:
+        ids = sorted({int(x) for x in item_ids if x is not None and int(x) > 0})
+        if not ids:
+            return {}
+        return await ItemReadService(self.session).aget_report_meta_by_item_ids(item_ids=ids)
 
     async def _summary(self, params: dict[str, object]) -> dict[str, object]:
         sql = text(
@@ -258,15 +266,11 @@ class OrderSalesSource:
             f"""
             SELECT
               f.item_id,
-              MAX(i.sku) AS item_sku,
-              MAX(i.name) AS item_name,
               MAX(f.sku_id) AS sku_id,
               MAX(f.title) AS title,
               COALESCE(SUM(f.qty_sold), 0) AS qty_sold,
               COALESCE(SUM(f.line_amount), 0) AS revenue
               FROM finance_order_sales_lines f
-              LEFT JOIN items i
-                ON i.id = f.item_id
              WHERE {self._base_where("f")}
              GROUP BY f.item_id
              HAVING COALESCE(SUM(f.qty_sold), 0) > 0
@@ -275,18 +279,24 @@ class OrderSalesSource:
             """
         )
         rows = (await self.session.execute(sql, params)).mappings().all()
-        return [
-            {
-                "item_id": int(row["item_id"]),
-                "item_sku": row["item_sku"],
-                "item_name": row["item_name"],
-                "sku_id": row["sku_id"],
-                "title": row["title"],
-                "qty_sold": int(row["qty_sold"] or 0),
-                "revenue": to_decimal(row["revenue"]),
-            }
-            for row in rows
-        ]
+        item_meta = await self._item_meta_by_ids([int(row["item_id"]) for row in rows])
+
+        out: list[dict[str, object]] = []
+        for row in rows:
+            item_id = int(row["item_id"])
+            meta = item_meta.get(item_id)
+            out.append(
+                {
+                    "item_id": item_id,
+                    "item_sku": getattr(meta, "sku", None),
+                    "item_name": getattr(meta, "name", None),
+                    "sku_id": row["sku_id"],
+                    "title": row["title"],
+                    "qty_sold": int(row["qty_sold"] or 0),
+                    "revenue": to_decimal(row["revenue"]),
+                }
+            )
+        return out
 
     async def _total(self, params: dict[str, object]) -> int:
         sql = text(
@@ -329,8 +339,6 @@ class OrderSalesSource:
                 ELSE 'none'
               END AS warehouse_source,
               f.item_id,
-              i.sku AS item_sku,
-              i.name AS item_name,
               f.sku_id,
               f.title,
               f.qty_sold,
@@ -346,47 +354,51 @@ class OrderSalesSource:
                 ON whp.id = ofl.planned_warehouse_id
               LEFT JOIN warehouses wha
                 ON wha.id = ofl.actual_warehouse_id
-              LEFT JOIN items i
-                ON i.id = f.item_id
              WHERE {self._base_where("f")}
              ORDER BY f.order_created_at DESC, f.id DESC
              LIMIT :limit OFFSET :offset
             """
         )
         rows = (await self.session.execute(sql, params)).mappings().all()
-        return [
-            {
-                "id": int(row["id"]),
-                "order_id": int(row["order_id"]),
-                "order_item_id": int(row["order_item_id"]),
-                "platform": str(row["platform"]),
-                "store_id": int(row["store_id"]),
-                "store_code": str(row["store_code"]),
-                "store_name": row["store_name"],
-                "ext_order_no": str(row["ext_order_no"]),
-                "order_ref": str(row["order_ref"]),
-                "order_status": row["order_status"],
-                "order_created_at": row["order_created_at"],
-                "order_date": row["order_date"],
-                "receiver_province": row["receiver_province"],
-                "receiver_city": row["receiver_city"],
-                "receiver_district": row["receiver_district"],
-                "warehouse_id": int(row["warehouse_id"]) if row["warehouse_id"] is not None else None,
-                "warehouse_name": row["warehouse_name"],
-                "warehouse_source": str(row["warehouse_source"]),
-                "item_id": int(row["item_id"]),
-                "item_sku": row["item_sku"],
-                "item_name": row["item_name"],
-                "sku_id": row["sku_id"],
-                "title": row["title"],
-                "qty_sold": int(row["qty_sold"] or 0),
-                "unit_price": to_decimal(row["unit_price"]) if row["unit_price"] is not None else None,
-                "discount_amount": to_decimal(row["discount_amount"])
-                if row["discount_amount"] is not None
-                else None,
-                "line_amount": to_decimal(row["line_amount"]),
-                "order_amount": to_decimal(row["order_amount"]) if row["order_amount"] is not None else None,
-                "pay_amount": to_decimal(row["pay_amount"]) if row["pay_amount"] is not None else None,
-            }
-            for row in rows
-        ]
+        item_meta = await self._item_meta_by_ids([int(row["item_id"]) for row in rows])
+
+        out: list[dict[str, object]] = []
+        for row in rows:
+            item_id = int(row["item_id"])
+            meta = item_meta.get(item_id)
+            out.append(
+                {
+                    "id": int(row["id"]),
+                    "order_id": int(row["order_id"]),
+                    "order_item_id": int(row["order_item_id"]),
+                    "platform": str(row["platform"]),
+                    "store_id": int(row["store_id"]),
+                    "store_code": str(row["store_code"]),
+                    "store_name": row["store_name"],
+                    "ext_order_no": str(row["ext_order_no"]),
+                    "order_ref": str(row["order_ref"]),
+                    "order_status": row["order_status"],
+                    "order_created_at": row["order_created_at"],
+                    "order_date": row["order_date"],
+                    "receiver_province": row["receiver_province"],
+                    "receiver_city": row["receiver_city"],
+                    "receiver_district": row["receiver_district"],
+                    "warehouse_id": int(row["warehouse_id"]) if row["warehouse_id"] is not None else None,
+                    "warehouse_name": row["warehouse_name"],
+                    "warehouse_source": str(row["warehouse_source"]),
+                    "item_id": item_id,
+                    "item_sku": getattr(meta, "sku", None),
+                    "item_name": getattr(meta, "name", None),
+                    "sku_id": row["sku_id"],
+                    "title": row["title"],
+                    "qty_sold": int(row["qty_sold"] or 0),
+                    "unit_price": to_decimal(row["unit_price"]) if row["unit_price"] is not None else None,
+                    "discount_amount": to_decimal(row["discount_amount"])
+                    if row["discount_amount"] is not None
+                    else None,
+                    "line_amount": to_decimal(row["line_amount"]),
+                    "order_amount": to_decimal(row["order_amount"]) if row["order_amount"] is not None else None,
+                    "pay_amount": to_decimal(row["pay_amount"]) if row["pay_amount"] is not None else None,
+                }
+            )
+        return out
