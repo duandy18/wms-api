@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
+
 from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.pms.export.items.services.item_read_service import ItemReadService
+from app.pms.export.uoms.services.uom_read_service import PmsExportUomReadService
 
 from app.wms.inventory_adjustment.return_inbound.contracts.receipt_read import (
     InboundReceiptLineReadOut,
@@ -20,6 +25,47 @@ from app.oms.services.order_ref_resolver import resolve_order_id
 
 
 RETURN_SHIP_REASONS = ("SHIPMENT", "OUTBOUND_SHIP")
+
+
+def _clean_item_ids(values: Iterable[int] | None) -> list[int]:
+    if values is None:
+        return []
+
+    out: set[int] = set()
+    for value in values:
+        if value is None:
+            continue
+        item_id = int(value)
+        if item_id > 0:
+            out.add(item_id)
+    return sorted(out)
+
+
+async def _load_inbound_default_uoms_by_item_id(
+    session: AsyncSession,
+    *,
+    item_ids: Iterable[int],
+):
+    ids = _clean_item_ids(item_ids)
+    if not ids:
+        return {}
+
+    uoms = await PmsExportUomReadService(session).alist_uoms(item_ids=ids)
+
+    selected = {}
+    for uom in sorted(
+        uoms,
+        key=lambda x: (
+            int(x.item_id),
+            0 if bool(x.is_inbound_default) else 1 if bool(x.is_base) else 2,
+            int(x.id),
+        ),
+    ):
+        item_id = int(uom.item_id)
+        if item_id not in selected:
+            selected[item_id] = uom
+
+    return selected
 
 
 async def _resolve_order_identity(
@@ -116,41 +162,12 @@ async def get_inbound_return_source_repo(
                 SELECT
                   oi.id AS order_line_id,
                   oi.item_id AS item_id,
-                  COALESCE(i.name, oi.title) AS item_name_snapshot,
-                  i.spec AS item_spec_snapshot,
-                  (
-                    SELECT u.id
-                    FROM item_uoms u
-                    WHERE u.item_id = oi.item_id
-                    ORDER BY
-                      CASE WHEN u.is_inbound_default THEN 0 WHEN u.is_base THEN 1 ELSE 2 END,
-                      u.id
-                    LIMIT 1
-                  ) AS item_uom_id,
-                  (
-                    SELECT COALESCE(NULLIF(u.display_name, ''), u.uom)
-                    FROM item_uoms u
-                    WHERE u.item_id = oi.item_id
-                    ORDER BY
-                      CASE WHEN u.is_inbound_default THEN 0 WHEN u.is_base THEN 1 ELSE 2 END,
-                      u.id
-                    LIMIT 1
-                  ) AS uom_name_snapshot,
-                  (
-                    SELECT u.ratio_to_base::numeric
-                    FROM item_uoms u
-                    WHERE u.item_id = oi.item_id
-                    ORDER BY
-                      CASE WHEN u.is_inbound_default THEN 0 WHEN u.is_base THEN 1 ELSE 2 END,
-                      u.id
-                    LIMIT 1
-                  ) AS ratio_to_base_snapshot,
+                  oi.title AS order_item_title,
                   COALESCE(oi.qty, 0)::numeric AS qty_ordered,
                   COALESCE(oi.shipped_qty, 0)::numeric AS qty_shipped,
                   COALESCE(oi.returned_qty, 0)::numeric AS qty_returned,
                   GREATEST(COALESCE(oi.shipped_qty, 0) - COALESCE(oi.returned_qty, 0), 0)::numeric AS qty_remaining_refundable
                 FROM order_items oi
-                LEFT JOIN items i ON i.id = oi.item_id
                 WHERE oi.order_id = :order_id
                   AND GREATEST(COALESCE(oi.shipped_qty, 0) - COALESCE(oi.returned_qty, 0), 0) > 0
                 ORDER BY oi.id ASC
@@ -163,23 +180,38 @@ async def get_inbound_return_source_repo(
     if not line_rows:
         raise HTTPException(status_code=409, detail="return_order_has_no_refundable_lines")
 
+    item_ids = _clean_item_ids(row["item_id"] for row in line_rows)
+    item_map = await ItemReadService(session).aget_basics_by_item_ids(item_ids=item_ids)
+    inbound_uom_map = await _load_inbound_default_uoms_by_item_id(
+        session,
+        item_ids=item_ids,
+    )
+
     lines: list[InboundReceiptReturnSourceLineOut] = []
     remaining_qty = 0
 
     for row in line_rows:
         item_id = int(row["item_id"])
-        item_uom_id = int(row["item_uom_id"] or 0)
-        if item_uom_id <= 0:
+        item = item_map.get(item_id)
+        uom = inbound_uom_map.get(item_id)
+
+        if uom is None:
             raise HTTPException(status_code=409, detail=f"item_has_no_inbound_uom:item_id={item_id}")
+
+        item_name_snapshot = (
+            str(item.name).strip()
+            if item is not None and str(item.name or "").strip()
+            else str(row["order_item_title"] or "").strip() or f"ITEM-{item_id}"
+        )
 
         line = InboundReceiptReturnSourceLineOut(
             order_line_id=int(row["order_line_id"]),
             item_id=item_id,
-            item_name_snapshot=row["item_name_snapshot"],
-            item_spec_snapshot=row["item_spec_snapshot"],
-            item_uom_id=item_uom_id,
-            uom_name_snapshot=row["uom_name_snapshot"],
-            ratio_to_base_snapshot=row["ratio_to_base_snapshot"] or 1,
+            item_name_snapshot=item_name_snapshot,
+            item_spec_snapshot=(item.spec if item is not None else None),
+            item_uom_id=int(uom.id),
+            uom_name_snapshot=str(uom.uom_name or uom.display_name or uom.uom or "").strip(),
+            ratio_to_base_snapshot=int(uom.ratio_to_base),
             qty_ordered=row["qty_ordered"] or 0,
             qty_shipped=row["qty_shipped"] or 0,
             qty_returned=row["qty_returned"] or 0,
