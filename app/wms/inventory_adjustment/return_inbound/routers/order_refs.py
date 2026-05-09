@@ -1,6 +1,7 @@
 # app/wms/inventory_adjustment/return_inbound/routers/order_refs.py
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Query
@@ -8,6 +9,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_session
+from app.pms.export.items.services.item_read_service import ItemReadService
 from app.wms.inventory_adjustment.return_inbound.contracts.return_task import (
     ReturnOrderRefDetailOut,
     ReturnOrderRefItem,
@@ -18,6 +20,105 @@ from app.wms.inventory_adjustment.return_inbound.contracts.return_task import (
 )
 
 from ._common import SHIP_OUT_REASONS, calc_remaining_qty, parse_ext_order_no, safe_meta_to_dict
+
+
+def _clean_item_ids(values: Iterable[int] | None) -> list[int]:
+    if values is None:
+        return []
+
+    out: set[int] = set()
+    for value in values:
+        if value is None:
+            continue
+        item_id = int(value)
+        if item_id > 0:
+            out.add(item_id)
+    return sorted(out)
+
+
+async def _enrich_order_ref_summary_lines(
+    session: AsyncSession,
+    *,
+    rows: Iterable[dict],
+) -> list[dict]:
+    """
+    退货 order_ref 摘要行商品展示补齐。
+
+    WMS 事实仍来自 stock_ledger / lots；
+    商品名通过 PMS export read service 获取，
+    不在 return inbound order_refs 里直接读取 PMS owner items。
+    """
+    out = [dict(row) for row in rows]
+    item_ids = _clean_item_ids(row.get("item_id") for row in out)
+    if not item_ids:
+        return out
+
+    item_map = await ItemReadService(session).aget_basics_by_item_ids(item_ids=item_ids)
+
+    for row in out:
+        item_id = int(row["item_id"])
+        item = item_map.get(item_id)
+        row["item_name"] = (
+            str(item.name).strip()
+            if item is not None and str(item.name or "").strip()
+            else None
+        )
+
+    return out
+
+
+async def load_return_order_ref_summary(
+    *,
+    order_ref: str,
+    session: AsyncSession,
+    warehouse_id: Optional[int] = None,
+) -> ReturnOrderRefSummaryOut:
+    wh_cond = ""
+    params: dict = {"ref": order_ref, "reasons": list(SHIP_OUT_REASONS)}
+    if warehouse_id is not None:
+        wh_cond = "AND l.warehouse_id = :wid"
+        params["wid"] = int(warehouse_id)
+
+    # 维度封板：GROUP BY lot_id；lot_code_snapshot 仅展示，来自 lots.lot_code
+    sql = f"""
+    SELECT l.warehouse_id,
+           l.item_id,
+           NULL::text AS item_name,
+           l.lot_id,
+           MAX(lo.lot_code) AS lot_code_snapshot,
+           COALESCE(SUM(-l.delta), 0)::int AS shipped_qty
+      FROM stock_ledger l
+      LEFT JOIN lots lo ON lo.id = l.lot_id
+     WHERE l.ref = :ref
+       AND l.delta < 0
+       AND l.reason = ANY(:reasons)
+       {wh_cond}
+     GROUP BY l.warehouse_id, l.item_id, l.lot_id
+     ORDER BY l.warehouse_id, l.item_id, l.lot_id
+    """
+
+    lines_raw = (await session.execute(sa.text(sql), params)).mappings().all()
+    lines_data = await _enrich_order_ref_summary_lines(
+        session,
+        rows=[dict(r) for r in lines_raw],
+    )
+    lines = [ReturnOrderRefSummaryLine(**r) for r in lines_data]
+
+    rs = await session.execute(
+        sa.text(
+            """
+            SELECT DISTINCT reason
+              FROM stock_ledger
+             WHERE ref=:ref
+               AND delta<0
+               AND reason = ANY(:reasons)
+             ORDER BY reason
+            """
+        ),
+        {"ref": order_ref, "reasons": list(SHIP_OUT_REASONS)},
+    )
+    reasons = [str(x[0]) for x in rs.all()]
+    return ReturnOrderRefSummaryOut(order_ref=order_ref, ship_reasons=reasons, lines=lines)
 
 
 def register_order_refs(router: APIRouter) -> None:
@@ -112,49 +213,11 @@ def register_order_refs(router: APIRouter) -> None:
         session: AsyncSession = Depends(get_session),
         warehouse_id: Optional[int] = Query(None),
     ) -> ReturnOrderRefSummaryOut:
-        wh_cond = ""
-        params: dict = {"ref": order_ref, "reasons": list(SHIP_OUT_REASONS)}
-        if warehouse_id is not None:
-            wh_cond = "AND l.warehouse_id = :wid"
-            params["wid"] = int(warehouse_id)
-
-        # 维度封板：GROUP BY lot_id；lot_code_snapshot 仅展示，来自 lots.lot_code
-        sql = f"""
-        SELECT l.warehouse_id,
-               l.item_id,
-               i.name AS item_name,
-               l.lot_id,
-               MAX(lo.lot_code) AS lot_code_snapshot,
-               COALESCE(SUM(-l.delta), 0)::int AS shipped_qty
-          FROM stock_ledger l
-          LEFT JOIN items i ON i.id = l.item_id
-          LEFT JOIN lots lo ON lo.id = l.lot_id
-         WHERE l.ref = :ref
-           AND l.delta < 0
-           AND l.reason = ANY(:reasons)
-           {wh_cond}
-         GROUP BY l.warehouse_id, l.item_id, i.name, l.lot_id
-         ORDER BY l.warehouse_id, l.item_id, l.lot_id
-        """
-
-        lines_raw = (await session.execute(sa.text(sql), params)).mappings().all()
-        lines = [ReturnOrderRefSummaryLine(**dict(r)) for r in lines_raw]
-
-        rs = await session.execute(
-            sa.text(
-                """
-                SELECT DISTINCT reason
-                  FROM stock_ledger
-                 WHERE ref=:ref
-                   AND delta<0
-                   AND reason = ANY(:reasons)
-                 ORDER BY reason
-                """
-            ),
-            {"ref": order_ref, "reasons": list(SHIP_OUT_REASONS)},
+        return await load_return_order_ref_summary(
+            order_ref=order_ref,
+            session=session,
+            warehouse_id=warehouse_id,
         )
-        reasons = [str(x[0]) for x in rs.all()]
-        return ReturnOrderRefSummaryOut(order_ref=order_ref, ship_reasons=reasons, lines=lines)
 
     # ---------------------------------------------------------
     # /order-refs/{order_ref}/detail：订单详情（只读）
