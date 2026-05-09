@@ -30,6 +30,7 @@ def mount_routers(app: FastAPI) -> None:
     )
     from app.pms.export.items.routers.items_read import router as pms_export_items_read_router
     from app.pms.export.uoms.routers.uoms_read import router as pms_export_uoms_read_router
+    from app.pms.export.barcodes.routers.barcodes_read import router as pms_export_barcodes_read_router
     from app.partners.export.suppliers.routers.suppliers_read import (
         router as partners_export_suppliers_read_router,
     )
@@ -129,10 +130,11 @@ def mount_routers(app: FastAPI) -> None:
     # - public 读面先挂
     # - /pms/export/items/barcode-probe 先于 /items/{id}
     # - /items/aggregate 先于 /items/{id}
-    # - /pms/export/items、/partners/export/suppliers 独立前缀，不与 owner 冲突
+    # - /pms/export/items、/pms/export/uoms、/pms/export/barcodes、/partners/export/suppliers 独立前缀，不与 owner 冲突
     app.include_router(pms_export_item_aggregate_read_router)
     app.include_router(pms_export_items_read_router)
     app.include_router(pms_export_uoms_read_router)
+    app.include_router(pms_export_barcodes_read_router)
     app.include_router(pms_export_barcode_probe_router)
     app.include_router(partners_export_suppliers_read_router)
     app.include_router(item_aggregate_router)
