@@ -94,6 +94,25 @@ check-test: venv
 	WMS_TEST_DATABASE_URL="$(TEST_DB_DSN)" \
 	$(ALEMB) check
 
+
+# =================================
+# WMS PMS projection rebuild
+# =================================
+.PHONY: rebuild-wms-pms-projection-dev rebuild-wms-pms-projection-test
+rebuild-wms-pms-projection-dev: venv upgrade-dev
+	@echo ">>> Rebuild WMS PMS projection on DEV_DB_DSN ($(DEV_DB_DSN))"
+	@PYTHONPATH=. WMS_ENV=dev \
+	  WMS_DATABASE_URL="$(DEV_DB_DSN)" \
+	  WMS_TEST_DATABASE_URL="$(DEV_DB_DSN)" \
+	  $(PY) scripts/rebuild_wms_pms_projection.py
+
+rebuild-wms-pms-projection-test: venv upgrade-dev-test-db
+	@echo ">>> Rebuild WMS PMS projection on DEV_TEST_DB_DSN ($(DEV_TEST_DB_DSN))"
+	@PYTHONPATH=. WMS_ENV=test \
+	  WMS_DATABASE_URL="$(DEV_TEST_DB_DSN)" \
+	  WMS_TEST_DATABASE_URL="$(DEV_TEST_DB_DSN)" \
+	  $(PY) scripts/rebuild_wms_pms_projection.py
+
 # =================================
 # Pilot DB 备份（在中试服务器上运行）
 # =================================
