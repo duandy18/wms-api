@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import csv
+from collections.abc import Iterable
 from datetime import datetime, timedelta, timezone
 from io import StringIO
 from typing import Tuple
@@ -11,13 +12,12 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.pms.export.items.services.item_read_service import ItemReadService
+from app.pms.export.uoms.services.uom_read_service import PmsExportUomReadService
 from app.wms.shared.services.lot_code_contract import normalize_optional_lot_code
-from app.pms.items.models.item import Item
 from app.wms.stock.models.lot import Lot
 from app.wms.ledger.models.stock_ledger import StockLedger
 from app.wms.ledger.contracts.stock_ledger import LedgerQuery
-
-ITEMS_TABLE = Item.__table__
 
 
 def normalize_time_range(q: LedgerQuery) -> Tuple[datetime, datetime]:
@@ -111,7 +111,86 @@ def resolve_ledger_lot_code_filter(q: LedgerQuery) -> tuple[bool, str | None]:
     return True, lot_code
 
 
-def build_common_filters(q: LedgerQuery, time_from: datetime, time_to: datetime):
+def _clean_item_ids(values: Iterable[int] | None) -> list[int]:
+    if values is None:
+        return []
+    return sorted({int(x) for x in values if x is not None and int(x) > 0})
+
+
+async def resolve_ledger_item_keyword_item_ids(
+    session: AsyncSession,
+    *,
+    payload: LedgerQuery,
+) -> list[int] | None:
+    """
+    将 ledger.item_keyword 通过 PMS export read service 解析为 item_id 集合。
+
+    返回语义：
+    - None：调用方未传 item_keyword，不应增加 item 过滤；
+    - []：调用方传了 item_keyword，但 PMS 没有匹配商品，应返回空结果；
+    - [ids...]：按 item_id 过滤 ledger。
+    """
+    keyword = str(getattr(payload, "item_keyword", None) or "").strip()
+    if not keyword:
+        return None
+    return await ItemReadService(session).asearch_report_item_ids_by_keyword(keyword=keyword)
+
+
+async def load_ledger_item_display_maps(
+    session: AsyncSession,
+    *,
+    item_ids: Iterable[int],
+) -> tuple[dict[int, str], dict[int, dict[str, object | None]]]:
+    """
+    通过 PMS export read service 批量读取 ledger 当前页展示所需商品信息。
+
+    注意：
+    - 这里只补查询页展示信息，不解释历史事实；
+    - 历史事实仍以各业务单据的 snapshot 字段为准；
+    - WMS ledger 不直接读取 PMS owner 表。
+    """
+    ids = _clean_item_ids(item_ids)
+    if not ids:
+        return {}, {}
+
+    item_meta_map = await ItemReadService(session).aget_report_meta_by_item_ids(item_ids=ids)
+    item_name_map = {
+        int(item_id): str(meta.name).strip()
+        for item_id, meta in item_meta_map.items()
+        if str(meta.name or "").strip()
+    }
+
+    uoms = await PmsExportUomReadService(session).alist_uoms(item_ids=ids)
+    base_uom_map: dict[int, dict[str, object | None]] = {
+        item_id: {"base_item_uom_id": None, "base_uom_name": None}
+        for item_id in ids
+    }
+
+    for uom in uoms:
+        if not bool(getattr(uom, "is_base", False)):
+            continue
+
+        item_id = int(uom.item_id)
+        if item_id not in base_uom_map:
+            continue
+        if base_uom_map[item_id]["base_item_uom_id"] is not None:
+            continue
+
+        base_uom_map[item_id] = {
+            "base_item_uom_id": int(uom.id),
+            "base_uom_name": str(uom.uom_name or uom.display_name or uom.uom or "").strip() or None,
+        }
+
+    return item_name_map, base_uom_map
+
+
+def build_common_filters(
+    q: LedgerQuery,
+    time_from: datetime,
+    time_to: datetime,
+    *,
+    item_keyword_item_ids: Iterable[int] | None = None,
+):
     """
     根据查询模型构建 SQLAlchemy 过滤条件列表（不包含 item_keyword 模糊搜索）。
 
@@ -127,6 +206,13 @@ def build_common_filters(q: LedgerQuery, time_from: datetime, time_to: datetime)
 
     if q.item_id is not None:
         conditions.append(StockLedger.item_id == q.item_id)
+
+    if item_keyword_item_ids is not None:
+        item_ids = _clean_item_ids(item_keyword_item_ids)
+        if item_ids:
+            conditions.append(StockLedger.item_id.in_(item_ids))
+        else:
+            conditions.append(sa.false())
 
     if q.warehouse_id is not None:
         conditions.append(StockLedger.warehouse_id == q.warehouse_id)
@@ -228,27 +314,27 @@ def infer_movement_type(reason: str | None) -> str | None:
     return "UNKNOWN"
 
 
-def build_base_ids_stmt(q: LedgerQuery, time_from: datetime, time_to: datetime):
+def build_base_ids_stmt(
+    q: LedgerQuery,
+    time_from: datetime,
+    time_to: datetime,
+    *,
+    item_keyword_item_ids: Iterable[int] | None = None,
+):
     """
     按查询条件构造基础 SQL（只选中符合条件的 id 列表）：
 
     - 支持按 item_id / warehouse_id / lot_id / lot_code / reason / reason_canon / sub_reason / ref / trace_id / 时间过滤；
-    - 支持按 item_keyword 模糊匹配 items.name / items.sku；
+    - item_keyword 由调用方先通过 PMS export read service 解析为 item_id 集合；
     - 不再依赖 stock_id / batch_id，完全对齐当前 StockLedger 模型。
     """
     stmt = select(StockLedger.id).select_from(StockLedger)
-    conditions = build_common_filters(q, time_from, time_to)
-
-    # item_keyword 模糊搜索：name/sku
-    if q.item_keyword:
-        kw = f"%{q.item_keyword.strip()}%"
-        stmt = stmt.join(Item, Item.id == StockLedger.item_id)
-        conditions.append(
-            sa.or_(
-                Item.name.ilike(kw),
-                Item.sku.ilike(kw),
-            )
-        )
+    conditions = build_common_filters(
+        q,
+        time_from,
+        time_to,
+        item_keyword_item_ids=item_keyword_item_ids,
+    )
 
     if conditions:
         stmt = stmt.where(sa.and_(*conditions))
