@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.pms.export.items.services.barcode_probe_service import BarcodeProbeService
+from app.pms.export.uoms.services.uom_read_service import PmsExportUomReadService
 from app.wms.inventory_adjustment.return_inbound.contracts.probe import (
     InboundTaskProbeOut,
     InboundTaskProbeStatus,
@@ -23,28 +23,15 @@ async def _load_actual_uom_name(
     if item_uom_id is None:
         return None
 
-    row = (
-        await session.execute(
-            text(
-                """
-                SELECT
-                  COALESCE(NULLIF(display_name, ''), uom) AS uom_name_snapshot
-                FROM item_uoms
-                WHERE id = :item_uom_id
-                  AND item_id = :item_id
-                LIMIT 1
-                """
-            ),
-            {
-                "item_uom_id": int(item_uom_id),
-                "item_id": int(item_id),
-            },
-        )
-    ).mappings().first()
-
-    if row is None:
+    uom = await PmsExportUomReadService(session).aget_by_id(
+        item_uom_id=int(item_uom_id),
+    )
+    if uom is None:
         return None
-    return row["uom_name_snapshot"]
+    if int(uom.item_id) != int(item_id):
+        return None
+
+    return str(uom.uom_name or uom.display_name or uom.uom or "").strip() or None
 
 
 def _match_line(

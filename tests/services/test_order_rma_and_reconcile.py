@@ -11,6 +11,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.wms.shared.enums import MovementType
 from app.oms.orders.services.order_reconcile_service import OrderReconcileService
 from app.oms.services.order_service import OrderService
+from app.wms.inventory_adjustment.return_inbound.services.inbound_task_probe_service import (
+    _load_actual_uom_name,
+)
 from app.wms.inventory_adjustment.return_inbound.repos.inbound_receipt_read_repo import (
     get_inbound_return_source_repo,
 )
@@ -876,3 +879,46 @@ async def test_return_order_ref_summary_item_display_uses_pms_export(
     assert line.item_id == item_id
     assert line.item_name
     assert line.shipped_qty == 2
+
+@pytest.mark.asyncio
+async def test_return_inbound_probe_loads_uom_name_through_pms_export(
+    session: AsyncSession,
+) -> None:
+    row = (
+        await session.execute(
+            text(
+                """
+                SELECT id, item_id, COALESCE(NULLIF(display_name, ''), uom) AS uom_name
+                FROM item_uoms
+                ORDER BY id
+                LIMIT 1
+                """
+            )
+        )
+    ).mappings().first()
+    assert row is not None
+
+    item_uom_id = int(row["id"])
+    item_id = int(row["item_id"])
+    expected_name = str(row["uom_name"])
+
+    got = await _load_actual_uom_name(
+        session,
+        item_id=item_id,
+        item_uom_id=item_uom_id,
+    )
+    assert got == expected_name
+
+    mismatch = await _load_actual_uom_name(
+        session,
+        item_id=item_id + 999999,
+        item_uom_id=item_uom_id,
+    )
+    assert mismatch is None
+
+    none_value = await _load_actual_uom_name(
+        session,
+        item_id=item_id,
+        item_uom_id=None,
+    )
+    assert none_value is None
