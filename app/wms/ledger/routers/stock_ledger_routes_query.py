@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from datetime import timezone
 
-import sqlalchemy as sa
 from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,7 +21,9 @@ from app.wms.ledger.contracts.stock_ledger import (
 from app.wms.ledger.helpers.stock_ledger import (
     build_base_ids_stmt,
     infer_movement_type,
+    load_ledger_item_display_maps,
     normalize_time_range,
+    resolve_ledger_item_keyword_item_ids,
 )
 
 UTC = timezone.utc
@@ -54,7 +55,13 @@ def register(router: APIRouter) -> None:
         """
         time_from, time_to = normalize_time_range(payload)
 
-        ids_stmt = build_base_ids_stmt(payload, time_from, time_to)
+        item_keyword_item_ids = await resolve_ledger_item_keyword_item_ids(session, payload=payload)
+        ids_stmt = build_base_ids_stmt(
+            payload,
+            time_from,
+            time_to,
+            item_keyword_item_ids=item_keyword_item_ids,
+        )
         ids_subq = ids_stmt.subquery()
 
         total = (await session.execute(select(func.count()).select_from(ids_subq))).scalar_one()
@@ -70,40 +77,10 @@ def register(router: APIRouter) -> None:
 
         item_ids = sorted({int(r.item_id) for r in rows if r.item_id is not None})
 
-        item_name_map: dict[int, str] = {}
-        base_uom_map: dict[int, dict[str, object | None]] = {}
-
-        if item_ids:
-            res = await session.execute(
-                sa.text(
-                    """
-                    SELECT
-                      i.id,
-                      i.name,
-                      iu.id AS base_item_uom_id,
-                      COALESCE(NULLIF(iu.display_name, ''), iu.uom) AS base_uom_name
-                    FROM items AS i
-                    LEFT JOIN item_uoms AS iu
-                      ON iu.item_id = i.id
-                     AND iu.is_base IS TRUE
-                    WHERE i.id = ANY(:ids)
-                    """
-                ),
-                {"ids": item_ids},
-            )
-            for x in res.mappings().all():
-                iid = int(x["id"])
-                nm = str(x["name"] or "").strip()
-                if nm:
-                    item_name_map[iid] = nm
-                base_uom_map[iid] = {
-                    "base_item_uom_id": (
-                        int(x["base_item_uom_id"])
-                        if x.get("base_item_uom_id") is not None
-                        else None
-                    ),
-                    "base_uom_name": x.get("base_uom_name"),
-                }
+        item_name_map, base_uom_map = await load_ledger_item_display_maps(
+            session,
+            item_ids=item_ids,
+        )
 
         lot_ids = sorted({int(getattr(r, "lot_id")) for r in rows if getattr(r, "lot_id", None) is not None})
         lot_code_map: dict[int, str | None] = {}

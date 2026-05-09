@@ -1,7 +1,6 @@
 # app/wms/ledger/helpers/__init__.py
 
 from app.wms.ledger.helpers.stock_ledger import (
-    ITEMS_TABLE,
     apply_common_filters_rows,
     build_base_ids_stmt,
     build_common_filters,
@@ -13,7 +12,6 @@ from app.wms.ledger.helpers.stock_ledger import (
 )
 
 __all__ = [
-    "ITEMS_TABLE",
     "apply_common_filters_rows",
     "build_base_ids_stmt",
     "build_common_filters",

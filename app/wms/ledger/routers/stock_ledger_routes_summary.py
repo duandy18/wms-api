@@ -12,9 +12,9 @@ from app.db.session import get_session
 from app.wms.ledger.models.stock_ledger import StockLedger
 from app.wms.ledger.contracts.stock_ledger import LedgerQuery, LedgerReasonStat, LedgerSummary
 from app.wms.ledger.helpers.stock_ledger import (
-    ITEMS_TABLE,
     build_common_filters,
     normalize_time_range,
+    resolve_ledger_item_keyword_item_ids,
 )
 
 
@@ -25,7 +25,13 @@ def register(router: APIRouter) -> None:
         session: AsyncSession = Depends(get_session),
     ) -> LedgerSummary:
         time_from, time_to = normalize_time_range(payload)
-        conditions = build_common_filters(payload, time_from, time_to)
+        item_keyword_item_ids = await resolve_ledger_item_keyword_item_ids(session, payload=payload)
+        conditions = build_common_filters(
+            payload,
+            time_from,
+            time_to,
+            item_keyword_item_ids=item_keyword_item_ids,
+        )
 
         stmt = (
             select(
@@ -35,16 +41,6 @@ def register(router: APIRouter) -> None:
             )
             .select_from(StockLedger)
         )
-
-        if payload.item_keyword:
-            kw = f"%{payload.item_keyword.strip()}%"
-            stmt = stmt.join(ITEMS_TABLE, ITEMS_TABLE.c.id == StockLedger.item_id)
-            conditions.append(
-                sa.or_(
-                    ITEMS_TABLE.c.name.ilike(kw),
-                    ITEMS_TABLE.c.sku.ilike(kw),
-                )
-            )
 
         if conditions:
             stmt = stmt.where(sa.and_(*conditions))

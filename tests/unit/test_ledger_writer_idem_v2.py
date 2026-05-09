@@ -32,31 +32,37 @@ async def test_write_ledger_idempotent(session: AsyncSession):
         expiry_date=exp,
     )
 
-    # 终态：本测试只验证 ledger writer 的幂等（不需要散装写 stocks_lot）
-    id1 = await write_ledger(
-        session,
-        warehouse_id=1,
-        item_id=3003,
-        reason="COUNT",
-        delta=1,
-        after_qty=6,
-        ref="LED-IDEM-1",
-        ref_line=1,
-        occurred_at=datetime.now(UTC),
-        lot_id=int(lot_id),
-    )
-    assert id1 > 0
+    # 本测试只验证 ledger writer 的幂等，不验证库存余额变更。
+    # make test 的后置 seed-opening-ledger-test 会检查 Σledger == stocks_lot，
+    # 因此这里必须清理本测试直接写入的 ledger 行，避免污染测试库三账一致性。
+    try:
+        id1 = await write_ledger(
+            session,
+            warehouse_id=1,
+            item_id=3003,
+            reason="COUNT",
+            delta=1,
+            after_qty=6,
+            ref="LED-IDEM-1",
+            ref_line=1,
+            occurred_at=datetime.now(UTC),
+            lot_id=int(lot_id),
+        )
+        assert id1 > 0
 
-    id2 = await write_ledger(
-        session,
-        warehouse_id=1,
-        item_id=3003,
-        reason="COUNT",
-        delta=1,
-        after_qty=6,
-        ref="LED-IDEM-1",
-        ref_line=1,
-        occurred_at=datetime.now(UTC),
-        lot_id=int(lot_id),
-    )
-    assert id2 == 0
+        id2 = await write_ledger(
+            session,
+            warehouse_id=1,
+            item_id=3003,
+            reason="COUNT",
+            delta=1,
+            after_qty=6,
+            ref="LED-IDEM-1",
+            ref_line=1,
+            occurred_at=datetime.now(UTC),
+            lot_id=int(lot_id),
+        )
+        assert id2 == 0
+    finally:
+        await session.execute(text("DELETE FROM stock_ledger WHERE ref = 'LED-IDEM-1'"))
+        await session.flush()
