@@ -6,6 +6,7 @@ from sqlalchemy import text
 
 from app.wms.inbound.contracts.inbound_commit import InboundCommitIn
 from app.wms.inbound.services.inbound_commit_service import commit_inbound
+from app.wms.inbound.services.inbound_event_read_service import get_inbound_event_detail
 
 
 async def _pick_seed_item_uom(session):
@@ -101,6 +102,29 @@ async def _load_event_line(session, *, event_id: int):
     )
     m = row.mappings().first()
     return dict(m) if m else None
+
+
+async def _load_event_line_snapshots(session, *, event_id: int):
+    row = await session.execute(
+        text(
+            """
+            SELECT
+              item_id,
+              actual_uom_id,
+              item_name_snapshot,
+              item_spec_snapshot,
+              actual_uom_name_snapshot
+            FROM inbound_event_lines
+            WHERE event_id = :event_id
+            ORDER BY line_no ASC
+            LIMIT 1
+            """
+        ),
+        {"event_id": int(event_id)},
+    )
+    m = row.mappings().first()
+    return dict(m) if m else None
+
 
 
 async def _load_ledger_by_event(session, *, event_id: int):
@@ -214,3 +238,67 @@ async def test_inbound_commit_links_wms_event_and_stock_ledger(session):
     assert int(ledger["lot_id"]) == int(out_row.lot_id)
     assert int(ledger["delta"]) == int(out_row.qty_base)
     assert str(ledger["reason_canon"]) == "RECEIPT"
+
+async def test_inbound_event_detail_reads_line_snapshots_not_pms_current_state(session):
+    picked = await _pick_seed_item_uom(session)
+
+    warehouse_id = int(picked["warehouse_id"])
+    item_id = int(picked["item_id"])
+    uom_id = int(picked["uom_id"])
+    lot_source_policy = str(picked["lot_source_policy"])
+
+    production_date = date.today()
+    expiry_date = production_date + timedelta(days=30)
+
+    lot_code_input = None
+    if lot_source_policy in {"SUPPLIER_ONLY", "SUPPLIER"}:
+        lot_code_input = f"UT-IN-EVENT-READ-{item_id}-{uom_id}"
+
+    payload = InboundCommitIn.model_validate(
+        {
+            "warehouse_id": warehouse_id,
+            "source_type": "MANUAL",
+            "source_ref": None,
+            "occurred_at": production_date.isoformat() + "T00:00:00Z",
+            "remark": "ut inbound event snapshot read",
+            "lines": [
+                {
+                    "item_id": item_id,
+                    "uom_id": uom_id,
+                    "qty_input": 2,
+                    "lot_code_input": lot_code_input,
+                    "production_date": production_date.isoformat(),
+                    "expiry_date": expiry_date.isoformat(),
+                    "remark": "snapshot line",
+                }
+            ],
+        }
+    )
+
+    out = await commit_inbound(session, payload=payload, user_id=None)
+    snap = await _load_event_line_snapshots(session, event_id=int(out.event_id))
+    assert snap is not None
+    assert snap["item_name_snapshot"]
+    assert snap["actual_uom_name_snapshot"]
+
+    await session.execute(
+        text("UPDATE items SET name = 'MUTATED-CURRENT-NAME', sku = 'MUTATED-CURRENT-SKU' WHERE id = :item_id"),
+        {"item_id": int(item_id)},
+    )
+    await session.execute(
+        text("UPDATE item_uoms SET display_name = 'MUTATED-CURRENT-UOM' WHERE id = :uom_id"),
+        {"uom_id": int(uom_id)},
+    )
+    await session.flush()
+
+    detail = await get_inbound_event_detail(session, event_id=int(out.event_id))
+    assert len(detail.lines) == 1
+
+    line = detail.lines[0]
+    assert line.item_id == item_id
+    assert line.actual_uom_id == uom_id
+    assert line.item_name == snap["item_name_snapshot"]
+    assert line.actual_uom_name == snap["actual_uom_name_snapshot"]
+    assert line.item_name != "MUTATED-CURRENT-NAME"
+    assert line.actual_uom_name != "MUTATED-CURRENT-UOM"
+    assert line.item_sku is None
