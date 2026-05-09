@@ -172,6 +172,39 @@ class ItemReadService:
         basics = [self._build_item_basic(x) for x in rows]
         return {int(x.id): x for x in basics}
 
+    async def aget_policies_by_item_ids(self, *, item_ids: Iterable[int]) -> dict[int, ItemPolicy]:
+        """
+        PMS export async 商品策略批量读面。
+
+        用于 WMS 等调用方批量读取 lot / expiry 策略；
+        不暴露 PMS owner ORM。
+        """
+        db = self._require_async_db()
+        ids = sorted({int(x) for x in item_ids if x is not None and int(x) > 0})
+        if not ids:
+            return {}
+
+        stmt = select(Item).where(Item.id.in_(ids)).order_by(Item.id.asc())
+        rows = (await db.execute(stmt)).scalars().all()
+        return {int(item.id): self._map_item_to_policy(item) for item in rows}
+
+    async def aget_policy_by_sku(self, *, sku: str) -> ItemPolicy | None:
+        """
+        PMS export async SKU -> 商品策略读面。
+
+        仅按 items.sku 精确匹配；不做模糊搜索，不暴露 owner ORM。
+        """
+        db = self._require_async_db()
+        code = str(sku or "").strip()
+        if not code:
+            return None
+
+        stmt = select(Item).where(Item.sku == code).limit(1)
+        obj = (await db.execute(stmt)).scalars().first()
+        if obj is None:
+            return None
+        return self._map_item_to_policy(obj)
+
     async def aget_policy_by_id(self, *, item_id: int) -> ItemPolicy | None:
         db = self._require_async_db()
         stmt = select(Item).where(Item.id == int(item_id))

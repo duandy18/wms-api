@@ -4,8 +4,9 @@ from __future__ import annotations
 from typing import Dict, Optional, Set, Tuple
 
 from fastapi import HTTPException, status
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.pms.export.items.services.item_read_service import ItemReadService
 
 # 非批次商品禁止的历史假码（严格 422）
 _FORBIDDEN_FAKE_CODES: Set[str] = {"NOEXP", "NEAR", "FAR", "IDEM"}
@@ -115,39 +116,31 @@ def _requires_batch_from_expiry_policy(expiry_policy: Optional[str]) -> bool:
 
 async def fetch_item_expiry_policy_map(session: AsyncSession, item_ids: Set[int]) -> Dict[int, str]:
     """
-    真相源：items.expiry_policy（Phase M Rule 层）
+    真相源：PMS export item policy read service。
+
     返回：{item_id: 'NONE' | 'REQUIRED'}
     """
     if not item_ids:
         return {}
 
-    rows = await session.execute(
-        text("select id, expiry_policy from items where id = any(:ids)"),
-        {"ids": list(item_ids)},
-    )
-
-    m: Dict[int, str] = {}
-    for item_id, expiry_policy in rows.fetchall():
-        # expiry_policy 是 enum，psycopg 返回可能是 str / Enum-like；统一转 str
-        m[int(item_id)] = str(expiry_policy)
-    return m
+    policies = await ItemReadService(session).aget_policies_by_item_ids(item_ids=item_ids)
+    return {
+        int(item_id): str(policy.expiry_policy)
+        for item_id, policy in policies.items()
+    }
 
 
 async def fetch_item_by_sku(session: AsyncSession, sku: str) -> Optional[Tuple[int, bool]]:
     """
     返回 (item_id, requires_batch)
-    requires_batch 由 expiry_policy 投影得出。
+    requires_batch 由 PMS export item policy 投影得出。
     """
     s = (sku or "").strip()
     if not s:
         return None
 
-    row = await session.execute(
-        text("select id, expiry_policy from items where sku = :sku limit 1"),
-        {"sku": s},
-    )
-    r = row.first()
-    if not r:
+    policy = await ItemReadService(session).aget_policy_by_sku(sku=s)
+    if policy is None:
         return None
-    item_id, expiry_policy = r[0], r[1]
-    return int(item_id), _requires_batch_from_expiry_policy(str(expiry_policy))
+
+    return int(policy.item_id), _requires_batch_from_expiry_policy(str(policy.expiry_policy))
