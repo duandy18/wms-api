@@ -138,6 +138,7 @@ def init_models(
         "app.pms.items.models",
         "app.pms.sku_coding.models",
         "app.partners.suppliers.models",
+        "app.wms.pms_projection.models",
         "app.wms.inventory_adjustment.return_inbound.models",
         "app.wms.inventory_adjustment.count.models",
         "app.wms.inbound.models",
