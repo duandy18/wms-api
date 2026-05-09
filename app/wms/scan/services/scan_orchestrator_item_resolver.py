@@ -4,10 +4,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
-from sqlalchemy import text as SA
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.pms.export.items.services.barcode_probe_service import BarcodeProbeService
+from app.pms.export.sku_codes.services.sku_code_read_service import (
+    PmsExportSkuCodeReadService,
+)
 
 
 @dataclass(frozen=True)
@@ -72,28 +74,25 @@ async def resolve_item_id_from_barcode(
 
 
 async def resolve_item_id_from_sku(session: AsyncSession, sku: str) -> Optional[int]:
+    """
+    WMS scan SKU 文本解析复用 PMS export SKU code read service。
+
+    保持原语义：
+    - 只要求命中 active SKU code；
+    - 不要求出库默认单位 / 基础单位；
+    - 不在 WMS scan 内直接读取 PMS item_sku_codes / items 表。
+    """
     s = (sku or "").strip().upper()
     if not s:
         return None
 
     try:
-        row = await session.execute(
-            SA(
-                """
-                SELECT i.id
-                  FROM item_sku_codes c
-                  JOIN items i ON i.id = c.item_id
-                 WHERE lower(c.code) = lower(:s)
-                   AND c.is_active = TRUE
-                 ORDER BY c.is_primary DESC, c.id ASC
-                 LIMIT 1
-                """
-            ),
-            {"s": s},
+        rows = await PmsExportSkuCodeReadService(session).alist_sku_codes(
+            code=s,
+            active=True,
         )
-        item_id = row.scalar_one_or_none()
-        if item_id is None:
+        if not rows:
             return None
-        return int(item_id)
+        return int(rows[0].item_id)
     except Exception:
         return None
