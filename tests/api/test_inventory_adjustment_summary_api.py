@@ -421,6 +421,32 @@ async def test_inventory_adjustment_summary_contract_returns_list(client):
 
 
 @pytest.mark.asyncio
+async def test_inventory_adjustment_summary_detail_item_display_uses_pms_export(
+    client,
+    session: AsyncSession,
+):
+    seeded = await _seed_count_summary_row(session)
+    await session.commit()
+
+    detail_resp = await client.get(
+        f"/inventory-adjustment/summary/COUNT/{seeded['doc_id']}"
+    )
+    assert detail_resp.status_code == 200, detail_resp.text
+
+    body = detail_resp.json()
+    ledger_rows = body["ledger_rows"]
+    assert len(ledger_rows) == 1
+
+    ledger = ledger_rows[0]
+    assert int(ledger["event_id"]) == int(seeded["event_id"])
+    assert int(ledger["item_id"]) == int(seeded["item_id"])
+    assert ledger["item_name"]
+    assert ledger["base_uom_name"]
+    assert "batch_code" not in ledger
+
+
+
+@pytest.mark.asyncio
 async def test_inventory_adjustment_summary_detail_returns_ledger_rows(
     client,
     session: AsyncSession,
