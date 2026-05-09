@@ -116,33 +116,33 @@ async def get_inbound_return_source_repo(
                 SELECT
                   oi.id AS order_line_id,
                   oi.item_id AS item_id,
-                  COALESCE(i.name, oi.title) AS item_name_snapshot,
-                  i.spec AS item_spec_snapshot,
+                  COALESCE(p.name, oi.title) AS item_name_snapshot,
+                  p.spec AS item_spec_snapshot,
                   (
-                    SELECT u.id
-                    FROM item_uoms u
+                    SELECT u.item_uom_id
+                    FROM wms_pms_item_uom_projection u
                     WHERE u.item_id = oi.item_id
                     ORDER BY
                       CASE WHEN u.is_inbound_default THEN 0 WHEN u.is_base THEN 1 ELSE 2 END,
-                      u.id
+                      u.item_uom_id
                     LIMIT 1
                   ) AS item_uom_id,
                   (
                     SELECT COALESCE(NULLIF(u.display_name, ''), u.uom)
-                    FROM item_uoms u
+                    FROM wms_pms_item_uom_projection u
                     WHERE u.item_id = oi.item_id
                     ORDER BY
                       CASE WHEN u.is_inbound_default THEN 0 WHEN u.is_base THEN 1 ELSE 2 END,
-                      u.id
+                      u.item_uom_id
                     LIMIT 1
                   ) AS uom_name_snapshot,
                   (
                     SELECT u.ratio_to_base::numeric
-                    FROM item_uoms u
+                    FROM wms_pms_item_uom_projection u
                     WHERE u.item_id = oi.item_id
                     ORDER BY
                       CASE WHEN u.is_inbound_default THEN 0 WHEN u.is_base THEN 1 ELSE 2 END,
-                      u.id
+                      u.item_uom_id
                     LIMIT 1
                   ) AS ratio_to_base_snapshot,
                   COALESCE(oi.qty, 0)::numeric AS qty_ordered,
@@ -150,7 +150,7 @@ async def get_inbound_return_source_repo(
                   COALESCE(oi.returned_qty, 0)::numeric AS qty_returned,
                   GREATEST(COALESCE(oi.shipped_qty, 0) - COALESCE(oi.returned_qty, 0), 0)::numeric AS qty_remaining_refundable
                 FROM order_items oi
-                LEFT JOIN items i ON i.id = oi.item_id
+                LEFT JOIN wms_pms_item_projection p ON p.item_id = oi.item_id
                 WHERE oi.order_id = :order_id
                   AND GREATEST(COALESCE(oi.shipped_qty, 0) - COALESCE(oi.returned_qty, 0), 0) > 0
                 ORDER BY oi.id ASC

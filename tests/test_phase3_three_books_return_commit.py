@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.wms.inventory_adjustment.return_inbound.services.return_task_service_impl import ReturnTaskServiceImpl
 from app.wms.snapshot.services.snapshot_run import run_snapshot
 from app.wms.stock.services.lots import ensure_lot_full
+from tests.helpers.wms_pms_projection import force_wms_pms_projection_supplier_required_item
 from app.wms.stock.services.stock_adjust import adjust_lot_impl
 from app.wms.shared.services.three_books_consistency import verify_commit_three_books
 
@@ -50,6 +51,20 @@ async def _ensure_supplier_lot(
     production_date,
     expiry_date,
 ) -> int:
+    """
+    测试造数专用：创建 SUPPLIER lot 前必须把测试 item 提升为 REQUIRED projection。
+
+    WMS lot 创建现在只读 wms_pms_item_policy_projection；
+    不能再依赖 owner items 的旧状态。
+    """
+    await force_wms_pms_projection_supplier_required_item(
+        session,
+        item_id=int(item_id),
+    )
+
+    if expiry_date is None and production_date is not None:
+        expiry_date = production_date + timedelta(days=365)
+
     lot_id = await ensure_lot_full(
         session,
         item_id=int(item_id),
