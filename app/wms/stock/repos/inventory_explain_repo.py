@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import Any
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.pms.export.items.services.item_read_service import ItemReadService
+from app.pms.export.uoms.services.uom_read_service import PmsExportUomReadService
 
 
 def _norm_text(v: str | None) -> str | None:
@@ -11,6 +15,89 @@ def _norm_text(v: str | None) -> str | None:
         return None
     s = str(v).strip()
     return s or None
+
+
+def _clean_item_ids(values: Iterable[int] | None) -> list[int]:
+    if values is None:
+        return []
+    out: set[int] = set()
+    for value in values:
+        if value is None:
+            continue
+        item_id = int(value)
+        if item_id > 0:
+            out.add(item_id)
+    return sorted(out)
+
+
+async def _load_item_display_maps(
+    session: AsyncSession,
+    *,
+    item_ids: Iterable[int],
+) -> tuple[dict[int, str], dict[int, dict[str, object | None]]]:
+    """
+    通过 PMS export read service 批量读取库存解释页展示所需商品信息。
+
+    注意：
+    - 这里只补当前查询展示信息；
+    - WMS inventory explain 不直接读取 PMS owner items / item_uoms；
+    - 历史事实解释仍以 ledger / lot / snapshot 等 WMS 事实为准。
+    """
+    ids = _clean_item_ids(item_ids)
+    if not ids:
+        return {}, {}
+
+    basics = await ItemReadService(session).aget_basics_by_item_ids(item_ids=ids)
+    item_name_map = {
+        int(item_id): str(item.name).strip()
+        for item_id, item in basics.items()
+        if str(item.name or "").strip()
+    }
+
+    base_uom_map: dict[int, dict[str, object | None]] = {
+        item_id: {"base_item_uom_id": None, "base_uom_name": None}
+        for item_id in ids
+    }
+    uoms = await PmsExportUomReadService(session).alist_uoms(item_ids=ids)
+    for uom in uoms:
+        if not bool(getattr(uom, "is_base", False)):
+            continue
+
+        item_id = int(uom.item_id)
+        if item_id not in base_uom_map:
+            continue
+        if base_uom_map[item_id]["base_item_uom_id"] is not None:
+            continue
+
+        base_uom_map[item_id] = {
+            "base_item_uom_id": int(uom.id),
+            "base_uom_name": str(uom.uom_name or uom.display_name or uom.uom or "").strip() or None,
+        }
+
+    return item_name_map, base_uom_map
+
+
+async def _enrich_item_display(
+    session: AsyncSession,
+    *,
+    rows: Iterable[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    out = [dict(row) for row in rows]
+    item_ids = _clean_item_ids(row.get("item_id") for row in out)
+    item_name_map, base_uom_map = await _load_item_display_maps(
+        session,
+        item_ids=item_ids,
+    )
+
+    for row in out:
+        item_id = int(row["item_id"])
+        base_uom = base_uom_map.get(item_id, {})
+
+        row["item_name"] = item_name_map.get(item_id) or f"ITEM-{item_id}"
+        row["base_item_uom_id"] = base_uom.get("base_item_uom_id")
+        row["base_uom_name"] = base_uom.get("base_uom_name")
+
+    return out
 
 
 async def resolve_inventory_explain_anchor(
@@ -46,24 +133,16 @@ async def resolve_inventory_explain_anchor(
         f"""
         SELECT
             s.item_id,
-            i.name AS item_name,
             s.warehouse_id,
             w.name AS warehouse_name,
             s.lot_id,
             l.lot_code,
-            s.qty AS current_qty,
-            iu.id AS base_item_uom_id,
-            COALESCE(NULLIF(iu.display_name, ''), iu.uom) AS base_uom_name
+            s.qty AS current_qty
         FROM stocks_lot AS s
-        JOIN items AS i
-          ON i.id = s.item_id
         JOIN warehouses AS w
           ON w.id = s.warehouse_id
         LEFT JOIN lots AS l
           ON l.id = s.lot_id
-        LEFT JOIN item_uoms AS iu
-          ON iu.item_id = s.item_id
-         AND iu.is_base IS TRUE
         WHERE {" AND ".join(cond)}
         ORDER BY s.id ASC
         """
@@ -73,7 +152,9 @@ async def resolve_inventory_explain_anchor(
         return None
     if len(rows) > 1:
         raise RuntimeError("ambiguous_inventory_explain_anchor")
-    return dict(rows[0])
+
+    enriched = await _enrich_item_display(session, rows=[dict(rows[0])])
+    return enriched[0]
 
 
 async def count_inventory_explain_ledger_rows(
@@ -127,20 +208,12 @@ async def query_inventory_explain_ledger_rows(
                 sl.after_qty,
                 sl.trace_id,
                 sl.item_id,
-                i.name AS item_name,
                 sl.warehouse_id,
                 sl.lot_id,
-                l.lot_code,
-                iu.id AS base_item_uom_id,
-                COALESCE(NULLIF(iu.display_name, ''), iu.uom) AS base_uom_name
+                l.lot_code
             FROM stock_ledger AS sl
-            JOIN items AS i
-              ON i.id = sl.item_id
             LEFT JOIN lots AS l
               ON l.id = sl.lot_id
-            LEFT JOIN item_uoms AS iu
-              ON iu.item_id = sl.item_id
-             AND iu.is_base IS TRUE
             WHERE sl.item_id = :item_id
               AND sl.warehouse_id = :warehouse_id
               AND sl.lot_id = :lot_id
@@ -161,7 +234,7 @@ async def query_inventory_explain_ledger_rows(
             "limit": int(limit),
         },
     )).mappings().all()
-    return [dict(r) for r in rows]
+    return await _enrich_item_display(session, rows=[dict(r) for r in rows])
 
 
 async def query_inventory_explain_latest_after_qty(
