@@ -71,6 +71,45 @@ audit-no-implicit-warehouse-id:
 	'
 
 # =================================
+# PMS 独立化第一阶段收口守门员：
+# WMS 执行业务侧禁止重新读取 PMS owner/export。
+#
+# 唯一允许：
+#   app/wms/pms_projection/services/rebuild_service.py
+#
+# 说明：
+# - rebuild_service 是 WMS-local PMS projection 的重建入口；
+# - WMS 执行链必须只读 wms_pms_*_projection；
+# - 禁止 fallback 回 app.pms / PMS owner items / item_uoms / item_barcodes / item_sku_codes。
+# =================================
+.PHONY: audit-no-wms-pms-owner-boundary
+audit-no-wms-pms-owner-boundary:
+	@bash -c 'set -euo pipefail; \
+	  echo "[audit-no-wms-pms-owner-boundary] forbid WMS runtime coupling to PMS owner/export ..."; \
+	  forbidden_re="from app\\.pms|app\\.pms|ItemReadService|BarcodeProbeService|PmsExport|(?i:\\b(FROM|JOIN|UPDATE|INTO)\\s+([a-z_][a-z0-9_]*\\.)?items\\b)|(?i:\\b(FROM|JOIN|UPDATE|INTO)\\s+([a-z_][a-z0-9_]*\\.)?item_uoms\\b)|(?i:\\b(FROM|JOIN|UPDATE|INTO)\\s+([a-z_][a-z0-9_]*\\.)?item_barcodes\\b)|(?i:\\b(FROM|JOIN|UPDATE|INTO)\\s+([a-z_][a-z0-9_]*\\.)?item_sku_codes\\b)|items\\.expiry_policy|items\\.lot_source_policy|item_uoms\\.ratio_to_base"; \
+	  hits="$$(rg -n --hidden \
+	    --glob "!**/__pycache__/**" \
+	    --glob "!**/*.md" \
+	    "$$forbidden_re" app/wms || true)"; \
+	  if [ -z "$$hits" ]; then \
+	    echo "[audit-no-wms-pms-owner-boundary] OK (no PMS owner/export boundary hits)"; \
+	    exit 0; \
+	  fi; \
+	  allow_re="^app/wms/pms_projection/services/rebuild_service\\.py:"; \
+	  bad="$$(printf "%s\n" "$$hits" | rg -v "$$allow_re" || true)"; \
+	  if [ -n "$$bad" ]; then \
+	    echo ""; \
+	    echo "$$bad"; \
+	    echo ""; \
+	    echo "[audit-no-wms-pms-owner-boundary] FAIL: WMS business code must not read PMS owner/export"; \
+	    echo "  allowed owner read location: app/wms/pms_projection/services/rebuild_service.py"; \
+	    echo "  use WMS-local PMS projection read services instead."; \
+	    exit 1; \
+	  fi; \
+	  echo "[audit-no-wms-pms-owner-boundary] OK (hits only in projection rebuild whitelist)"; \
+	'
+
+# =================================
 # Phase 2 守门员：运价区间必须兜底覆盖（避免 no matching bracket 线上翻车）
 # =================================
 .PHONY: audit-pricing-brackets
@@ -86,5 +125,5 @@ audit-pricing-brackets: venv
 # =================================
 
 .PHONY: audit-all
-audit-all: audit-no-legacy-stock-sql audit-no-legacy-pricing-terms
+audit-all: audit-no-legacy-stock-sql audit-no-legacy-pricing-terms audit-no-wms-pms-owner-boundary
 	@echo "[audit-all] OK"
