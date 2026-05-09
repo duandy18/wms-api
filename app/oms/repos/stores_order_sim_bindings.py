@@ -43,7 +43,7 @@ async def list_bound_filled_code_options(
     只用 A：已映射平台编码 identity_kind=merchant_code → published OMS FSKU。
     返回：filled_code + suggested_title + components_summary（spec 只读展示）。
 
-    组件摘要：优先 items.name（人类可读），缺 name 时回退 items.sku。
+    组件摘要：优先 OMS FSKU 组件快照 item_name_snapshot，缺失时回退 sku_code_snapshot / component_sku_code。
     输出格式：每个组件一行（用 \\n 分隔）。
     """
     rows = (
@@ -80,16 +80,22 @@ async def list_bound_filled_code_options(
                 """
                 SELECT
                   c.fsku_id  AS fsku_id,
-                  COALESCE(i.name, i.sku) AS item_name,
+                  COALESCE(
+                    NULLIF(BTRIM(c.item_name_snapshot), ''),
+                    NULLIF(BTRIM(c.sku_code_snapshot), ''),
+                    c.component_sku_code
+                  ) AS item_name,
                   c.qty_per_fsku      AS qty,
                   'primary'     AS role
                 FROM oms_fsku_components c
-                JOIN items i
-                  ON i.id = c.resolved_item_id
                WHERE c.fsku_id = ANY(:ids)
                ORDER BY c.fsku_id ASC,
                         CASE WHEN 'primary' = 'primary' THEN 0 ELSE 1 END,
-                        COALESCE(i.name, i.sku) ASC
+                        COALESCE(
+                          NULLIF(BTRIM(c.item_name_snapshot), ''),
+                          NULLIF(BTRIM(c.sku_code_snapshot), ''),
+                          c.component_sku_code
+                        ) ASC
                 """
             ),
             {"ids": fsku_ids},
@@ -145,7 +151,7 @@ async def build_components_summary_by_filled_code(
     spec 的唯一来源：platform_code_mapping(identity_kind=merchant_code) -> published oms fsku -> components -> items
     未绑定或非 published => None
 
-    组件摘要：优先 items.name（人类可读），缺 name 时回退 items.sku。
+    组件摘要：优先 OMS FSKU 组件快照 item_name_snapshot，缺失时回退 sku_code_snapshot / component_sku_code。
     输出格式：每个组件一行（用 \\n 分隔）。
     """
     cd = (filled_code or "").strip()
@@ -181,14 +187,21 @@ async def build_components_summary_by_filled_code(
             text(
                 """
                 SELECT
-                  COALESCE(i.name, i.sku) AS item_name,
+                  COALESCE(
+                    NULLIF(BTRIM(c.item_name_snapshot), ''),
+                    NULLIF(BTRIM(c.sku_code_snapshot), ''),
+                    c.component_sku_code
+                  ) AS item_name,
                   c.qty_per_fsku  AS qty,
                   'primary' AS role
                 FROM oms_fsku_components c
-                JOIN items i ON i.id = c.resolved_item_id
                WHERE c.fsku_id = :fid
                ORDER BY CASE WHEN 'primary' = 'primary' THEN 0 ELSE 1 END,
-                        COALESCE(i.name, i.sku) ASC
+                        COALESCE(
+                          NULLIF(BTRIM(c.item_name_snapshot), ''),
+                          NULLIF(BTRIM(c.sku_code_snapshot), ''),
+                          c.component_sku_code
+                        ) ASC
                 """
             ),
             {"fid": fid},
