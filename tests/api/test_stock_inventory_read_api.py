@@ -85,6 +85,45 @@ async def test_stock_inventory_returns_inventory_rows_with_lot_code_only(client:
 
 
 @pytest.mark.asyncio
+async def test_stock_inventory_q_filter_uses_pms_export_item_search(
+    client: AsyncClient,
+    session: AsyncSession,
+) -> None:
+    headers = await _login_admin_headers(client)
+
+    item_id = 910002
+    warehouse_id = 1
+    lot_code = "UT-STOCK-Q-001"
+
+    await ensure_wh_loc_item(session, wh=warehouse_id, loc=warehouse_id, item=item_id)
+    await session.execute(
+        text("UPDATE items SET expiry_policy='REQUIRED'::expiry_policy WHERE id=:i"),
+        {"i": int(item_id)},
+    )
+    await seed_supplier_lot_slot(
+        session,
+        item=item_id,
+        loc=warehouse_id,
+        lot_code=lot_code,
+        qty=5,
+        days=120,
+    )
+    await session.commit()
+
+    resp = await client.get(
+        f"/stock/inventory?q=SKU-{item_id}&warehouse_id={warehouse_id}&limit=20&offset=0",
+        headers=headers,
+    )
+    assert resp.status_code == 200, resp.text
+
+    data = resp.json()
+    rows = data.get("rows") or []
+    assert any(int(row["item_id"]) == item_id for row in rows), data
+    assert all("batch_code" not in row for row in rows)
+
+
+
+@pytest.mark.asyncio
 async def test_stock_inventory_detail_returns_totals_and_slices(
     client: AsyncClient,
     session: AsyncSession,
