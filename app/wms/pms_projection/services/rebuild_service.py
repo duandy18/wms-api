@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 
 import sqlalchemy as sa
@@ -85,13 +85,14 @@ class WmsPmsProjectionRebuildService:
     - 写入 WMS 本地 wms_pms_*_projection；
     - 支持幂等重复执行；
     - 支持全量 rebuild_all；
-    - 支持按 item_id 局部 rebuild_items，供后续增量 sync 复用。
+    - 支持按 item_id 局部 rebuild_items，供后续增量 sync 复用；
+    - 支持按 owner updated_at 查找受影响 item_id。
 
     明确不负责：
     - 不接入 WMS scan；
     - 不接入 inbound commit；
     - 不接入 ledger / count / return inbound；
-    - 不实现 PMS outbox / changes 增量同步。
+    - 不实现 PMS outbox / CDC。
     """
 
     def __init__(self, session: AsyncSession) -> None:
@@ -116,6 +117,66 @@ class WmsPmsProjectionRebuildService:
                 deleted_barcodes=0,
             )
         return await self._rebuild(item_ids=clean_item_ids)
+
+    async def changed_item_ids_since(
+        self,
+        source_updated_at: datetime,
+        *,
+        overlap_seconds: int = 0,
+    ) -> list[int]:
+        """
+        从 PMS owner 表按 updated_at 找到受影响 item_id。
+
+        说明：
+        - 当前仍处于单库阶段，updated_at 是第一版增量水位；
+        - owner 读取仍集中在本 rebuild_service，避免扩大 WMS runtime 白名单；
+        - overlap_seconds 默认为 0，避免重复重建；如线上需要抗时钟/精度误差，可显式传入。
+        """
+
+        cutoff = _required_datetime(
+            source_updated_at,
+            label="source_updated_at cursor",
+        )
+        if overlap_seconds > 0:
+            cutoff = cutoff - timedelta(seconds=int(overlap_seconds))
+
+        source = sa.union_all(
+            select(Item.id.label("item_id")).where(Item.updated_at > cutoff),
+            select(ItemUOM.item_id.label("item_id")).where(ItemUOM.updated_at > cutoff),
+            select(ItemSkuCode.item_id.label("item_id")).where(ItemSkuCode.updated_at > cutoff),
+            select(ItemBarcode.item_id.label("item_id")).where(ItemBarcode.updated_at > cutoff),
+        ).subquery()
+
+        rows = await self.session.execute(
+            select(source.c.item_id).distinct().order_by(source.c.item_id.asc())
+        )
+        return [int(x) for x in rows.scalars().all()]
+
+    async def max_owner_source_updated_at(
+        self,
+        *,
+        item_ids: Sequence[int] | None = None,
+    ) -> datetime | None:
+        clean_item_ids = _clean_item_ids(item_ids) if item_ids is not None else None
+        if clean_item_ids is not None and not clean_item_ids:
+            return None
+
+        item_stmt = select(Item.updated_at.label("source_updated_at"))
+        uom_stmt = select(ItemUOM.updated_at.label("source_updated_at"))
+        sku_stmt = select(ItemSkuCode.updated_at.label("source_updated_at"))
+        barcode_stmt = select(ItemBarcode.updated_at.label("source_updated_at"))
+
+        if clean_item_ids is not None:
+            item_stmt = item_stmt.where(Item.id.in_(clean_item_ids))
+            uom_stmt = uom_stmt.where(ItemUOM.item_id.in_(clean_item_ids))
+            sku_stmt = sku_stmt.where(ItemSkuCode.item_id.in_(clean_item_ids))
+            barcode_stmt = barcode_stmt.where(ItemBarcode.item_id.in_(clean_item_ids))
+
+        source = sa.union_all(item_stmt, uom_stmt, sku_stmt, barcode_stmt).subquery()
+        value = await self.session.scalar(select(sa.func.max(source.c.source_updated_at)))
+        if value is None:
+            return None
+        return _required_datetime(value, label="max owner source updated_at")
 
     async def _rebuild(
         self,
