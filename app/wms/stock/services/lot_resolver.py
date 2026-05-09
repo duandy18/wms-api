@@ -4,9 +4,9 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Optional
 
-from sqlalchemy import text as SA
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.pms.export.items.services.item_read_service import ItemReadService
 from app.wms.stock.services.lots import ensure_internal_lot_singleton, ensure_lot_full
 
 
@@ -22,14 +22,10 @@ class LotResolver:
     """
 
     async def requires_batch(self, session: AsyncSession, *, item_id: int) -> bool:
-        row = await session.execute(
-            SA("SELECT expiry_policy FROM items WHERE id=:i LIMIT 1"),
-            {"i": int(item_id)},
-        )
-        v = row.scalar_one_or_none()
-        if v is None:
+        policy = await ItemReadService(session).aget_policy_by_id(item_id=int(item_id))
+        if policy is None:
             raise ValueError("item_not_found")
-        return str(v or "").upper() == "REQUIRED"
+        return str(policy.expiry_policy or "").upper() == "REQUIRED"
 
     async def ensure_supplier_lot_id(
         self,
