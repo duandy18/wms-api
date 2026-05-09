@@ -9,6 +9,8 @@ from typing import Optional
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.wms.pms_projection.services.read_service import WmsPmsProjectionReadService
+
 
 def normalize_lot_code(code: str | None) -> tuple[str, str]:
     """
@@ -150,27 +152,15 @@ async def _load_item_expiry_context(
     *,
     item_id: int,
 ) -> tuple[str, int | None, str | None]:
-    row = await session.execute(
-        text(
-            """
-            SELECT
-                expiry_policy,
-                shelf_life_value,
-                shelf_life_unit
-              FROM items
-             WHERE id = :i
-             LIMIT 1
-            """
-        ),
-        {"i": int(item_id)},
+    policy = await WmsPmsProjectionReadService(session).aget_policy_snapshot(
+        item_id=int(item_id),
     )
-    got = row.mappings().first()
-    if got is None:
+    if policy is None:
         raise ValueError("item_not_found")
 
-    expiry_policy = str(got["expiry_policy"] or "").strip().upper()
-    shelf_life_value = _normalize_positive_int(got["shelf_life_value"])
-    shelf_life_unit = _normalize_shelf_life_unit(got["shelf_life_unit"])
+    expiry_policy = str(policy.expiry_policy or "").strip().upper()
+    shelf_life_value = _normalize_positive_int(policy.shelf_life_value)
+    shelf_life_unit = _normalize_shelf_life_unit(policy.shelf_life_unit)
     return expiry_policy, shelf_life_value, shelf_life_unit
 
 
@@ -323,14 +313,14 @@ async def ensure_internal_lot_singleton(
                 NULL,
                 :rid,
                 :rln,
-                it.lot_source_policy,
-                it.expiry_policy,
-                it.derivation_allowed,
-                it.uom_governance_enabled,
-                it.shelf_life_value,
-                it.shelf_life_unit
-              FROM items it
-             WHERE it.id = :i
+                pp.lot_source_policy,
+                pp.expiry_policy,
+                pp.derivation_allowed,
+                pp.uom_governance_enabled,
+                pp.shelf_life_value,
+                pp.shelf_life_unit
+              FROM wms_pms_item_policy_projection pp
+             WHERE pp.item_id = :i
             ON CONFLICT DO NOTHING
             RETURNING id
             """
@@ -464,14 +454,14 @@ async def ensure_lot_full(
                     :ed,
                     NULL,
                     NULL,
-                    it.lot_source_policy,
-                    it.expiry_policy,
-                    it.derivation_allowed,
-                    it.uom_governance_enabled,
-                    it.shelf_life_value,
-                    it.shelf_life_unit
-                  FROM items it
-                 WHERE it.id = :i
+                    pp.lot_source_policy,
+                    pp.expiry_policy,
+                    pp.derivation_allowed,
+                    pp.uom_governance_enabled,
+                    pp.shelf_life_value,
+                    pp.shelf_life_unit
+                  FROM wms_pms_item_policy_projection pp
+                 WHERE pp.item_id = :i
                 ON CONFLICT (warehouse_id, item_id, production_date)
                 WHERE lot_code_source = 'SUPPLIER'
                   AND item_expiry_policy_snapshot = 'REQUIRED'

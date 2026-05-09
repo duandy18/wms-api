@@ -21,6 +21,183 @@ def _load_sql(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
+async def _sync_wms_pms_projection_baseline(conn) -> None:
+    """
+    测试基线同步 WMS PMS projection。
+
+    pytest 每个用例都会 TRUNCATE + seed owner PMS 表；
+    WMS 执行链现在只读 wms_pms_*_projection，因此 seed 后必须同步 projection。
+    这里先按 FK 顺序清空 projection，再从当前 owner 表重建测试基线。
+    """
+    for table_name in (
+        "wms_pms_item_barcode_projection",
+        "wms_pms_item_sku_code_projection",
+        "wms_pms_item_policy_projection",
+        "wms_pms_item_uom_projection",
+        "wms_pms_item_projection",
+    ):
+        await conn.execute(text(f"DELETE FROM {table_name}"))
+
+    await conn.execute(
+        text(
+            """
+            INSERT INTO wms_pms_item_projection (
+              item_id,
+              sku,
+              name,
+              spec,
+              enabled,
+              brand_id,
+              category_id,
+              source_updated_at
+            )
+            SELECT
+              i.id,
+              i.sku,
+              i.name,
+              i.spec,
+              i.enabled,
+              i.brand_id,
+              i.category_id,
+              COALESCE(i.updated_at, now())
+            FROM items i
+            ORDER BY i.id ASC
+            """
+        )
+    )
+
+    await conn.execute(
+        text(
+            """
+            INSERT INTO wms_pms_item_uom_projection (
+              item_uom_id,
+              item_id,
+              uom,
+              display_name,
+              ratio_to_base,
+              is_base,
+              is_purchase_default,
+              is_inbound_default,
+              is_outbound_default,
+              net_weight_kg,
+              source_updated_at
+            )
+            SELECT
+              u.id,
+              u.item_id,
+              u.uom,
+              u.display_name,
+              u.ratio_to_base,
+              u.is_base,
+              u.is_purchase_default,
+              u.is_inbound_default,
+              u.is_outbound_default,
+              u.net_weight_kg,
+              COALESCE(u.updated_at, now())
+            FROM item_uoms u
+            JOIN wms_pms_item_projection p
+              ON p.item_id = u.item_id
+            ORDER BY u.item_id ASC, u.id ASC
+            """
+        )
+    )
+
+    await conn.execute(
+        text(
+            """
+            INSERT INTO wms_pms_item_policy_projection (
+              item_id,
+              lot_source_policy,
+              expiry_policy,
+              shelf_life_value,
+              shelf_life_unit,
+              derivation_allowed,
+              uom_governance_enabled,
+              source_updated_at
+            )
+            SELECT
+              i.id,
+              i.lot_source_policy,
+              i.expiry_policy,
+              i.shelf_life_value,
+              i.shelf_life_unit,
+              i.derivation_allowed,
+              i.uom_governance_enabled,
+              COALESCE(i.updated_at, now())
+            FROM items i
+            JOIN wms_pms_item_projection p
+              ON p.item_id = i.id
+            ORDER BY i.id ASC
+            """
+        )
+    )
+
+    await conn.execute(
+        text(
+            """
+            INSERT INTO wms_pms_item_sku_code_projection (
+              sku_code_id,
+              item_id,
+              code,
+              code_type,
+              is_primary,
+              is_active,
+              effective_from,
+              effective_to,
+              remark,
+              source_updated_at
+            )
+            SELECT
+              sc.id,
+              sc.item_id,
+              sc.code,
+              sc.code_type,
+              sc.is_primary,
+              sc.is_active,
+              sc.effective_from,
+              sc.effective_to,
+              sc.remark,
+              COALESCE(sc.updated_at, now())
+            FROM item_sku_codes sc
+            JOIN wms_pms_item_projection p
+              ON p.item_id = sc.item_id
+            ORDER BY sc.item_id ASC, sc.id ASC
+            """
+        )
+    )
+
+    await conn.execute(
+        text(
+            """
+            INSERT INTO wms_pms_item_barcode_projection (
+              barcode_id,
+              item_id,
+              item_uom_id,
+              barcode,
+              active,
+              is_primary,
+              symbology,
+              source_updated_at
+            )
+            SELECT
+              b.id,
+              b.item_id,
+              b.item_uom_id,
+              b.barcode,
+              b.active,
+              b.is_primary,
+              COALESCE(NULLIF(b.symbology, ''), 'CUSTOM'),
+              COALESCE(b.updated_at, now())
+            FROM item_barcodes b
+            JOIN wms_pms_item_uom_projection u
+              ON u.item_uom_id = b.item_uom_id
+             AND u.item_id = b.item_id
+            ORDER BY b.item_id ASC, b.id ASC
+            """
+        )
+    )
+
+
 @lru_cache(maxsize=1)
 def discover_permission_names() -> list[str]:
     app_dir = _repo_root() / "app"
@@ -66,6 +243,8 @@ async def seed_in_conn(conn) -> None:
 
     # 1) 主数据基线
     await conn.execute(text(_load_sql(base_sql_path)))
+
+    await _sync_wms_pms_projection_baseline(conn)
 
     # 2) admin 用户（可登录）
     await ensure_admin_user(username="admin", password="admin123", full_name="Dev Admin")

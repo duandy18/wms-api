@@ -11,6 +11,7 @@ from app.wms.shared.services.expiry_analytics_allocator import ExpiryAnalyticsAl
 from app.wms.stock.services.lots import ensure_lot_full
 from app.wms.stock.services.stock_adjust import adjust_lot_impl
 from tests.utils.ensure_minimal import ensure_item
+from tests.helpers.wms_pms_projection import sync_wms_pms_projection_for_item
 
 UTC = timezone.utc
 
@@ -37,6 +38,7 @@ async def test_expiry_analytics_query_returns_sorted_not_enforcing(session: Asyn
       * 第一条的 take_qty = 2（在最早批次中优先消耗）。
     """
     await ensure_item(session, id=3003, sku="SKU-3003", name="ITEM-3003", expiry_required=True)
+    await sync_wms_pms_projection_for_item(session, item_id=3003)
 
     now = datetime.now(UTC)
     prod = date.today()
