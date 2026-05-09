@@ -1,10 +1,11 @@
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 import pytest
 from sqlalchemy import text
 
 from app.wms.inventory_adjustment.count.repos.count_doc_repo import CountDocRepo
 from app.wms.stock.services.lot_resolver import LotResolver
+from app.wms.stock.services.lots import ensure_lot_full
 from app.wms.stock.services.stock_adjust.db_items import item_requires_batch
 from app.wms.shared.services.lot_code_contract import (
     fetch_item_by_sku,
@@ -298,3 +299,92 @@ async def test_count_doc_repo_update_line_counts_reads_base_uom_through_pms_expo
     assert int(line["counted_qty_input"]) == 7
     assert int(line["counted_qty_base"]) == 7
     assert int(line["diff_qty_base"]) == 2
+
+@pytest.mark.asyncio
+async def test_lots_supplier_snapshot_reads_policy_through_pms_export(session):
+    row = (
+        await session.execute(
+            text(
+                """
+                SELECT id
+                FROM items
+                ORDER BY id
+                LIMIT 1
+                """
+            )
+        )
+    ).first()
+    assert row is not None
+
+    item_id = int(row[0])
+    production_date = date(2099, 1, 17)
+    expiry_date = date(2099, 2, 17)
+
+    await session.execute(
+        text(
+            """
+            UPDATE items
+               SET expiry_policy = 'REQUIRED'::expiry_policy,
+                   lot_source_policy = 'SUPPLIER_ONLY'::lot_source_policy,
+                   derivation_allowed = TRUE,
+                   uom_governance_enabled = TRUE,
+                   shelf_life_value = 31,
+                   shelf_life_unit = 'DAY'
+             WHERE id = :item_id
+            """
+        ),
+        {"item_id": item_id},
+    )
+    await session.execute(
+        text(
+            """
+            DELETE FROM lots
+             WHERE warehouse_id = 1
+               AND item_id = :item_id
+               AND lot_code_source = 'SUPPLIER'
+               AND production_date = :production_date
+            """
+        ),
+        {
+            "item_id": item_id,
+            "production_date": production_date,
+        },
+    )
+    await session.flush()
+
+    lot_id = await ensure_lot_full(
+        session,
+        item_id=item_id,
+        warehouse_id=1,
+        lot_code=f"UT-PMS-LOT-{item_id}",
+        production_date=production_date,
+        expiry_date=expiry_date,
+    )
+
+    lot = (
+        await session.execute(
+            text(
+                """
+                SELECT
+                  item_lot_source_policy_snapshot,
+                  item_expiry_policy_snapshot,
+                  item_derivation_allowed_snapshot,
+                  item_uom_governance_enabled_snapshot,
+                  item_shelf_life_value_snapshot,
+                  item_shelf_life_unit_snapshot
+                FROM lots
+                WHERE id = :lot_id
+                LIMIT 1
+                """
+            ),
+            {"lot_id": int(lot_id)},
+        )
+    ).mappings().first()
+    assert lot is not None
+
+    assert str(lot["item_lot_source_policy_snapshot"]) == "SUPPLIER_ONLY"
+    assert str(lot["item_expiry_policy_snapshot"]) == "REQUIRED"
+    assert bool(lot["item_derivation_allowed_snapshot"]) is True
+    assert bool(lot["item_uom_governance_enabled_snapshot"]) is True
+    assert int(lot["item_shelf_life_value_snapshot"]) == 31
+    assert str(lot["item_shelf_life_unit_snapshot"]) == "DAY"
