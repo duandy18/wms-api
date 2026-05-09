@@ -2,6 +2,7 @@ import pytest
 from sqlalchemy import text
 
 from app.wms.stock.services.lot_resolver import LotResolver
+from app.wms.stock.services.stock_adjust.db_items import item_requires_batch
 from app.wms.shared.services.lot_code_contract import (
     fetch_item_by_sku,
     fetch_item_expiry_policy_map,
@@ -118,3 +119,53 @@ async def test_lot_resolver_requires_batch_unknown_item_raises(session):
 
     with pytest.raises(ValueError, match="item_not_found"):
         await resolver.requires_batch(session, item_id=999999999)
+
+@pytest.mark.asyncio
+async def test_stock_adjust_item_requires_batch_reads_policy_through_pms_export(session):
+    row = (
+        await session.execute(
+            text(
+                """
+                SELECT id
+                FROM items
+                ORDER BY id
+                LIMIT 1
+                """
+            )
+        )
+    ).first()
+    assert row is not None
+
+    item_id = int(row[0])
+
+    await session.execute(
+        text(
+            """
+            UPDATE items
+               SET expiry_policy = 'REQUIRED'::expiry_policy
+             WHERE id = :item_id
+            """
+        ),
+        {"item_id": item_id},
+    )
+    await session.flush()
+    assert await item_requires_batch(session, item_id=item_id) is True
+
+    await session.execute(
+        text(
+            """
+            UPDATE items
+               SET expiry_policy = 'NONE'::expiry_policy
+             WHERE id = :item_id
+            """
+        ),
+        {"item_id": item_id},
+    )
+    await session.flush()
+    assert await item_requires_batch(session, item_id=item_id) is False
+
+
+@pytest.mark.asyncio
+async def test_stock_adjust_item_requires_batch_unknown_item_raises(session):
+    with pytest.raises(ValueError, match="item_not_found"):
+        await item_requires_batch(session, item_id=999999999)
