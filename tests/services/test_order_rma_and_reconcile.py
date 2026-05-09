@@ -11,6 +11,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.wms.shared.enums import MovementType
 from app.oms.orders.services.order_reconcile_service import OrderReconcileService
 from app.oms.services.order_service import OrderService
+from app.wms.inventory_adjustment.return_inbound.repos.inbound_receipt_write_repo import (
+    _load_manual_line_snapshot,
+)
 from app.wms.inventory_adjustment.return_inbound.services.inbound_task_probe_service import (
     _load_actual_uom_name,
 )
@@ -922,3 +925,83 @@ async def test_return_inbound_probe_loads_uom_name_through_pms_export(
         item_uom_id=None,
     )
     assert none_value is None
+
+@pytest.mark.asyncio
+async def test_return_inbound_manual_line_snapshot_reads_through_pms_export(
+    session: AsyncSession,
+) -> None:
+    row = (
+        await session.execute(
+            text(
+                """
+                SELECT
+                  i.id AS item_id,
+                  i.name AS item_name,
+                  i.spec AS item_spec,
+                  u.id AS item_uom_id,
+                  COALESCE(NULLIF(u.display_name, ''), u.uom) AS uom_name,
+                  u.ratio_to_base AS ratio_to_base
+                FROM items i
+                JOIN item_uoms u
+                  ON u.item_id = i.id
+                ORDER BY i.id ASC, u.id ASC
+                LIMIT 1
+                """
+            )
+        )
+    ).mappings().first()
+    assert row is not None
+
+    snap = await _load_manual_line_snapshot(
+        session,
+        item_id=int(row["item_id"]),
+        item_uom_id=int(row["item_uom_id"]),
+    )
+
+    assert snap["item_id"] == int(row["item_id"])
+    assert snap["item_name"] == row["item_name"]
+    assert snap["item_spec"] == row["item_spec"]
+    assert snap["item_uom_id"] == int(row["item_uom_id"])
+    assert snap["uom_name"] == row["uom_name"]
+    assert snap["ratio_to_base"] == int(row["ratio_to_base"])
+
+
+@pytest.mark.asyncio
+async def test_return_inbound_manual_line_snapshot_rejects_mismatched_uom(
+    session: AsyncSession,
+) -> None:
+    rows = (
+        await session.execute(
+            text(
+                """
+                SELECT item_id, id AS item_uom_id
+                FROM item_uoms
+                ORDER BY item_id ASC, id ASC
+                LIMIT 20
+                """
+            )
+        )
+    ).mappings().all()
+
+    by_item = {}
+    for row in rows:
+        by_item.setdefault(int(row["item_id"]), int(row["item_uom_id"]))
+
+    if len(by_item) < 2:
+        pytest.skip("need at least two items with uoms for mismatch coverage")
+
+    item_ids = sorted(by_item)
+    item_id = item_ids[0]
+    other_uom_id = by_item[item_ids[1]]
+
+    from fastapi import HTTPException
+
+    with pytest.raises(HTTPException) as exc_info:
+        await _load_manual_line_snapshot(
+            session,
+            item_id=item_id,
+            item_uom_id=other_uom_id,
+        )
+
+    assert exc_info.value.status_code == 409
+    assert "item_uom_item_mismatch" in str(exc_info.value.detail)

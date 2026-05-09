@@ -7,6 +7,8 @@ from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.pms.export.items.services.item_read_service import ItemReadService
+from app.pms.export.uoms.services.uom_read_service import PmsExportUomReadService
 from app.wms.inventory_adjustment.return_inbound.contracts.receipt_create_from_purchase import (
     InboundReceiptCreateFromPurchaseIn,
     InboundReceiptCreateFromPurchaseOut,
@@ -128,57 +130,30 @@ async def _load_manual_line_snapshot(
     item_id: int,
     item_uom_id: int,
 ) -> dict[str, object]:
-    row = (
-        await session.execute(
-            text(
-                """
-                SELECT
-                  i.id AS item_id,
-                  i.name AS item_name,
-                  i.spec AS item_spec,
-                  u.id AS item_uom_id,
-                  COALESCE(NULLIF(u.display_name, ''), u.uom) AS uom_name,
-                  u.ratio_to_base AS ratio_to_base
-                FROM items i
-                JOIN item_uoms u
-                  ON u.item_id = i.id
-                WHERE i.id = :item_id
-                  AND u.id = :item_uom_id
-                LIMIT 1
-                """
-            ),
-            {
-                "item_id": int(item_id),
-                "item_uom_id": int(item_uom_id),
-            },
-        )
-    ).mappings().first()
-
-    if row is not None:
-        return dict(row)
-
-    item_exists = (
-        await session.execute(
-            text("SELECT 1 FROM items WHERE id = :item_id LIMIT 1"),
-            {"item_id": int(item_id)},
-        )
-    ).scalar_one_or_none()
-    if item_exists is None:
+    item = await ItemReadService(session).aget_basic_by_id(item_id=int(item_id))
+    if item is None:
         raise HTTPException(status_code=404, detail="item_not_found")
 
-    uom_exists = (
-        await session.execute(
-            text("SELECT 1 FROM item_uoms WHERE id = :item_uom_id LIMIT 1"),
-            {"item_uom_id": int(item_uom_id)},
-        )
-    ).scalar_one_or_none()
-    if uom_exists is None:
+    uom = await PmsExportUomReadService(session).aget_by_id(
+        item_uom_id=int(item_uom_id),
+    )
+    if uom is None:
         raise HTTPException(status_code=404, detail="item_uom_not_found")
 
-    raise HTTPException(
-        status_code=409,
-        detail=f"item_uom_item_mismatch:item_id={int(item_id)},item_uom_id={int(item_uom_id)}",
-    )
+    if int(uom.item_id) != int(item_id):
+        raise HTTPException(
+            status_code=409,
+            detail=f"item_uom_item_mismatch:item_id={int(item_id)},item_uom_id={int(item_uom_id)}",
+        )
+
+    return {
+        "item_id": int(item.id),
+        "item_name": item.name,
+        "item_spec": item.spec,
+        "item_uom_id": int(uom.id),
+        "uom_name": str(uom.uom_name or uom.display_name or uom.uom or "").strip() or None,
+        "ratio_to_base": int(uom.ratio_to_base),
+    }
 
 
 async def create_inbound_receipt_from_purchase_repo(
