@@ -4,7 +4,7 @@
 
 # ✅ 关键原则：
 # - 通用目标默认绑定 DEV_DB_DSN，避免误跑到 TEST/PILOT。
-# - pytest 默认绑定 DEV_TEST_DB_DSN（wms_test），避免误伤 DEV_DB_DSN。
+# - pytest 默认绑定 DEV_TEST_DB_DSN（wms_test），避免误伤 DEV_DB_DSN（wms）。
 
 .PHONY: alembic-check
 alembic-check: venv
@@ -93,40 +93,6 @@ check-test: venv
 	WMS_DATABASE_URL="$(TEST_DB_DSN)" \
 	WMS_TEST_DATABASE_URL="$(TEST_DB_DSN)" \
 	$(ALEMB) check
-
-
-# =================================
-# WMS PMS projection rebuild / sync
-# =================================
-.PHONY: rebuild-wms-pms-projection-dev rebuild-wms-pms-projection-test
-rebuild-wms-pms-projection-dev: venv upgrade-dev
-	@echo ">>> Rebuild WMS PMS projection on DEV_DB_DSN ($(DEV_DB_DSN))"
-	@PYTHONPATH=. WMS_ENV=dev \
-	  WMS_DATABASE_URL="$(DEV_DB_DSN)" \
-	  WMS_TEST_DATABASE_URL="$(DEV_DB_DSN)" \
-	  $(PY) scripts/rebuild_wms_pms_projection.py
-
-rebuild-wms-pms-projection-test: venv upgrade-dev-test-db
-	@echo ">>> Rebuild WMS PMS projection on DEV_TEST_DB_DSN ($(DEV_TEST_DB_DSN))"
-	@PYTHONPATH=. WMS_ENV=test \
-	  WMS_DATABASE_URL="$(DEV_TEST_DB_DSN)" \
-	  WMS_TEST_DATABASE_URL="$(DEV_TEST_DB_DSN)" \
-	  $(PY) scripts/rebuild_wms_pms_projection.py
-
-.PHONY: sync-wms-pms-projection-dev sync-wms-pms-projection-test
-sync-wms-pms-projection-dev: venv upgrade-dev
-	@echo ">>> Sync WMS PMS projection on DEV_DB_DSN ($(DEV_DB_DSN))"
-	@PYTHONPATH=. WMS_ENV=dev \
-	  WMS_DATABASE_URL="$(DEV_DB_DSN)" \
-	  WMS_TEST_DATABASE_URL="$(DEV_DB_DSN)" \
-	  $(PY) scripts/sync_wms_pms_projection.py $(PMS_PROJECTION_SYNC_ARGS)
-
-sync-wms-pms-projection-test: venv upgrade-dev-test-db
-	@echo ">>> Sync WMS PMS projection on DEV_TEST_DB_DSN ($(DEV_TEST_DB_DSN))"
-	@PYTHONPATH=. WMS_ENV=test \
-	  WMS_DATABASE_URL="$(DEV_TEST_DB_DSN)" \
-	  WMS_TEST_DATABASE_URL="$(DEV_TEST_DB_DSN)" \
-	  $(PY) scripts/sync_wms_pms_projection.py $(PMS_PROJECTION_SYNC_ARGS)
 
 # =================================
 # Pilot DB 备份（在中试服务器上运行）

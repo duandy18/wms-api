@@ -133,17 +133,17 @@ async def _load_manual_line_snapshot(
             text(
                 """
                 SELECT
-                  p.item_id AS item_id,
-                  p.name AS item_name,
-                  p.spec AS item_spec,
-                  u.item_uom_id AS item_uom_id,
+                  i.id AS item_id,
+                  i.name AS item_name,
+                  i.spec AS item_spec,
+                  u.id AS item_uom_id,
                   COALESCE(NULLIF(u.display_name, ''), u.uom) AS uom_name,
                   u.ratio_to_base AS ratio_to_base
-                FROM wms_pms_item_projection p
-                JOIN wms_pms_item_uom_projection u
-                  ON u.item_id = p.item_id
-                WHERE p.item_id = :item_id
-                  AND u.item_uom_id = :item_uom_id
+                FROM items i
+                JOIN item_uoms u
+                  ON u.item_id = i.id
+                WHERE i.id = :item_id
+                  AND u.id = :item_uom_id
                 LIMIT 1
                 """
             ),
@@ -159,14 +159,7 @@ async def _load_manual_line_snapshot(
 
     item_exists = (
         await session.execute(
-            text(
-                """
-                SELECT 1
-                FROM wms_pms_item_projection
-                WHERE item_id = :item_id
-                LIMIT 1
-                """
-            ),
+            text("SELECT 1 FROM items WHERE id = :item_id LIMIT 1"),
             {"item_id": int(item_id)},
         )
     ).scalar_one_or_none()
@@ -175,14 +168,7 @@ async def _load_manual_line_snapshot(
 
     uom_exists = (
         await session.execute(
-            text(
-                """
-                SELECT 1
-                FROM wms_pms_item_uom_projection
-                WHERE item_uom_id = :item_uom_id
-                LIMIT 1
-                """
-            ),
+            text("SELECT 1 FROM item_uoms WHERE id = :item_uom_id LIMIT 1"),
             {"item_uom_id": int(item_uom_id)},
         )
     ).scalar_one_or_none()

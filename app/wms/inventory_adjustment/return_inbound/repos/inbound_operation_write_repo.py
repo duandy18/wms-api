@@ -12,7 +12,6 @@ from app.wms.inbound.repos.lot_resolve_repo import resolve_inbound_lot
 from app.wms.inventory_adjustment.count.services.count_freeze_guard_service import (
     ensure_warehouse_not_frozen,
 )
-from app.wms.pms_projection.services.read_service import WmsPmsProjectionReadService
 from app.wms.inventory_adjustment.return_inbound.contracts.operation_submit import (
     InboundOperationLineOut,
     InboundOperationSubmitIn,
@@ -52,21 +51,37 @@ async def _load_item_uom_snapshot(
     item_id: int,
     item_uom_id: int,
 ) -> tuple[int, str | None, int]:
-    uom = await WmsPmsProjectionReadService(session).aget_uom_snapshot(
-        item_id=int(item_id),
-        item_uom_id=int(item_uom_id),
-    )
+    row = (
+        await session.execute(
+            text(
+                """
+                SELECT
+                  iu.id AS actual_item_uom_id,
+                  COALESCE(NULLIF(iu.display_name, ''), iu.uom) AS actual_uom_name_snapshot,
+                  iu.ratio_to_base AS actual_ratio_to_base_snapshot
+                FROM item_uoms iu
+                WHERE iu.id = :item_uom_id
+                  AND iu.item_id = :item_id
+                LIMIT 1
+                """
+            ),
+            {
+                "item_uom_id": int(item_uom_id),
+                "item_id": int(item_id),
+            },
+        )
+    ).mappings().first()
 
-    if uom is None:
+    if row is None:
         raise HTTPException(
             status_code=409,
             detail=f"actual_item_uom_not_found_or_item_mismatch:{item_id}:{item_uom_id}",
         )
 
     return (
-        int(uom.item_uom_id),
-        uom.uom_name,
-        int(uom.ratio_to_base),
+        int(row["actual_item_uom_id"]),
+        row["actual_uom_name_snapshot"],
+        int(row["actual_ratio_to_base_snapshot"]),
     )
 
 
@@ -77,21 +92,42 @@ async def _resolve_barcode_uom_snapshot(
     barcode: str,
 ) -> tuple[int, str | None, int]:
     code = (barcode or "").strip()
-    probe = await WmsPmsProjectionReadService(session).aprobe_barcode(
-        barcode=code,
-        active_only=True,
-    )
+    row = (
+        await session.execute(
+            text(
+                """
+                SELECT
+                  iu.id AS actual_item_uom_id,
+                  COALESCE(NULLIF(iu.display_name, ''), iu.uom) AS actual_uom_name_snapshot,
+                  iu.ratio_to_base AS actual_ratio_to_base_snapshot
+                FROM item_barcodes ib
+                JOIN item_uoms iu
+                  ON iu.id = ib.item_uom_id
+                 AND iu.item_id = ib.item_id
+                WHERE ib.barcode = :barcode
+                  AND ib.active = TRUE
+                  AND ib.item_id = :item_id
+                ORDER BY ib.is_primary DESC, ib.id ASC
+                LIMIT 1
+                """
+            ),
+            {
+                "barcode": code,
+                "item_id": int(item_id),
+            },
+        )
+    ).mappings().first()
 
-    if probe is None or int(probe.item_id) != int(item_id):
+    if row is None:
         raise HTTPException(
             status_code=422,
             detail=f"barcode_unbound_or_item_mismatch:{code}",
         )
 
     return (
-        int(probe.item_uom_id),
-        probe.uom_name,
-        int(probe.ratio_to_base),
+        int(row["actual_item_uom_id"]),
+        row["actual_uom_name_snapshot"],
+        int(row["actual_ratio_to_base_snapshot"]),
     )
 
 

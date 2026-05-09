@@ -13,7 +13,6 @@ from app.oms.orders.services.order_reconcile_service import OrderReconcileServic
 from app.oms.services.order_service import OrderService
 from app.wms.stock.services.lots import ensure_internal_lot_singleton, ensure_lot_full
 from app.wms.stock.services.stock_adjust import adjust_lot_impl
-from tests.helpers.wms_pms_projection import force_wms_pms_projection_supplier_required_item
 
 UTC = timezone.utc
 
@@ -75,11 +74,6 @@ async def _ensure_supplier_lot(session: AsyncSession, *, warehouse_id: int, item
     """
     code_raw = str(code).strip()
     assert code_raw, {"msg": "empty lot_code", "warehouse_id": warehouse_id, "item_id": item_id}
-
-    await force_wms_pms_projection_supplier_required_item(
-        session,
-        item_id=int(item_id),
-    )
 
     required = await _item_batch_mode_is_required(session, item_id=int(item_id))
     production_date = date.today() if required else None

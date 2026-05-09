@@ -4,11 +4,11 @@ from datetime import date
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.wms.pms_projection.services.read_service import WmsPmsPolicyProjectionSnapshot
+from app.pms.export.items.contracts.item_policy import ItemPolicy
 from app.wms.stock.services.lot_service import resolve_or_create_lot
 
 
-def infer_lot_code_source_from_policy(item_policy: WmsPmsPolicyProjectionSnapshot) -> str:
+def infer_lot_code_source_from_policy(item_policy: ItemPolicy) -> str:
     """
     lot 来源必须以后端 PMS 策略真相为准，不再把 expiry_policy 和 lot_source_policy 混为一谈。
 
@@ -25,7 +25,7 @@ async def resolve_inbound_lot(
     session: AsyncSession,
     *,
     warehouse_id: int,
-    item_policy: WmsPmsPolicyProjectionSnapshot,
+    item_policy: ItemPolicy,
     lot_code: str | None,
     production_date: date | None,
     expiry_date: date | None,

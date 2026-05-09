@@ -10,17 +10,17 @@ from app.wms.shared.enums import MovementType
 from app.wms.shared.services.lot_code_contract import validate_lot_code_contract
 from app.wms.stock.services.lots import ensure_internal_lot_singleton, ensure_lot_full
 from app.wms.stock.services.stock_service import StockService
-from tests.helpers.wms_pms_projection import force_wms_pms_projection_supplier_required_item
 
 UTC = timezone.utc
 
 
 async def _requires_batch(session: AsyncSession, item_id: int) -> bool:
     """
-    测试与 WMS 执行链保持一致：批次受控真相源来自 WMS PMS projection。
+    Phase M 第一阶段：测试也不再读取 has_shelf_life（镜像字段）。
+    批次受控唯一真相源：items.expiry_policy == 'REQUIRED'
     """
     row = await session.execute(
-        text("SELECT expiry_policy::text FROM wms_pms_item_policy_projection WHERE item_id=:i LIMIT 1"),
+        text("SELECT expiry_policy FROM items WHERE id=:i LIMIT 1"),
         {"i": int(item_id)},
     )
     v = row.scalar_one_or_none()
@@ -54,11 +54,6 @@ async def _ensure_supplier_lot(
     lot_code = str(code).strip()
     if not lot_code:
         raise ValueError("lot_code required")
-
-    await force_wms_pms_projection_supplier_required_item(
-        session,
-        item_id=int(item_id),
-    )
 
     requires_batch = await _requires_batch(session, int(item_id))
     pd, ed = _required_lot_dates(requires_batch)
@@ -339,11 +334,6 @@ async def _insert_supplier_lot(session: AsyncSession, *, warehouse_id: int, item
     终态收口后不允许 tests 直接 INSERT INTO lots。
     这里通过 ensure_lot_full 造出一个合法 lot_id，再用于 mismatch 测试。
     """
-    await force_wms_pms_projection_supplier_required_item(
-        session,
-        item_id=int(item_id),
-    )
-
     requires_batch = await _requires_batch(session, int(item_id))
     pd, ed = _required_lot_dates(requires_batch)
 

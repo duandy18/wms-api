@@ -25,26 +25,19 @@ async def _pick_seed_item_uom(session):
         text(
             """
             SELECT
-              p.item_id AS item_id,
-              u.item_uom_id AS uom_id,
-              pp.lot_source_policy::text AS lot_source_policy,
-              pp.expiry_policy::text AS expiry_policy
-            FROM wms_pms_item_uom_projection u
-            JOIN wms_pms_item_projection p
-              ON p.item_id = u.item_id
-            JOIN wms_pms_item_policy_projection pp
-              ON pp.item_id = p.item_id
-            WHERE NOT (
-              pp.lot_source_policy::text IN ('SUPPLIER_ONLY', 'SUPPLIER')
-              AND pp.expiry_policy::text <> 'REQUIRED'
-            )
+              i.id AS item_id,
+              u.id AS uom_id,
+              i.lot_source_policy::text AS lot_source_policy,
+              i.expiry_policy::text AS expiry_policy
+            FROM item_uoms u
+            JOIN items i
+              ON i.id = u.item_id
             ORDER BY
               CASE
-                WHEN pp.lot_source_policy::text IN ('SUPPLIER_ONLY', 'SUPPLIER')
-                 AND pp.expiry_policy::text = 'REQUIRED' THEN 0
+                WHEN i.lot_source_policy::text IN ('SUPPLIER_ONLY', 'SUPPLIER') THEN 0
                 ELSE 1
               END,
-              u.item_uom_id ASC
+              u.id ASC
             LIMIT 1
             """
         )

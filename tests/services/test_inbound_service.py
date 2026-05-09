@@ -11,7 +11,6 @@ from tests.helpers.inventory import ensure_wh_loc_item, qty_by_lot_code
 from app.wms.shared.enums import MovementType
 from app.wms.stock.services.lots import ensure_lot_full
 from app.wms.stock.services.stock_service import StockService
-from tests.helpers.wms_pms_projection import sync_wms_pms_projection_for_item
 
 UTC = timezone.utc
 pytestmark = pytest.mark.grp_core
@@ -50,8 +49,6 @@ async def test_inbound_creates_batch_and_increases_stock(session: AsyncSession):
     exp = prod + timedelta(days=365)
 
     # 当前终态：supplier lot 必须走 ensure_lot_full，且 REQUIRED 商品必须给 production_date + expiry_date
-    await sync_wms_pms_projection_for_item(session, item_id=int(item))
-
     lot_id = await ensure_lot_full(
         session,
         item_id=int(item),

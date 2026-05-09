@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.pms.export.items.services.barcode_probe_service import BarcodeProbeService
 from app.wms.inventory_adjustment.return_inbound.contracts.probe import (
     InboundTaskProbeOut,
     InboundTaskProbeStatus,
@@ -10,7 +12,39 @@ from app.wms.inventory_adjustment.return_inbound.repos.inbound_task_probe_repo i
     InboundTaskProbeLine,
     get_inbound_task_probe_lines,
 )
-from app.wms.pms_projection.services.read_service import WmsPmsProjectionReadService
+
+
+async def _load_actual_uom_name(
+    session: AsyncSession,
+    *,
+    item_id: int,
+    item_uom_id: int | None,
+) -> str | None:
+    if item_uom_id is None:
+        return None
+
+    row = (
+        await session.execute(
+            text(
+                """
+                SELECT
+                  COALESCE(NULLIF(display_name, ''), uom) AS uom_name_snapshot
+                FROM item_uoms
+                WHERE id = :item_uom_id
+                  AND item_id = :item_id
+                LIMIT 1
+                """
+            ),
+            {
+                "item_uom_id": int(item_uom_id),
+                "item_id": int(item_id),
+            },
+        )
+    ).mappings().first()
+
+    if row is None:
+        return None
+    return row["uom_name_snapshot"]
 
 
 def _match_line(
@@ -60,11 +94,8 @@ async def probe_inbound_task_barcode(
     code = (barcode or "").strip()
     lines = await get_inbound_task_probe_lines(session, receipt_no=receipt_no)
 
-    probe = await WmsPmsProjectionReadService(session).aprobe_barcode(
-        barcode=code,
-        active_only=True,
-    )
-    if probe is None:
+    probe = await BarcodeProbeService(session).aprobe(barcode=code)
+    if probe.status != "BOUND" or probe.item_id is None:
         return InboundTaskProbeOut(
             ok=True,
             status=InboundTaskProbeStatus.UNBOUND,
@@ -73,11 +104,17 @@ async def probe_inbound_task_barcode(
         )
 
     item_id = int(probe.item_id)
-    item_uom_id = int(probe.item_uom_id)
-    ratio_to_base = int(probe.ratio_to_base)
+    item_uom_id = int(probe.item_uom_id) if probe.item_uom_id is not None else None
+    ratio_to_base = int(probe.ratio_to_base) if probe.ratio_to_base is not None else None
 
     status, matched, message = _match_line(
         lines=lines,
+        item_id=item_id,
+        item_uom_id=item_uom_id,
+    )
+
+    actual_uom_name_snapshot = await _load_actual_uom_name(
+        session,
         item_id=item_id,
         item_uom_id=item_uom_id,
     )
@@ -92,8 +129,8 @@ async def probe_inbound_task_barcode(
         matched_line_no=(matched.line_no if matched else None),
         item_name_snapshot=(matched.item_name_snapshot if matched else None),
         uom_name_snapshot=(
-            probe.uom_name
-            if probe.uom_name is not None
+            actual_uom_name_snapshot
+            if actual_uom_name_snapshot is not None
             else (matched.uom_name_snapshot if matched else None)
         ),
         message=message,
