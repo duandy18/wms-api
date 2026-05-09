@@ -8530,6 +8530,241 @@
         }
       }
     },
+    "/pms/export/barcodes": {
+      "get": {
+        "tags": [
+          "pms-export-barcodes"
+        ],
+        "summary": "List Export Barcodes",
+        "operationId": "list_export_barcodes_pms_export_barcodes_get",
+        "parameters": [
+          {
+            "name": "item_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              },
+              "description": "可重复：item_id=1&item_id=2",
+              "default": [],
+              "title": "Item Id"
+            },
+            "description": "可重复：item_id=1&item_id=2"
+          },
+          {
+            "name": "item_uom_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              },
+              "description": "可重复：item_uom_id=1&item_uom_id=2",
+              "default": [],
+              "title": "Item Uom Id"
+            },
+            "description": "可重复：item_uom_id=1&item_uom_id=2"
+          },
+          {
+            "name": "barcode",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "精确条码查询",
+              "title": "Barcode"
+            },
+            "description": "精确条码查询"
+          },
+          {
+            "name": "active",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "默认只返回 active=true；传空则不过滤",
+              "default": true,
+              "title": "Active"
+            },
+            "description": "默认只返回 active=true；传空则不过滤"
+          },
+          {
+            "name": "primary_only",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "true 时只返回主条码",
+              "default": false,
+              "title": "Primary Only"
+            },
+            "description": "true 时只返回主条码"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PmsExportBarcode"
+                  },
+                  "title": "Response List Export Barcodes Pms Export Barcodes Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/pms/export/barcodes/{barcode_id}": {
+      "get": {
+        "tags": [
+          "pms-export-barcodes"
+        ],
+        "summary": "Get Export Barcode",
+        "operationId": "get_export_barcode_pms_export_barcodes__barcode_id__get",
+        "parameters": [
+          {
+            "name": "barcode_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Barcode Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PmsExportBarcode"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/pms/export/items/{item_id}/barcodes": {
+      "get": {
+        "tags": [
+          "pms-export-barcodes"
+        ],
+        "summary": "List Export Item Barcodes",
+        "operationId": "list_export_item_barcodes_pms_export_items__item_id__barcodes_get",
+        "parameters": [
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Item Id"
+            }
+          },
+          {
+            "name": "active",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "默认只返回 active=true；传空则不过滤",
+              "default": true,
+              "title": "Active"
+            },
+            "description": "默认只返回 active=true；传空则不过滤"
+          },
+          {
+            "name": "primary_only",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "true 时只返回主条码",
+              "default": false,
+              "title": "Primary Only"
+            },
+            "description": "true 时只返回主条码"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PmsExportBarcode"
+                  },
+                  "title": "Response List Export Item Barcodes Pms Export Items  Item Id  Barcodes Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/pms/export/items/barcode-probe": {
       "post": {
         "tags": [
@@ -34809,6 +35044,78 @@
         },
         "type": "object",
         "title": "PmsCategoryUpdate"
+      },
+      "PmsExportBarcode": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "item_id": {
+            "type": "integer",
+            "title": "Item Id"
+          },
+          "item_uom_id": {
+            "type": "integer",
+            "title": "Item Uom Id"
+          },
+          "barcode": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Barcode"
+          },
+          "symbology": {
+            "type": "string",
+            "title": "Symbology"
+          },
+          "active": {
+            "type": "boolean",
+            "title": "Active"
+          },
+          "is_primary": {
+            "type": "boolean",
+            "title": "Is Primary"
+          },
+          "uom": {
+            "type": "string",
+            "title": "Uom"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "uom_name": {
+            "type": "string",
+            "title": "Uom Name"
+          },
+          "ratio_to_base": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Ratio To Base"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "item_id",
+          "item_uom_id",
+          "barcode",
+          "symbology",
+          "active",
+          "is_primary",
+          "uom",
+          "uom_name",
+          "ratio_to_base"
+        ],
+        "title": "PmsExportBarcode",
+        "description": "PMS 对外条码读模型。\n\n定位：\n- 只读 export contract；\n- 不承载 owner 写入、改绑、设主条码语义；\n- barcode 绑定终态来自 item_barcodes；\n- 包装语义通过 item_uom_id 关联 item_uoms。"
       },
       "PmsExportUom": {
         "properties": {
