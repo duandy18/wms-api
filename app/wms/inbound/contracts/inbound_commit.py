@@ -30,7 +30,7 @@ class InboundCommitLineIn(_Base):
 
     设计原则：
     - 输入只接用户事实：商品/条码、包装单位、输入数量、批号/日期
-    - 不接 qty_base，qty_base 由后端根据 PMS item_uoms.ratio_to_base 计算
+    - 不接 qty_base，qty_base 由后端根据 WMS PMS projection 的 ratio_to_base 计算
     - 采购来源时允许显式带 po_line_id；其他来源不需要 source_line_ref 这种泛字段
     """
 

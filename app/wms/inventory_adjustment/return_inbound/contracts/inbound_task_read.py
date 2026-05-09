@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -10,11 +10,9 @@ from app.wms.inventory_adjustment.return_inbound.contracts.enums import (
     InboundReceiptSourceType,
     InboundReceiptStatus,
 )
-from app.pms.export.items.contracts.item_policy import (
-    ExpiryPolicy,
-    LotSourcePolicy,
-    ShelfLifeUnit,
-)
+ExpiryPolicy = Literal["NONE", "REQUIRED"]
+LotSourcePolicy = Literal["INTERNAL_ONLY", "SUPPLIER_ONLY"]
+ShelfLifeUnit = Literal["DAY", "WEEK", "MONTH", "YEAR"]
 
 
 class _Base(BaseModel):
