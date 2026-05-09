@@ -8,8 +8,8 @@ from typing import Any, Dict, List, Optional, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.procurement.models.purchase_order import PurchaseOrder
-from app.pms.public.items.contracts.item_basic import ItemBasic
-from app.pms.public.items.services.item_read_service import ItemReadService
+from app.pms.export.items.contracts.item_basic import ItemBasic
+from app.pms.export.items.services.item_read_service import ItemReadService
 from app.partners.export.suppliers.services.supplier_read_service import SupplierReadService
 from app.procurement.repos.purchase_order_create_repo import (
     insert_purchase_order_head,

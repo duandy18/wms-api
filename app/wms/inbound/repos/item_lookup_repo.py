@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.pms.public.items.contracts.item_policy import ItemPolicy
-from app.pms.public.items.services.item_read_service import ItemReadService
+from app.pms.export.items.contracts.item_policy import ItemPolicy
+from app.pms.export.items.services.item_read_service import ItemReadService
 
 
 async def get_item_policy_by_id(

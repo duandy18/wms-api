@@ -1,11 +1,11 @@
-# app/pms/public/items/contracts/barcode_probe.py
+# app/pms/export/items/contracts/barcode_probe.py
 from __future__ import annotations
 
 from enum import Enum
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.pms.public.items.contracts.item_basic import ItemBasic
+from app.pms.export.items.contracts.item_basic import ItemBasic
 
 
 class _Base(BaseModel):

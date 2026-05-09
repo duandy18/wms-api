@@ -1,4 +1,4 @@
-# app/pms/public/items/services/item_read_service.py
+# app/pms/export/items/services/item_read_service.py
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -14,9 +14,9 @@ from app.pms.items.models.item_sku_code import ItemSkuCode
 from app.pms.items.repos.item_repo import get_item_by_id as repo_get_item_by_id
 from app.pms.items.repos.item_repo import get_item_by_sku as repo_get_item_by_sku
 from app.pms.items.repos.item_repo import get_items as repo_get_items
-from app.pms.public.items.contracts.item_basic import ItemBasic
-from app.pms.public.items.contracts.item_policy import ItemPolicy
-from app.pms.public.items.contracts.item_query import ItemReadQuery
+from app.pms.export.items.contracts.item_basic import ItemBasic
+from app.pms.export.items.contracts.item_policy import ItemPolicy
+from app.pms.export.items.contracts.item_query import ItemReadQuery
 
 
 def _enum_value(v: object) -> str | None:
@@ -45,7 +45,7 @@ class ItemReportMeta:
 
 class ItemReadService:
     """
-    PMS public read service。
+    PMS export read service。
 
     定位：
     - 供其他模块读取 PMS 商品最小事实

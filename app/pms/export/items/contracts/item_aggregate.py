@@ -1,4 +1,4 @@
-# app/pms/public/items/contracts/item_aggregate.py
+# app/pms/export/items/contracts/item_aggregate.py
 from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field

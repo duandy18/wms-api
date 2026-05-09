@@ -10,7 +10,7 @@ from sqlalchemy import distinct, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_session
-from app.pms.public.items.services.item_read_service import ItemReadService
+from app.pms.export.items.services.item_read_service import ItemReadService
 from app.procurement.contracts.purchase_report import ItemPurchaseReportItem
 from app.procurement.helpers.purchase_reports import resolve_report_item_ids
 from app.procurement.models.purchase_order import PurchaseOrder

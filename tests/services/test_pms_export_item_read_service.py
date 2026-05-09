@@ -1,11 +1,11 @@
-# tests/services/test_pms_public_item_read_service.py
+# tests/services/test_pms_export_item_read_service.py
 from __future__ import annotations
 
 import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.pms.public.items.services.item_read_service import ItemReadService
+from app.pms.export.items.services.item_read_service import ItemReadService
 
 pytestmark = pytest.mark.asyncio
 

@@ -20,7 +20,7 @@ _BARCODE_RESOLVER = BarcodeResolver()
 
 def _apply_barcode_probe(parsed: Dict[str, Any], resolved: object) -> None:
     """
-    把 PMS public barcode probe 的 richer 结果并入 parsed。
+    把 PMS export barcode probe 的 richer 结果并入 parsed。
     当前阶段只做“写入 parsed”，不改变 parse_scan 的返回 tuple 形状。
     """
     item_id = getattr(resolved, "item_id", None)

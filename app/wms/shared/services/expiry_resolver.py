@@ -6,7 +6,7 @@ from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.pms.public.items.services.item_read_service import ItemReadService
+from app.pms.export.items.services.item_read_service import ItemReadService
 from app.wms.shared.services.expiry_rules import (
     ShelfLife,
     ShelfLifeUnit,

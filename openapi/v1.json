@@ -8179,13 +8179,13 @@
         }
       }
     },
-    "/public/items/{item_id}/aggregate": {
+    "/pms/export/items/{item_id}/aggregate": {
       "get": {
         "tags": [
-          "pms-public-items"
+          "pms-export-items"
         ],
-        "summary": "Get Public Item Aggregate By Id",
-        "operationId": "get_public_item_aggregate_by_id_public_items__item_id__aggregate_get",
+        "summary": "Get Export Item Aggregate By Id",
+        "operationId": "get_export_item_aggregate_by_id_pms_export_items__item_id__aggregate_get",
         "parameters": [
           {
             "name": "item_id",
@@ -8221,13 +8221,13 @@
         }
       }
     },
-    "/public/items": {
+    "/pms/export/items": {
       "get": {
         "tags": [
-          "pms-public-items"
+          "pms-export-items"
         ],
-        "summary": "List Public Items",
-        "operationId": "list_public_items_public_items_get",
+        "summary": "List Export Items",
+        "operationId": "list_export_items_pms_export_items_get",
         "parameters": [
           {
             "name": "supplier_id",
@@ -8315,7 +8315,7 @@
                   "items": {
                     "$ref": "#/components/schemas/ItemBasic"
                   },
-                  "title": "Response List Public Items Public Items Get"
+                  "title": "Response List Export Items Pms Export Items Get"
                 }
               }
             }
@@ -8333,13 +8333,13 @@
         }
       }
     },
-    "/public/items/{item_id}": {
+    "/pms/export/items/{item_id}": {
       "get": {
         "tags": [
-          "pms-public-items"
+          "pms-export-items"
         ],
-        "summary": "Get Public Item By Id",
-        "operationId": "get_public_item_by_id_public_items__item_id__get",
+        "summary": "Get Export Item By Id",
+        "operationId": "get_export_item_by_id_pms_export_items__item_id__get",
         "parameters": [
           {
             "name": "item_id",
@@ -8375,13 +8375,13 @@
         }
       }
     },
-    "/items/barcode-probe": {
+    "/pms/export/items/barcode-probe": {
       "post": {
         "tags": [
-          "pms-public-items"
+          "pms-export-items"
         ],
         "summary": "Probe Barcode",
-        "operationId": "probe_barcode_items_barcode_probe_post",
+        "operationId": "probe_barcode_pms_export_items_barcode_probe_post",
         "requestBody": {
           "content": {
             "application/json": {
@@ -8416,13 +8416,13 @@
         }
       }
     },
-    "/public/suppliers": {
+    "/partners/export/suppliers": {
       "get": {
         "tags": [
-          "pms-public-suppliers"
+          "partners-export-suppliers"
         ],
         "summary": "List Public Suppliers",
-        "operationId": "list_public_suppliers_public_suppliers_get",
+        "operationId": "list_public_suppliers_partners_export_suppliers_get",
         "parameters": [
           {
             "name": "active",
@@ -8472,7 +8472,7 @@
                   "items": {
                     "$ref": "#/components/schemas/SupplierBasic"
                   },
-                  "title": "Response List Public Suppliers Public Suppliers Get"
+                  "title": "Response List Public Suppliers Partners Export Suppliers Get"
                 }
               }
             }
@@ -11422,13 +11422,13 @@
         }
       }
     },
-    "/suppliers": {
+    "/partners/suppliers": {
       "get": {
         "tags": [
           "suppliers"
         ],
         "summary": "List Suppliers",
-        "operationId": "list_suppliers_suppliers_get",
+        "operationId": "list_suppliers_partners_suppliers_get",
         "security": [
           {
             "OAuth2PasswordBearer": []
@@ -11482,7 +11482,7 @@
                   "items": {
                     "$ref": "#/components/schemas/SupplierOut"
                   },
-                  "title": "Response List Suppliers Suppliers Get"
+                  "title": "Response List Suppliers Partners Suppliers Get"
                 }
               }
             }
@@ -11504,7 +11504,7 @@
           "suppliers"
         ],
         "summary": "Create Supplier",
-        "operationId": "create_supplier_suppliers_post",
+        "operationId": "create_supplier_partners_suppliers_post",
         "security": [
           {
             "OAuth2PasswordBearer": []
@@ -11544,13 +11544,13 @@
         }
       }
     },
-    "/suppliers/{supplier_id}": {
+    "/partners/suppliers/{supplier_id}": {
       "patch": {
         "tags": [
           "suppliers"
         ],
         "summary": "Update Supplier",
-        "operationId": "update_supplier_suppliers__supplier_id__patch",
+        "operationId": "update_supplier_partners_suppliers__supplier_id__patch",
         "security": [
           {
             "OAuth2PasswordBearer": []
@@ -11602,13 +11602,13 @@
         }
       }
     },
-    "/suppliers/{supplier_id}/contacts": {
+    "/partners/suppliers/{supplier_id}/contacts": {
       "post": {
         "tags": [
           "supplier-contacts"
         ],
         "summary": "Supplier Create Contact",
-        "operationId": "supplier_create_contact_suppliers__supplier_id__contacts_post",
+        "operationId": "supplier_create_contact_partners_suppliers__supplier_id__contacts_post",
         "security": [
           {
             "OAuth2PasswordBearer": []
@@ -11660,13 +11660,13 @@
         }
       }
     },
-    "/supplier-contacts/{contact_id}": {
+    "/partners/supplier-contacts/{contact_id}": {
       "patch": {
         "tags": [
           "supplier-contacts"
         ],
         "summary": "Supplier Update Contact",
-        "operationId": "supplier_update_contact_supplier_contacts__contact_id__patch",
+        "operationId": "supplier_update_contact_partners_supplier_contacts__contact_id__patch",
         "security": [
           {
             "OAuth2PasswordBearer": []
@@ -11722,7 +11722,7 @@
           "supplier-contacts"
         ],
         "summary": "Supplier Delete Contact",
-        "operationId": "supplier_delete_contact_supplier_contacts__contact_id__delete",
+        "operationId": "supplier_delete_contact_partners_supplier_contacts__contact_id__delete",
         "security": [
           {
             "OAuth2PasswordBearer": []
@@ -39811,7 +39811,7 @@
           "active"
         ],
         "title": "SupplierBasic",
-        "description": "PMS 对外最小供应商读模型。\n\n说明：\n- 这是跨域 public read surface\n- 只暴露其他模块稳定需要的最小读取字段\n- 不承载 owner contacts / 写入语义"
+        "description": "Partners 对外最小供应商读模型。\n\n说明：\n- 这是跨域 export read surface\n- 只暴露其他模块稳定需要的最小读取字段\n- 不承载 owner contacts / 写入语义"
       },
       "SupplierContactCreateIn": {
         "properties": {

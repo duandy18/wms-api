@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.pms.public.items.services.barcode_probe_service import BarcodeProbeService
+from app.pms.export.items.services.barcode_probe_service import BarcodeProbeService
 
 
 @dataclass(frozen=True)
@@ -14,7 +14,7 @@ class InboundBarcodeResolved:
     入库条码解析结果。
 
     说明：
-    - 这是 WMS inbound 对 PMS public barcode probe 的轻包装
+    - 这是 WMS inbound 对 PMS export barcode probe 的轻包装
     - 只承载入库提交链真正需要的最小字段
     - 不承载 qty / event_id / lot 等仓内执行语义
     """
@@ -32,7 +32,7 @@ async def resolve_inbound_barcode(
     barcode: str,
 ) -> InboundBarcodeResolved | None:
     """
-    通过 PMS public barcode probe 解析入库条码。
+    通过 PMS export barcode probe 解析入库条码。
 
     规则：
     - 空条码 => None
