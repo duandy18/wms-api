@@ -5,6 +5,7 @@
 # 业务执行链不得绕过 projection 直接读取 PMS owner 表。
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
@@ -71,15 +72,20 @@ def _required_datetime(value: object, *, label: str) -> datetime:
     return value
 
 
+def _clean_item_ids(item_ids: Sequence[int]) -> list[int]:
+    return sorted({int(item_id) for item_id in item_ids})
+
+
 class WmsPmsProjectionRebuildService:
     """
-    WMS PMS projection 全量重建服务。
+    WMS PMS projection 重建服务。
 
     当前阶段职责：
     - 从 PMS owner 表读取商品、包装单位、条码、SKU code、策略；
     - 写入 WMS 本地 wms_pms_*_projection；
     - 支持幂等重复执行；
-    - 清理 projection 中已不存在于 PMS owner 的陈旧行。
+    - 支持全量 rebuild_all；
+    - 支持按 item_id 局部 rebuild_items，供后续增量 sync 复用。
 
     明确不负责：
     - 不接入 WMS scan；
@@ -92,41 +98,103 @@ class WmsPmsProjectionRebuildService:
         self.session = session
 
     async def rebuild_all(self) -> WmsPmsProjectionRebuildResult:
-        item_rows = (await self.session.execute(self._items_stmt())).mappings().all()
-        uom_rows = (await self.session.execute(self._uoms_stmt())).mappings().all()
-        sku_code_rows = (await self.session.execute(self._sku_codes_stmt())).mappings().all()
-        barcode_rows = (await self.session.execute(self._barcodes_stmt())).mappings().all()
+        return await self._rebuild(item_ids=None)
 
-        item_ids = {int(row["id"]) for row in item_rows}
+    async def rebuild_items(self, item_ids: Sequence[int]) -> WmsPmsProjectionRebuildResult:
+        clean_item_ids = _clean_item_ids(item_ids)
+        if not clean_item_ids:
+            return WmsPmsProjectionRebuildResult(
+                source_items=0,
+                source_uoms=0,
+                source_policies=0,
+                source_sku_codes=0,
+                source_barcodes=0,
+                deleted_items=0,
+                deleted_uoms=0,
+                deleted_policies=0,
+                deleted_sku_codes=0,
+                deleted_barcodes=0,
+            )
+        return await self._rebuild(item_ids=clean_item_ids)
+
+    async def _rebuild(
+        self,
+        *,
+        item_ids: Sequence[int] | None,
+    ) -> WmsPmsProjectionRebuildResult:
+        item_rows = (await self.session.execute(self._items_stmt(item_ids))).mappings().all()
+        uom_rows = (await self.session.execute(self._uoms_stmt(item_ids))).mappings().all()
+        sku_code_rows = (await self.session.execute(self._sku_codes_stmt(item_ids))).mappings().all()
+        barcode_rows = (await self.session.execute(self._barcodes_stmt(item_ids))).mappings().all()
+
+        source_item_ids = {int(row["id"]) for row in item_rows}
         uom_ids = {int(row["id"]) for row in uom_rows}
         sku_code_ids = {int(row["id"]) for row in sku_code_rows}
         barcode_ids = {int(row["id"]) for row in barcode_rows}
 
-        deleted_barcodes = await self._delete_stale(
-            WmsPmsItemBarcodeProjection,
-            WmsPmsItemBarcodeProjection.barcode_id,
-            barcode_ids,
-        )
-        deleted_sku_codes = await self._delete_stale(
-            WmsPmsItemSkuCodeProjection,
-            WmsPmsItemSkuCodeProjection.sku_code_id,
-            sku_code_ids,
-        )
-        deleted_policies = await self._delete_stale(
-            WmsPmsItemPolicyProjection,
-            WmsPmsItemPolicyProjection.item_id,
-            item_ids,
-        )
-        deleted_uoms = await self._delete_stale(
-            WmsPmsItemUomProjection,
-            WmsPmsItemUomProjection.item_uom_id,
-            uom_ids,
-        )
-        deleted_items = await self._delete_stale(
-            WmsPmsItemProjection,
-            WmsPmsItemProjection.item_id,
-            item_ids,
-        )
+        if item_ids is None:
+            deleted_barcodes = await self._delete_stale(
+                WmsPmsItemBarcodeProjection,
+                WmsPmsItemBarcodeProjection.barcode_id,
+                barcode_ids,
+            )
+            deleted_sku_codes = await self._delete_stale(
+                WmsPmsItemSkuCodeProjection,
+                WmsPmsItemSkuCodeProjection.sku_code_id,
+                sku_code_ids,
+            )
+            deleted_policies = await self._delete_stale(
+                WmsPmsItemPolicyProjection,
+                WmsPmsItemPolicyProjection.item_id,
+                source_item_ids,
+            )
+            deleted_uoms = await self._delete_stale(
+                WmsPmsItemUomProjection,
+                WmsPmsItemUomProjection.item_uom_id,
+                uom_ids,
+            )
+            deleted_items = await self._delete_stale(
+                WmsPmsItemProjection,
+                WmsPmsItemProjection.item_id,
+                source_item_ids,
+            )
+        else:
+            target_item_ids = set(_clean_item_ids(item_ids))
+            deleted_barcodes = await self._delete_stale_for_items(
+                WmsPmsItemBarcodeProjection,
+                WmsPmsItemBarcodeProjection.barcode_id,
+                WmsPmsItemBarcodeProjection.item_id,
+                barcode_ids,
+                target_item_ids,
+            )
+            deleted_sku_codes = await self._delete_stale_for_items(
+                WmsPmsItemSkuCodeProjection,
+                WmsPmsItemSkuCodeProjection.sku_code_id,
+                WmsPmsItemSkuCodeProjection.item_id,
+                sku_code_ids,
+                target_item_ids,
+            )
+            deleted_policies = await self._delete_stale_for_items(
+                WmsPmsItemPolicyProjection,
+                WmsPmsItemPolicyProjection.item_id,
+                WmsPmsItemPolicyProjection.item_id,
+                source_item_ids,
+                target_item_ids,
+            )
+            deleted_uoms = await self._delete_stale_for_items(
+                WmsPmsItemUomProjection,
+                WmsPmsItemUomProjection.item_uom_id,
+                WmsPmsItemUomProjection.item_id,
+                uom_ids,
+                target_item_ids,
+            )
+            deleted_items = await self._delete_stale_for_items(
+                WmsPmsItemProjection,
+                WmsPmsItemProjection.item_id,
+                WmsPmsItemProjection.item_id,
+                source_item_ids,
+                target_item_ids,
+            )
 
         await self._upsert_items(item_rows)
         await self._upsert_uoms(uom_rows)
@@ -150,79 +218,79 @@ class WmsPmsProjectionRebuildService:
         )
 
     @staticmethod
-    def _items_stmt():
-        return (
-            select(
-                Item.id,
-                Item.sku,
-                Item.name,
-                Item.spec,
-                Item.enabled,
-                Item.brand_id,
-                Item.category_id,
-                Item.updated_at,
-                Item.lot_source_policy,
-                Item.expiry_policy,
-                Item.shelf_life_value,
-                Item.shelf_life_unit,
-                Item.derivation_allowed,
-                Item.uom_governance_enabled,
-            )
-            .order_by(Item.id.asc())
+    def _items_stmt(item_ids: Sequence[int] | None = None):
+        stmt = select(
+            Item.id,
+            Item.sku,
+            Item.name,
+            Item.spec,
+            Item.enabled,
+            Item.brand_id,
+            Item.category_id,
+            Item.updated_at,
+            Item.lot_source_policy,
+            Item.expiry_policy,
+            Item.shelf_life_value,
+            Item.shelf_life_unit,
+            Item.derivation_allowed,
+            Item.uom_governance_enabled,
         )
+        if item_ids is not None:
+            stmt = stmt.where(Item.id.in_(_clean_item_ids(item_ids)))
+        return stmt.order_by(Item.id.asc())
 
     @staticmethod
-    def _uoms_stmt():
-        return (
-            select(
-                ItemUOM.id,
-                ItemUOM.item_id,
-                ItemUOM.uom,
-                ItemUOM.display_name,
-                ItemUOM.ratio_to_base,
-                ItemUOM.is_base,
-                ItemUOM.is_purchase_default,
-                ItemUOM.is_inbound_default,
-                ItemUOM.is_outbound_default,
-                ItemUOM.net_weight_kg,
-                ItemUOM.updated_at,
-            )
-            .order_by(ItemUOM.item_id.asc(), ItemUOM.id.asc())
+    def _uoms_stmt(item_ids: Sequence[int] | None = None):
+        stmt = select(
+            ItemUOM.id,
+            ItemUOM.item_id,
+            ItemUOM.uom,
+            ItemUOM.display_name,
+            ItemUOM.ratio_to_base,
+            ItemUOM.is_base,
+            ItemUOM.is_purchase_default,
+            ItemUOM.is_inbound_default,
+            ItemUOM.is_outbound_default,
+            ItemUOM.net_weight_kg,
+            ItemUOM.updated_at,
         )
+        if item_ids is not None:
+            stmt = stmt.where(ItemUOM.item_id.in_(_clean_item_ids(item_ids)))
+        return stmt.order_by(ItemUOM.item_id.asc(), ItemUOM.id.asc())
 
     @staticmethod
-    def _sku_codes_stmt():
-        return (
-            select(
-                ItemSkuCode.id,
-                ItemSkuCode.item_id,
-                ItemSkuCode.code,
-                ItemSkuCode.code_type,
-                ItemSkuCode.is_primary,
-                ItemSkuCode.is_active,
-                ItemSkuCode.effective_from,
-                ItemSkuCode.effective_to,
-                ItemSkuCode.remark,
-                ItemSkuCode.updated_at,
-            )
-            .order_by(ItemSkuCode.item_id.asc(), ItemSkuCode.id.asc())
+    def _sku_codes_stmt(item_ids: Sequence[int] | None = None):
+        stmt = select(
+            ItemSkuCode.id,
+            ItemSkuCode.item_id,
+            ItemSkuCode.code,
+            ItemSkuCode.code_type,
+            ItemSkuCode.is_primary,
+            ItemSkuCode.is_active,
+            ItemSkuCode.effective_from,
+            ItemSkuCode.effective_to,
+            ItemSkuCode.remark,
+            ItemSkuCode.updated_at,
         )
+        if item_ids is not None:
+            stmt = stmt.where(ItemSkuCode.item_id.in_(_clean_item_ids(item_ids)))
+        return stmt.order_by(ItemSkuCode.item_id.asc(), ItemSkuCode.id.asc())
 
     @staticmethod
-    def _barcodes_stmt():
-        return (
-            select(
-                ItemBarcode.id,
-                ItemBarcode.item_id,
-                ItemBarcode.item_uom_id,
-                ItemBarcode.barcode,
-                ItemBarcode.active,
-                ItemBarcode.is_primary,
-                ItemBarcode.symbology,
-                ItemBarcode.updated_at,
-            )
-            .order_by(ItemBarcode.item_id.asc(), ItemBarcode.id.asc())
+    def _barcodes_stmt(item_ids: Sequence[int] | None = None):
+        stmt = select(
+            ItemBarcode.id,
+            ItemBarcode.item_id,
+            ItemBarcode.item_uom_id,
+            ItemBarcode.barcode,
+            ItemBarcode.active,
+            ItemBarcode.is_primary,
+            ItemBarcode.symbology,
+            ItemBarcode.updated_at,
         )
+        if item_ids is not None:
+            stmt = stmt.where(ItemBarcode.item_id.in_(_clean_item_ids(item_ids)))
+        return stmt.order_by(ItemBarcode.item_id.asc(), ItemBarcode.id.asc())
 
     async def _delete_stale(
         self,
@@ -231,6 +299,23 @@ class WmsPmsProjectionRebuildService:
         source_ids: set[int],
     ) -> int:
         stmt = sa.delete(model)
+        if source_ids:
+            stmt = stmt.where(~id_column.in_(sorted(source_ids)))
+        result = await self.session.execute(stmt)
+        return _rowcount(result)
+
+    async def _delete_stale_for_items(
+        self,
+        model: type[object],
+        id_column: sa.ColumnElement[int],
+        item_column: sa.ColumnElement[int],
+        source_ids: set[int],
+        target_item_ids: set[int],
+    ) -> int:
+        if not target_item_ids:
+            return 0
+
+        stmt = sa.delete(model).where(item_column.in_(sorted(target_item_ids)))
         if source_ids:
             stmt = stmt.where(~id_column.in_(sorted(source_ids)))
         result = await self.session.execute(stmt)
