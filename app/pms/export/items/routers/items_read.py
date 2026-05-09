@@ -1,4 +1,4 @@
-# app/pms/public/items/routers/items_read.py
+# app/pms/export/items/routers/items_read.py
 from __future__ import annotations
 
 from typing import Optional
@@ -7,11 +7,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.db.deps import get_db
-from app.pms.public.items.contracts.item_basic import ItemBasic
-from app.pms.public.items.contracts.item_query import ItemReadQuery
-from app.pms.public.items.services.item_read_service import ItemReadService
+from app.pms.export.items.contracts.item_basic import ItemBasic
+from app.pms.export.items.contracts.item_query import ItemReadQuery
+from app.pms.export.items.services.item_read_service import ItemReadService
 
-router = APIRouter(prefix="/public/items", tags=["pms-public-items"])
+router = APIRouter(prefix="/pms/export/items", tags=["pms-export-items"])
 
 
 def get_item_read_service(db: Session = Depends(get_db)) -> ItemReadService:
@@ -19,7 +19,7 @@ def get_item_read_service(db: Session = Depends(get_db)) -> ItemReadService:
 
 
 @router.get("", response_model=list[ItemBasic], status_code=status.HTTP_200_OK)
-def list_public_items(
+def list_export_items(
     supplier_id: Optional[int] = Query(None, ge=1, description="按供应商过滤"),
     enabled: Optional[bool] = Query(None, description="按启用状态过滤"),
     q: Optional[str] = Query(None, description="关键词搜索（sku/name）"),
@@ -36,7 +36,7 @@ def list_public_items(
 
 
 @router.get("/{item_id}", response_model=ItemBasic, status_code=status.HTTP_200_OK)
-def get_public_item_by_id(
+def get_export_item_by_id(
     item_id: int,
     service: ItemReadService = Depends(get_item_read_service),
 ) -> ItemBasic:

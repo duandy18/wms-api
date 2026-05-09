@@ -1,4 +1,4 @@
-# app/pms/public/items/contracts/item_query.py
+# app/pms/export/items/contracts/item_query.py
 from __future__ import annotations
 
 from typing import Annotated
@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 class ItemReadQuery(BaseModel):
     """
-    PMS public read 查询参数。
+    PMS export read 查询参数。
 
     说明：
     - 这是后端域间读取入参，不是 HTTP router 的直接替身

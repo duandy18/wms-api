@@ -1,10 +1,10 @@
-# app/pms/public/items/services/item_aggregate_read_service.py
+# app/pms/export/items/services/item_aggregate_read_service.py
 from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
 from app.pms.items.repos.item_aggregate_read_repo import get_item_aggregate_record
-from app.pms.public.items.contracts.item_aggregate import (
+from app.pms.export.items.contracts.item_aggregate import (
     PublicAggregateBarcode,
     PublicAggregateItem,
     PublicAggregateUom,
@@ -21,7 +21,7 @@ def _enum_value(v: object) -> str | None:
 
 class ItemAggregateReadService:
     """
-    PMS public aggregate read service。
+    PMS export aggregate read service。
 
     定位：
     - 对外提供商品完整读面（item + uoms + barcodes）

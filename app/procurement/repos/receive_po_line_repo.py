@@ -6,7 +6,7 @@ from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.pms.public.items.services.item_read_service import ItemReadService
+from app.pms.export.items.services.item_read_service import ItemReadService
 
 
 async def load_item_expiry_policy(session: AsyncSession, *, item_id: int) -> str:

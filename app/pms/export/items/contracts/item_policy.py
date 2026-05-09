@@ -1,4 +1,4 @@
-# app/pms/public/items/contracts/item_policy.py
+# app/pms/export/items/contracts/item_policy.py
 from __future__ import annotations
 
 from typing import Annotated, Literal

@@ -1,4 +1,4 @@
-# app/pms/public/items/services/barcode_probe_service.py
+# app/pms/export/items/services/barcode_probe_service.py
 from __future__ import annotations
 
 from sqlalchemy import select
@@ -7,17 +7,17 @@ from sqlalchemy.orm import Session
 
 from app.pms.items.models.item_barcode import ItemBarcode
 from app.pms.items.models.item_uom import ItemUOM
-from app.pms.public.items.contracts.barcode_probe import (
+from app.pms.export.items.contracts.barcode_probe import (
     BarcodeProbeError,
     BarcodeProbeOut,
     BarcodeProbeStatus,
 )
-from app.pms.public.items.services.item_read_service import ItemReadService
+from app.pms.export.items.services.item_read_service import ItemReadService
 
 
 class BarcodeProbeService:
     """
-    PMS public barcode probe service。
+    PMS export barcode probe service。
 
     职责：
     - 解析 barcode 是否绑定

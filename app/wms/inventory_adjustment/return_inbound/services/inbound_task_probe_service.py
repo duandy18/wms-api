@@ -3,7 +3,7 @@ from __future__ import annotations
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.pms.public.items.services.barcode_probe_service import BarcodeProbeService
+from app.pms.export.items.services.barcode_probe_service import BarcodeProbeService
 from app.wms.inventory_adjustment.return_inbound.contracts.probe import (
     InboundTaskProbeOut,
     InboundTaskProbeStatus,

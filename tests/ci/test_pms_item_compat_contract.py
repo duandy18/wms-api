@@ -6,7 +6,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.pms.items.contracts.item import ItemCreate, ItemOut, ItemUpdate
-from app.pms.public.items.contracts.item_basic import ItemBasic
+from app.pms.export.items.contracts.item_basic import ItemBasic
 
 
 def test_pms_owner_item_contract_keeps_compat_output_but_forbids_write_inputs() -> None:
@@ -28,9 +28,9 @@ def test_pms_owner_item_contract_keeps_compat_output_but_forbids_write_inputs() 
     assert forbidden_write_inputs.isdisjoint(update_input_fields)
 
 
-def test_pms_public_item_basic_excludes_owner_compat_and_subtable_fields() -> None:
+def test_pms_export_item_basic_excludes_owner_compat_and_subtable_fields() -> None:
     """
-    PMS public ItemBasic 是跨域最小读模型：
+    PMS export ItemBasic 是跨域最小读模型：
 
     - 不暴露 owner 兼容输出；
     - 不混入 item_barcodes / item_uoms 子表事实；

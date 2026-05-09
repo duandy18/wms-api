@@ -1,4 +1,4 @@
-# app/pms/public/items/services/__init__.py
+# app/pms/export/items/services/__init__.py
 from __future__ import annotations
 
 from .barcode_probe_service import BarcodeProbeService

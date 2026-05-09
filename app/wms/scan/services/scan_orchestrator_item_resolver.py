@@ -7,7 +7,7 @@ from typing import Optional
 from sqlalchemy import text as SA
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.pms.public.items.services.barcode_probe_service import BarcodeProbeService
+from app.pms.export.items.services.barcode_probe_service import BarcodeProbeService
 
 
 @dataclass(frozen=True)
@@ -24,7 +24,7 @@ async def probe_item_from_barcode(
     barcode: str,
 ) -> Optional[ScanBarcodeResolved]:
     """
-    WMS scan 读取链复用 PMS public barcode probe：
+    WMS scan 读取链复用 PMS export barcode probe：
 
     - 不再直接查询 item_barcodes
     - 从 PMS BarcodeProbeService 获取主数据解析结果
