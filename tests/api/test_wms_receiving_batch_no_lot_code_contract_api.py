@@ -9,8 +9,6 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from tests.helpers.wms_pms_projection import sync_wms_pms_projection_for_item
-
 
 async def _login_admin_headers(client: httpx.AsyncClient) -> dict[str, str]:
     response = await client.post(
@@ -90,7 +88,6 @@ async def _force_supplier_required_item_policy(
         ),
         {"item_id": int(item_id)},
     )
-    await sync_wms_pms_projection_for_item(session, item_id=int(item_id))
 
 
 async def _load_operation_line(

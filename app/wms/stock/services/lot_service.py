@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.wms.stock.models.lot import Lot
-from app.wms.pms_projection.services.read_service import WmsPmsPolicyProjectionSnapshot
+from app.pms.export.items.contracts.item_policy import ItemPolicy
 from app.wms.stock.services.lots import ensure_internal_lot_singleton, ensure_lot_full
 
 
@@ -33,7 +33,7 @@ async def resolve_or_create_lot(
     db: AsyncSession,
     *,
     warehouse_id: int,
-    item_policy: WmsPmsPolicyProjectionSnapshot,
+    item_policy: ItemPolicy,
     lot_code_source: str,
     lot_code: Optional[str],
     production_date: Optional[date],

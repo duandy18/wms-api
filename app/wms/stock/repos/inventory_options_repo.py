@@ -41,23 +41,23 @@ async def list_public_items(
     q: str | None,
     limit: int,
 ) -> list[dict[str, Any]]:
-    cond = ["p.enabled = TRUE"]
+    cond = ["i.enabled = TRUE"]
     params: dict[str, Any] = {"limit": int(limit)}
 
     q_norm = _norm_text(q)
     if q_norm is not None:
-        cond.append("(p.name ILIKE :q OR p.sku ILIKE :q)")
+        cond.append("(i.name ILIKE :q OR i.sku ILIKE :q)")
         params["q"] = f"%{q_norm}%"
 
     sql = text(
         f"""
         SELECT
-            p.item_id AS id,
-            p.sku,
-            p.name
-        FROM wms_pms_item_projection AS p
+            i.id,
+            i.sku,
+            i.name
+        FROM items AS i
         WHERE {" AND ".join(cond)}
-        ORDER BY p.name ASC, p.item_id ASC
+        ORDER BY i.name ASC, i.id ASC
         LIMIT :limit
         """
     )

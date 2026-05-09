@@ -11,7 +11,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.wms.stock.services.lot_service import ensure_internal_lot_singleton as ensure_internal_lot_singleton_svc
 from app.wms.stock.services.lot_service import ensure_lot_full as ensure_lot_full_svc
 from app.wms.stock.services.stock_adjust import adjust_lot_impl
-from tests.helpers.wms_pms_projection import force_wms_pms_projection_supplier_required_item
 
 UTC = timezone.utc
 
@@ -237,10 +236,6 @@ async def ensure_supplier_lot(
         sku=f"SKU-{item_id}",
         name=f"ITEM-{item_id}",
         expiry_required=True,
-    )
-    await force_wms_pms_projection_supplier_required_item(
-        session,
-        item_id=int(item_id),
     )
 
     expiry_policy = await _load_item_expiry_policy(session, item_id=int(item_id))

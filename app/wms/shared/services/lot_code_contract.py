@@ -21,6 +21,7 @@ def http_422(detail: str, *, error_code: str = "lot_code_contract_reject") -> HT
     - message 文案保持原样（沿用 batch_code 字段名以兼容旧客户端）
     - error_code 用于上层/测试分类（如 batch_required）
     """
+    # ✅ pytest warning fix: HTTP_422_UNPROCESSABLE_ENTITY deprecated in recent FastAPI/Starlette
     return HTTPException(
         status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         detail={
@@ -57,7 +58,7 @@ def normalize_optional_lot_code(raw: Optional[str]) -> Optional[str]:
 
 def validate_lot_code_contract(*, requires_batch: bool, lot_code: Optional[str]) -> Optional[str]:
     """
-    Phase M：lot_code 合同收紧（422 拦假码），策略真相源来自 WMS PMS projection：
+    Phase M：lot_code 合同收紧（422 拦假码），策略真相源来自 items.expiry_policy：
 
     - requires_batch=True（expiry_policy=REQUIRED）：
         lot_code 必填且非空（strip 后长度>0），禁止 'none'（大小写不敏感）
@@ -108,31 +109,26 @@ def validate_lot_code_contract(*, requires_batch: bool, lot_code: Optional[str])
 
 
 def _requires_batch_from_expiry_policy(expiry_policy: Optional[str]) -> bool:
+    # DB enum: 'NONE' | 'REQUIRED'
     return str(expiry_policy or "").upper() == "REQUIRED"
 
 
 async def fetch_item_expiry_policy_map(session: AsyncSession, item_ids: Set[int]) -> Dict[int, str]:
     """
-    真相源：wms_pms_item_policy_projection.expiry_policy
+    真相源：items.expiry_policy（Phase M Rule 层）
     返回：{item_id: 'NONE' | 'REQUIRED'}
     """
-    ids = {int(i) for i in item_ids}
-    if not ids:
+    if not item_ids:
         return {}
 
     rows = await session.execute(
-        text(
-            """
-            SELECT item_id, expiry_policy::text AS expiry_policy
-            FROM wms_pms_item_policy_projection
-            WHERE item_id = ANY(:ids)
-            """
-        ),
-        {"ids": list(ids)},
+        text("select id, expiry_policy from items where id = any(:ids)"),
+        {"ids": list(item_ids)},
     )
 
     m: Dict[int, str] = {}
     for item_id, expiry_policy in rows.fetchall():
+        # expiry_policy 是 enum，psycopg 返回可能是 str / Enum-like；统一转 str
         m[int(item_id)] = str(expiry_policy)
     return m
 
@@ -140,30 +136,18 @@ async def fetch_item_expiry_policy_map(session: AsyncSession, item_ids: Set[int]
 async def fetch_item_by_sku(session: AsyncSession, sku: str) -> Optional[Tuple[int, bool]]:
     """
     返回 (item_id, requires_batch)
-    requires_batch 由 WMS PMS projection 的 expiry_policy 得出。
+    requires_batch 由 expiry_policy 投影得出。
     """
     s = (sku or "").strip()
     if not s:
         return None
 
     row = await session.execute(
-        text(
-            """
-            SELECT
-              p.item_id,
-              pp.expiry_policy::text AS expiry_policy
-            FROM wms_pms_item_projection p
-            JOIN wms_pms_item_policy_projection pp
-              ON pp.item_id = p.item_id
-            WHERE p.sku = :sku
-            LIMIT 1
-            """
-        ),
+        text("select id, expiry_policy from items where sku = :sku limit 1"),
         {"sku": s},
     )
     r = row.first()
     if not r:
         return None
-
     item_id, expiry_policy = r[0], r[1]
     return int(item_id), _requires_batch_from_expiry_policy(str(expiry_policy))

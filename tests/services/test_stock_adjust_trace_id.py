@@ -6,7 +6,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.wms.stock.services.lots import ensure_lot_full
 from app.wms.stock.services.stock_adjust import adjust_lot_impl
-from tests.helpers.wms_pms_projection import force_wms_pms_projection_supplier_required_item
 
 pytestmark = pytest.mark.asyncio
 UTC = timezone.utc
@@ -34,7 +33,6 @@ async def test_stock_adjust_writes_trace_id(session: AsyncSession):
     row = await session.execute(text("SELECT id FROM items ORDER BY id ASC LIMIT 1"))
     item_id = row.scalar_one()
     assert item_id is not None
-    await force_wms_pms_projection_supplier_required_item(session, item_id=int(item_id))
 
     # 2) 入库：让 lot-only primitive 写入 lot-world：lots + stocks_lot + ledger
     ref = "UT-ADJUST-1"

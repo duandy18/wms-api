@@ -122,18 +122,18 @@ def register_order_refs(router: APIRouter) -> None:
         sql = f"""
         SELECT l.warehouse_id,
                l.item_id,
-               p.name AS item_name,
+               i.name AS item_name,
                l.lot_id,
                MAX(lo.lot_code) AS lot_code_snapshot,
                COALESCE(SUM(-l.delta), 0)::int AS shipped_qty
           FROM stock_ledger l
-          LEFT JOIN wms_pms_item_projection p ON p.item_id = l.item_id
+          LEFT JOIN items i ON i.id = l.item_id
           LEFT JOIN lots lo ON lo.id = l.lot_id
          WHERE l.ref = :ref
            AND l.delta < 0
            AND l.reason = ANY(:reasons)
            {wh_cond}
-         GROUP BY l.warehouse_id, l.item_id, p.name, l.lot_id
+         GROUP BY l.warehouse_id, l.item_id, i.name, l.lot_id
          ORDER BY l.warehouse_id, l.item_id, l.lot_id
         """
 

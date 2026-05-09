@@ -296,9 +296,9 @@ class CountDocRepo:
                 """
                 SELECT
                   iu.item_id,
-                  iu.item_uom_id AS base_item_uom_id,
+                  iu.id AS base_item_uom_id,
                   COALESCE(NULLIF(iu.display_name, ''), iu.uom) AS base_uom_name
-                FROM wms_pms_item_uom_projection iu
+                FROM item_uoms iu
                 WHERE iu.item_id = ANY(:item_ids)
                   AND iu.is_base IS TRUE
                 """
@@ -361,12 +361,12 @@ class CountDocRepo:
                   :doc_id AS doc_id,
                   ROW_NUMBER() OVER (ORDER BY s.item_id ASC) AS line_no,
                   s.item_id,
-                  MAX(p.name) AS item_name_snapshot,
-                  MAX(p.spec) AS item_spec_snapshot,
+                  MAX(i.name) AS item_name_snapshot,
+                  MAX(i.spec) AS item_spec_snapshot,
                   SUM(s.qty) AS snapshot_qty_base
                   FROM stocks_lot s
-                  JOIN wms_pms_item_projection p
-                    ON p.item_id = s.item_id
+                  JOIN items i
+                    ON i.id = s.item_id
                  WHERE s.warehouse_id = :warehouse_id
                  GROUP BY s.item_id
                 HAVING SUM(s.qty) > 0
@@ -481,12 +481,12 @@ class CountDocRepo:
                     text(
                         """
                         SELECT
-                          iu.item_uom_id AS id,
+                          iu.id,
                           COALESCE(NULLIF(iu.display_name, ''), iu.uom) AS uom_name_snapshot
-                          FROM wms_pms_item_uom_projection iu
+                          FROM item_uoms iu
                          WHERE iu.item_id = :item_id
                            AND iu.is_base IS TRUE
-                         ORDER BY iu.item_uom_id ASC
+                         ORDER BY iu.id ASC
                          LIMIT 1
                         """
                     ),

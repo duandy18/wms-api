@@ -306,15 +306,15 @@ def register(router: APIRouter) -> None:
                 text(
                     """
                     SELECT
-                      p.item_id AS id,
-                      p.name,
-                      bu.item_uom_id AS base_item_uom_id,
-                      COALESCE(NULLIF(bu.display_name, ''), bu.uom) AS base_uom_name
-                    FROM wms_pms_item_projection AS p
-                    LEFT JOIN wms_pms_item_uom_projection AS bu
-                      ON bu.item_id = p.item_id
-                     AND bu.is_base IS TRUE
-                    WHERE p.item_id = ANY(:ids)
+                      i.id,
+                      i.name,
+                      iu.id AS base_item_uom_id,
+                      COALESCE(NULLIF(iu.display_name, ''), iu.uom) AS base_uom_name
+                    FROM items AS i
+                    LEFT JOIN item_uoms AS iu
+                      ON iu.item_id = i.id
+                     AND iu.is_base IS TRUE
+                    WHERE i.id = ANY(:ids)
                     """
                 ),
                 {"ids": item_ids},

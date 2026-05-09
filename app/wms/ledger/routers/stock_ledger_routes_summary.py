@@ -12,7 +12,7 @@ from app.db.session import get_session
 from app.wms.ledger.models.stock_ledger import StockLedger
 from app.wms.ledger.contracts.stock_ledger import LedgerQuery, LedgerReasonStat, LedgerSummary
 from app.wms.ledger.helpers.stock_ledger import (
-    PMS_ITEM_PROJECTION_TABLE,
+    ITEMS_TABLE,
     build_common_filters,
     normalize_time_range,
 )
@@ -38,14 +38,11 @@ def register(router: APIRouter) -> None:
 
         if payload.item_keyword:
             kw = f"%{payload.item_keyword.strip()}%"
-            stmt = stmt.join(
-                PMS_ITEM_PROJECTION_TABLE,
-                PMS_ITEM_PROJECTION_TABLE.c.item_id == StockLedger.item_id,
-            )
+            stmt = stmt.join(ITEMS_TABLE, ITEMS_TABLE.c.id == StockLedger.item_id)
             conditions.append(
                 sa.or_(
-                    PMS_ITEM_PROJECTION_TABLE.c.name.ilike(kw),
-                    PMS_ITEM_PROJECTION_TABLE.c.sku.ilike(kw),
+                    ITEMS_TABLE.c.name.ilike(kw),
+                    ITEMS_TABLE.c.sku.ilike(kw),
                 )
             )
 

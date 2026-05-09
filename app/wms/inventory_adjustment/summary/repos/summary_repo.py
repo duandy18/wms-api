@@ -323,6 +323,7 @@ async def list_inventory_adjustment_summary_rows(
     return total, [dict(r) for r in rows]
 
 
+
 async def get_inventory_adjustment_summary_row(
     session: AsyncSession,
     *,
@@ -405,11 +406,11 @@ async def list_inventory_adjustment_summary_ledger_rows(
           l.trace_id,
           l.warehouse_id,
           l.item_id,
-          p.name AS item_name,
+          i.name AS item_name,
           l.lot_id,
           lo.lot_code,
-          bu.item_uom_id AS base_item_uom_id,
-          COALESCE(NULLIF(bu.display_name, ''), bu.uom) AS base_uom_name,
+          iu.id AS base_item_uom_id,
+          COALESCE(NULLIF(iu.display_name, ''), iu.uom) AS base_uom_name,
           l.reason,
           l.reason_canon,
           l.sub_reason,
@@ -420,11 +421,11 @@ async def list_inventory_adjustment_summary_ledger_rows(
         FROM target_event t
         JOIN stock_ledger l
           ON l.event_id = t.event_id
-        LEFT JOIN wms_pms_item_projection p
-          ON p.item_id = l.item_id
-        LEFT JOIN wms_pms_item_uom_projection bu
-          ON bu.item_id = l.item_id
-         AND bu.is_base IS TRUE
+        LEFT JOIN items i
+          ON i.id = l.item_id
+        LEFT JOIN item_uoms iu
+          ON iu.item_id = l.item_id
+         AND iu.is_base IS TRUE
         LEFT JOIN lots lo
           ON lo.id = l.lot_id
         ORDER BY l.ref_line ASC, l.id ASC

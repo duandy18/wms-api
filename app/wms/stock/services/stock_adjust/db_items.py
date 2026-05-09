@@ -1,34 +1,35 @@
 # app/wms/stock/services/stock_adjust/db_items.py
 from __future__ import annotations
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.wms.pms_projection.services.read_service import WmsPmsProjectionReadService
 
 
 async def item_requires_batch(session: AsyncSession, *, item_id: int) -> bool:
     """
-    WMS stock_adjust 执行层批次策略判断。
+    Phase M 第一阶段：执行层禁止读取 items.has_shelf_life。
 
-    策略真相源：
-    - wms_pms_item_policy_projection.expiry_policy
-
-    规则：
+    批次受控唯一真相源：items.expiry_policy
     - expiry_policy='REQUIRED' => requires_batch=True
     - expiry_policy='NONE'     => requires_batch=False
 
-    重要：
-    - item policy projection 不存在时必须明确失败；
-    - 禁止 fallback 回 PMS owner items；
-    - 禁止把 unknown item 默认成 NONE。
+    重要：item 不存在时必须明确失败（unknown item 不能默认成 NONE）。
     """
-    policy = await WmsPmsProjectionReadService(session).aget_policy_snapshot(
-        item_id=int(item_id),
-    )
-    if policy is None:
+    row = (
+        await session.execute(
+            text(
+                """
+                SELECT expiry_policy
+                  FROM items
+                 WHERE id = :item_id
+                 LIMIT 1
+                """
+            ),
+            {"item_id": int(item_id)},
+        )
+    ).first()
+
+    if not row:
         raise ValueError("item_not_found")
 
-    return str(policy.expiry_policy or "").upper() == "REQUIRED"
-
-
-__all__ = ["item_requires_batch"]
+    return str(row[0] or "").upper() == "REQUIRED"

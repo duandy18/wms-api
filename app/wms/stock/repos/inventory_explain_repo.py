@@ -46,24 +46,24 @@ async def resolve_inventory_explain_anchor(
         f"""
         SELECT
             s.item_id,
-            COALESCE(p.name, '') AS item_name,
+            i.name AS item_name,
             s.warehouse_id,
             w.name AS warehouse_name,
             s.lot_id,
             l.lot_code,
             s.qty AS current_qty,
-            bu.item_uom_id AS base_item_uom_id,
-            COALESCE(NULLIF(bu.display_name, ''), bu.uom) AS base_uom_name
+            iu.id AS base_item_uom_id,
+            COALESCE(NULLIF(iu.display_name, ''), iu.uom) AS base_uom_name
         FROM stocks_lot AS s
-        LEFT JOIN wms_pms_item_projection AS p
-          ON p.item_id = s.item_id
+        JOIN items AS i
+          ON i.id = s.item_id
         JOIN warehouses AS w
           ON w.id = s.warehouse_id
         LEFT JOIN lots AS l
           ON l.id = s.lot_id
-        LEFT JOIN wms_pms_item_uom_projection AS bu
-          ON bu.item_id = s.item_id
-         AND bu.is_base IS TRUE
+        LEFT JOIN item_uoms AS iu
+          ON iu.item_id = s.item_id
+         AND iu.is_base IS TRUE
         WHERE {" AND ".join(cond)}
         ORDER BY s.id ASC
         """
@@ -127,20 +127,20 @@ async def query_inventory_explain_ledger_rows(
                 sl.after_qty,
                 sl.trace_id,
                 sl.item_id,
-                COALESCE(p.name, '') AS item_name,
+                i.name AS item_name,
                 sl.warehouse_id,
                 sl.lot_id,
                 l.lot_code,
-                bu.item_uom_id AS base_item_uom_id,
-                COALESCE(NULLIF(bu.display_name, ''), bu.uom) AS base_uom_name
+                iu.id AS base_item_uom_id,
+                COALESCE(NULLIF(iu.display_name, ''), iu.uom) AS base_uom_name
             FROM stock_ledger AS sl
-            LEFT JOIN wms_pms_item_projection AS p
-              ON p.item_id = sl.item_id
+            JOIN items AS i
+              ON i.id = sl.item_id
             LEFT JOIN lots AS l
               ON l.id = sl.lot_id
-            LEFT JOIN wms_pms_item_uom_projection AS bu
-              ON bu.item_id = sl.item_id
-             AND bu.is_base IS TRUE
+            LEFT JOIN item_uoms AS iu
+              ON iu.item_id = sl.item_id
+             AND iu.is_base IS TRUE
             WHERE sl.item_id = :item_id
               AND sl.warehouse_id = :warehouse_id
               AND sl.lot_id = :lot_id
