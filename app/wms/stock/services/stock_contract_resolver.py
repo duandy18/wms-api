@@ -28,7 +28,7 @@ async def resolve_lot_for_stock_adjust(
 
     约束：
     - 本模块只负责：
-        1) requires_batch（items.expiry_policy 投影）
+        1) requires_batch（WMS PMS policy projection）
         2) validate_lot_code_contract（REQUIRED/NONE 合同裁决）
         3) ensure_*_lot_id（lot identity 解析 / 创建入口）
     - 不负责写库存（不得调用 adjust_lot_impl），以保持“执行器单入口”铁律。

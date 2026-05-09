@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
-from typing import TYPE_CHECKING
+from typing import Any
 
 import sqlalchemy as sa
 from sqlalchemy import Date, Index, Integer, Numeric, text
@@ -11,8 +11,6 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 
-if TYPE_CHECKING:
-    from app.pms.items.models.item import Item
 
 
 class StockSnapshot(Base):
@@ -55,4 +53,4 @@ class StockSnapshot(Base):
         {"info": {"skip_autogen": True}},
     )
 
-    item: Mapped["Item"] = relationship("Item", lazy="selectin")
+    item: Mapped[Any] = relationship("Item", lazy="selectin")
