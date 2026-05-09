@@ -11,6 +11,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.wms.shared.enums import MovementType
 from app.oms.orders.services.order_reconcile_service import OrderReconcileService
 from app.oms.services.order_service import OrderService
+from app.wms.inventory_adjustment.return_inbound.repos.inbound_receipt_read_repo import (
+    get_inbound_return_source_repo,
+)
 from app.wms.stock.services.lots import ensure_internal_lot_singleton, ensure_lot_full
 from app.wms.stock.services.stock_adjust import adjust_lot_impl
 
@@ -690,3 +693,101 @@ async def test_rma_receipt_updates_counters_and_status(session: AsyncSession) ->
     assert row2 is not None
     status = row2[0]
     assert status == "PARTIALLY_RETURNED"
+
+@pytest.mark.asyncio
+async def test_return_source_reads_item_and_uom_through_pms_export(session: AsyncSession) -> None:
+    platform = "PDD"
+    store_code = "RMA_TEST_SOURCE_STORE"
+    ext_order_no = "RMA-TEST-SOURCE-001"
+    trace_id = "TRACE-RMA-TEST-SOURCE-001"
+
+    item_id = 1
+    required = await _item_batch_mode_is_required(session, item_id=item_id)
+
+    if required:
+        bc: Optional[str] = "RMA-SOURCE-BATCH-1"
+        pd = date.today()
+        ed = pd + timedelta(days=30)
+    else:
+        bc = None
+        pd = None
+        ed = None
+
+    result = await OrderService.ingest(
+        session,
+        platform=platform,
+        store_code=store_code,
+        ext_order_no=ext_order_no,
+        occurred_at=datetime.now(UTC),
+        buyer_name="RMA 来源测试用户",
+        buyer_phone="13900000000",
+        order_amount=20,
+        pay_amount=20,
+        items=[
+            {"item_id": item_id, "qty": 2},
+        ],
+        address=None,
+        extras=None,
+        trace_id=trace_id,
+    )
+    order_id = int(result["id"])
+    order_ref = result["ref"]
+
+    await session.execute(
+        text(
+            """
+            UPDATE order_items
+               SET shipped_qty = 2,
+                   returned_qty = 0
+             WHERE order_id = :order_id
+               AND item_id = :item_id
+            """
+        ),
+        {
+            "order_id": order_id,
+            "item_id": item_id,
+        },
+    )
+    await session.flush()
+
+    await _write_stock_delta_for_test(
+        session,
+        item_id=item_id,
+        warehouse_id=1,
+        delta=2,
+        reason=MovementType.INBOUND,
+        ref=f"IN-{order_ref}",
+        ref_line=1,
+        occurred_at=datetime.now(UTC),
+        batch_code=bc,
+        production_date=pd,
+        expiry_date=ed,
+    )
+    await _write_stock_delta_for_test(
+        session,
+        item_id=item_id,
+        warehouse_id=1,
+        delta=-2,
+        reason=MovementType.SHIP,
+        ref=order_ref,
+        ref_line=1,
+        occurred_at=datetime.now(UTC),
+        batch_code=bc,
+        production_date=pd,
+        expiry_date=ed,
+    )
+
+    source = await get_inbound_return_source_repo(session, order_key=order_ref)
+
+    assert source.order_ref == order_ref
+    assert source.warehouse_id == 1
+    assert source.lines
+
+    line = source.lines[0]
+    assert line.item_id == item_id
+    assert line.item_name_snapshot
+    assert line.item_uom_id > 0
+    assert line.uom_name_snapshot
+    assert int(line.ratio_to_base_snapshot) >= 1
+    assert int(line.qty_remaining_refundable) == 2
+    assert int(line.suggested_planned_qty) == 2
