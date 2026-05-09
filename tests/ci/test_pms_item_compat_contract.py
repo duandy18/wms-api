@@ -34,7 +34,7 @@ def test_pms_export_item_basic_excludes_owner_compat_and_subtable_fields() -> No
 
     - 不暴露 owner 兼容输出；
     - 不混入 item_barcodes / item_uoms 子表事实；
-    - 需要条码/包装/净重时，调用 public aggregate 或 barcode probe。
+    - 需要条码/包装/净重时，调用 PMS export uoms / barcodes / barcode probe。
     """
     fields = set(ItemBasic.model_fields)
 
