@@ -8375,6 +8375,161 @@
         }
       }
     },
+    "/pms/export/uoms": {
+      "get": {
+        "tags": [
+          "pms-export-uoms"
+        ],
+        "summary": "List Export Uoms",
+        "operationId": "list_export_uoms_pms_export_uoms_get",
+        "parameters": [
+          {
+            "name": "item_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              },
+              "description": "可重复：item_id=1&item_id=2",
+              "default": [],
+              "title": "Item Id"
+            },
+            "description": "可重复：item_id=1&item_id=2"
+          },
+          {
+            "name": "item_uom_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              },
+              "description": "可重复：item_uom_id=1&item_uom_id=2",
+              "default": [],
+              "title": "Item Uom Id"
+            },
+            "description": "可重复：item_uom_id=1&item_uom_id=2"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PmsExportUom"
+                  },
+                  "title": "Response List Export Uoms Pms Export Uoms Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/pms/export/uoms/{item_uom_id}": {
+      "get": {
+        "tags": [
+          "pms-export-uoms"
+        ],
+        "summary": "Get Export Uom",
+        "operationId": "get_export_uom_pms_export_uoms__item_uom_id__get",
+        "parameters": [
+          {
+            "name": "item_uom_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Item Uom Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PmsExportUom"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/pms/export/items/{item_id}/uoms": {
+      "get": {
+        "tags": [
+          "pms-export-uoms"
+        ],
+        "summary": "List Export Item Uoms",
+        "operationId": "list_export_item_uoms_pms_export_items__item_id__uoms_get",
+        "parameters": [
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Item Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PmsExportUom"
+                  },
+                  "title": "Response List Export Item Uoms Pms Export Items  Item Id  Uoms Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/pms/export/items/barcode-probe": {
       "post": {
         "tags": [
@@ -34654,6 +34809,84 @@
         },
         "type": "object",
         "title": "PmsCategoryUpdate"
+      },
+      "PmsExportUom": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "item_id": {
+            "type": "integer",
+            "title": "Item Id"
+          },
+          "uom": {
+            "type": "string",
+            "title": "Uom"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "uom_name": {
+            "type": "string",
+            "title": "Uom Name"
+          },
+          "ratio_to_base": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Ratio To Base"
+          },
+          "net_weight_kg": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Net Weight Kg"
+          },
+          "is_base": {
+            "type": "boolean",
+            "title": "Is Base"
+          },
+          "is_purchase_default": {
+            "type": "boolean",
+            "title": "Is Purchase Default"
+          },
+          "is_inbound_default": {
+            "type": "boolean",
+            "title": "Is Inbound Default"
+          },
+          "is_outbound_default": {
+            "type": "boolean",
+            "title": "Is Outbound Default"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "item_id",
+          "uom",
+          "uom_name",
+          "ratio_to_base",
+          "is_base",
+          "is_purchase_default",
+          "is_inbound_default",
+          "is_outbound_default"
+        ],
+        "title": "PmsExportUom",
+        "description": "PMS 对外包装单位读模型。\n\n定位：\n- 只读 export contract；\n- 不承载 owner 写入语义；\n- 供 WMS / OMS / Procurement / Finance 等跨域消费；\n- item_uoms 表仍是 PMS 内部真相源。"
       },
       "ProvinceRouteCreateIn": {
         "properties": {
