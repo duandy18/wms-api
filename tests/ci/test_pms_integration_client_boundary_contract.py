@@ -44,6 +44,7 @@ MIGRATED_NON_PMS_CONSUMERS = {
     "app/oms/services/platform_order_resolve_loaders.py",
     "app/oms/fsku/services/fsku_service_write.py",
     "app/oms/orders/repos/order_outbound_view_repo.py",
+    "app/finance/sources/order_sales_source.py",
 }
 
 

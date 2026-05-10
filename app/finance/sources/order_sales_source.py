@@ -8,7 +8,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.finance.services.common import to_decimal
-from app.pms.export.items.services.item_read_service import ItemReadService
+from app.integrations.pms.inprocess_client import InProcessPmsReadClient
 
 
 class OrderSalesSource:
@@ -21,7 +21,7 @@ class OrderSalesSource:
     - 不读取采购；
     - 不读取发货辅助；
     - 不计算利润。
-    - 商品展示维度通过 PMS export ItemReadService 后置补充，不直接 JOIN PMS 内部 items 表。
+    - 商品展示维度通过 PMS integration client 后置补充，不直接 JOIN PMS 内部 items 表。
     """
 
     def __init__(self, session: AsyncSession) -> None:
@@ -94,7 +94,9 @@ class OrderSalesSource:
         ids = sorted({int(x) for x in item_ids if x is not None and int(x) > 0})
         if not ids:
             return {}
-        return await ItemReadService(self.session).aget_report_meta_by_item_ids(item_ids=ids)
+        return await InProcessPmsReadClient(self.session).get_report_meta_by_item_ids(
+            item_ids=ids,
+        )
 
     async def _summary(self, params: dict[str, object]) -> dict[str, object]:
         sql = text(
