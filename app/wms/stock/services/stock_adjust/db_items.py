@@ -3,18 +3,18 @@ from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.pms.export.items.services.item_read_service import ItemReadService
+from app.integrations.pms.inprocess_client import InProcessPmsReadClient
 
 
 async def item_requires_batch(session: AsyncSession, *, item_id: int) -> bool:
     """
-    通过 PMS export 商品策略读面判断是否批次受控。
+    通过 PMS integration 商品策略读面判断是否批次受控。
 
     - expiry_policy='REQUIRED' => requires_batch=True
     - expiry_policy='NONE'     => requires_batch=False
     - item 不存在时必须明确失败，unknown item 不能默认成 NONE。
     """
-    policy = await ItemReadService(session).aget_policy_by_id(item_id=int(item_id))
+    policy = await InProcessPmsReadClient(session).get_item_policy(item_id=int(item_id))
     if policy is None:
         raise ValueError("item_not_found")
 
