@@ -5,8 +5,8 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.pms.export.items.contracts.item_query import ItemReadQuery
-from app.pms.export.items.services.item_read_service import ItemReadService
+from app.integrations.pms.contracts import ItemReadQuery
+from app.integrations.pms.inprocess_client import InProcessPmsReadClient
 
 
 async def list_active_warehouses(
@@ -37,7 +37,7 @@ async def list_public_items(
     q: str | None,
     limit: int,
 ) -> list[dict[str, Any]]:
-    items = await ItemReadService(session).alist_basic(
+    items = await InProcessPmsReadClient(session).list_item_basics(
         query=ItemReadQuery(
             enabled=True,
             q=q,

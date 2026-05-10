@@ -6,8 +6,7 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.pms.export.items.services.item_read_service import ItemReadService
-from app.pms.export.uoms.services.uom_read_service import PmsExportUomReadService
+from app.integrations.pms.inprocess_client import InProcessPmsReadClient
 
 
 def _norm_text(v: str | None) -> str | None:
@@ -36,7 +35,7 @@ async def _load_item_display_maps(
     item_ids: Iterable[int],
 ) -> tuple[dict[int, str], dict[int, dict[str, object | None]]]:
     """
-    通过 PMS export read service 批量读取库存解释页展示所需商品信息。
+    通过 PMS integration client 批量读取库存解释页展示所需商品信息。
 
     注意：
     - 这里只补当前查询展示信息；
@@ -47,7 +46,8 @@ async def _load_item_display_maps(
     if not ids:
         return {}, {}
 
-    basics = await ItemReadService(session).aget_basics_by_item_ids(item_ids=ids)
+    pms_client = InProcessPmsReadClient(session)
+    basics = await pms_client.get_item_basics(item_ids=ids)
     item_name_map = {
         int(item_id): str(item.name).strip()
         for item_id, item in basics.items()
@@ -58,7 +58,7 @@ async def _load_item_display_maps(
         item_id: {"base_item_uom_id": None, "base_uom_name": None}
         for item_id in ids
     }
-    uoms = await PmsExportUomReadService(session).alist_uoms(item_ids=ids)
+    uoms = await pms_client.list_uoms(item_ids=ids)
     for uom in uoms:
         if not bool(getattr(uom, "is_base", False)):
             continue
