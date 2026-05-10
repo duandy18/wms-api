@@ -34,23 +34,6 @@ DIRECT_PMS_OWNER_IMPORT_RE = re.compile(
     r"|from\s+app\.pms\.items\.services\b"
 )
 
-# 暂时保留的 ORM relationship 类型引用。
-# 这些不是业务读 owner 表，不在本轮合同化里处理。
-ALLOWED_DIRECT_PMS_OWNER_IMPORTS = {
-    (
-        "app/wms/stock/models/stock_snapshot.py",
-        "from app.pms.items.models.item import Item",
-    ),
-    (
-        "app/oms/orders/models/order.py",
-        "from app.pms.items.models.item import Item",
-    ),
-    (
-        "app/oms/orders/models/order_item.py",
-        "from app.pms.items.models.item import Item",
-    ),
-}
-
 
 def _iter_python_files() -> list[Path]:
     files: list[Path] = []
@@ -82,7 +65,7 @@ def test_no_raw_pms_owner_table_reads_outside_pms() -> None:
     assert violations == []
 
 
-def test_no_direct_pms_owner_imports_outside_pms_except_relationship_typing() -> None:
+def test_no_direct_pms_owner_imports_outside_pms() -> None:
     violations: list[str] = []
 
     for path in _iter_python_files():
@@ -91,9 +74,6 @@ def test_no_direct_pms_owner_imports_outside_pms_except_relationship_typing() ->
         for line_no, line in enumerate(text.splitlines(), start=1):
             stripped = line.strip()
             if not DIRECT_PMS_OWNER_IMPORT_RE.search(stripped):
-                continue
-
-            if (rel, stripped) in ALLOWED_DIRECT_PMS_OWNER_IMPORTS:
                 continue
 
             violations.append(f"{rel}:{line_no}: {stripped}")
