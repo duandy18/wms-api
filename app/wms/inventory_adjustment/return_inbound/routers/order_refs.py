@@ -9,7 +9,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_session
-from app.pms.export.items.services.item_read_service import ItemReadService
+from app.integrations.pms.inprocess_client import InProcessPmsReadClient
 from app.wms.inventory_adjustment.return_inbound.contracts.return_task import (
     ReturnOrderRefDetailOut,
     ReturnOrderRefItem,
@@ -45,7 +45,7 @@ async def _enrich_order_ref_summary_lines(
     退货 order_ref 摘要行商品展示补齐。
 
     WMS 事实仍来自 stock_ledger / lots；
-    商品名通过 PMS export read service 获取，
+    商品名通过 PMS integration client 获取，
     不在 return inbound order_refs 里直接读取 PMS owner items。
     """
     out = [dict(row) for row in rows]
@@ -53,7 +53,7 @@ async def _enrich_order_ref_summary_lines(
     if not item_ids:
         return out
 
-    item_map = await ItemReadService(session).aget_basics_by_item_ids(item_ids=item_ids)
+    item_map = await InProcessPmsReadClient(session).get_item_basics(item_ids=item_ids)
 
     for row in out:
         item_id = int(row["item_id"])

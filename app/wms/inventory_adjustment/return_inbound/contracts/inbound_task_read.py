@@ -10,7 +10,7 @@ from app.wms.inventory_adjustment.return_inbound.contracts.enums import (
     InboundReceiptSourceType,
     InboundReceiptStatus,
 )
-from app.pms.export.items.contracts.item_policy import (
+from app.integrations.pms.contracts import (
     ExpiryPolicy,
     LotSourcePolicy,
     ShelfLifeUnit,
