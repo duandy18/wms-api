@@ -16,19 +16,6 @@ def mount_routers(app: FastAPI) -> None:
         router as inventory_adjustment_summary_router,
     )
     from app.finance.routers.router import router as finance_router
-    from app.pms.items.routers.item_aggregate import router as item_aggregate_router
-    from app.pms.items.routers.item_barcodes import router as item_barcodes_router
-    from app.pms.items.routers.item_list import router as item_list_router
-    from app.pms.items.routers.item_master import router as item_master_router
-    from app.pms.items.routers.item_sku_codes import router as item_sku_codes_router
-    from app.pms.items.routers.item_uoms import router as item_uoms_router
-    from app.pms.items.routers.items import router as items_router
-    from app.pms.sku_coding.routers.sku_coding import router as sku_coding_router
-    from app.pms.export.items.routers.barcode_probe import router as pms_export_barcode_probe_router
-    from app.pms.export.items.routers.items_read import router as pms_export_items_read_router
-    from app.pms.export.uoms.routers.uoms_read import router as pms_export_uoms_read_router
-    from app.pms.export.sku_codes.routers.sku_codes_read import router as pms_export_sku_codes_read_router
-    from app.pms.export.barcodes.routers.barcodes_read import router as pms_export_barcodes_read_router
     from app.partners.export.suppliers.routers.suppliers_read import (
         router as partners_export_suppliers_read_router,
     )
@@ -129,21 +116,7 @@ def mount_routers(app: FastAPI) -> None:
     # - /pms/export/items/barcode-probe 先于 /items/{id}
     # - /items/aggregate 先于 /items/{id}
     # - /pms/export/items、/pms/export/uoms、/pms/export/sku-codes、/pms/export/barcodes、/partners/export/suppliers 独立前缀，不与 owner 冲突
-    app.include_router(pms_export_items_read_router)
-    app.include_router(pms_export_uoms_read_router)
-    app.include_router(pms_export_sku_codes_read_router)
-    app.include_router(pms_export_barcodes_read_router)
-    app.include_router(pms_export_barcode_probe_router)
     app.include_router(partners_export_suppliers_read_router)
-    app.include_router(item_aggregate_router)
-    app.include_router(item_list_router)
-    app.include_router(items_router)
-    app.include_router(item_master_router)
-    app.include_router(item_sku_codes_router)
-    app.include_router(sku_coding_router)
-    app.include_router(item_barcodes_router)
-    app.include_router(item_uoms_router)
-
     app.include_router(suppliers_router)
     app.include_router(supplier_contacts_router)
 
