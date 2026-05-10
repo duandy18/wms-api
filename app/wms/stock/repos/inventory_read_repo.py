@@ -7,7 +7,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.integrations.pms.contracts import ItemReadQuery
-from app.integrations.pms.inprocess_client import InProcessPmsReadClient
+from app.integrations.pms.factory import create_pms_read_client
 
 
 def _norm_text(v: str | None) -> str | None:
@@ -47,7 +47,7 @@ async def _resolve_inventory_q_item_ids(
     if q_norm is None:
         return None
 
-    items = await InProcessPmsReadClient(session).list_item_basics(
+    items = await create_pms_read_client(session=session).list_item_basics(
         query=ItemReadQuery(
             q=q_norm,
             limit=None,
@@ -66,7 +66,7 @@ async def _load_inventory_display_maps(
     if not ids:
         return {}, {}, {}
 
-    pms_client = InProcessPmsReadClient(session)
+    pms_client = create_pms_read_client(session=session)
     item_map = await pms_client.get_item_basics(item_ids=ids)
 
     base_uom_map: dict[int, dict[str, object | None]] = {

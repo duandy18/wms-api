@@ -9,9 +9,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.integrations.pms.factory import (
     create_pms_read_client,
+    create_sync_pms_read_client,
     get_pms_client_mode,
 )
 from app.integrations.pms.http_client import HttpPmsReadClient
+from app.integrations.pms.sync_http_client import SyncHttpPmsReadClient
 from app.integrations.pms.inprocess_client import InProcessPmsReadClient
 
 
@@ -79,3 +81,42 @@ def test_create_http_pms_read_client() -> None:
 
     assert isinstance(client, HttpPmsReadClient)
     assert client.base_url == "http://pms-api.test"
+
+
+
+def test_create_sync_inprocess_pms_read_client_requires_session() -> None:
+    with pytest.raises(RuntimeError, match="requires a synchronous Session"):
+        create_sync_pms_read_client(mode="inprocess")
+
+
+def test_create_sync_http_pms_read_client() -> None:
+    transport = httpx.MockTransport(
+        lambda request: httpx.Response(
+            200,
+            json={
+                "sku_code_id": 10,
+                "item_id": 1,
+                "sku_code": "SKU-0001",
+                "code_type": "PRIMARY",
+                "is_primary": True,
+                "item_sku": "SKU-0001",
+                "item_name": "笔记本",
+                "item_uom_id": 7,
+                "uom": "本",
+                "display_name": None,
+                "uom_name": "本",
+                "ratio_to_base": 1,
+            },
+        )
+    )
+
+    client = create_sync_pms_read_client(
+        mode="http",
+        pms_api_base_url="http://pms-api.test",
+        transport=transport,
+    )
+
+    assert isinstance(client, SyncHttpPmsReadClient)
+    resolved = client.resolve_active_code_for_outbound_default(code="SKU-0001")
+    assert resolved is not None
+    assert resolved.item_id == 1

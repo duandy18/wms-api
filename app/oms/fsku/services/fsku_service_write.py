@@ -14,7 +14,7 @@ from app.oms.fsku.models.fsku import Fsku, FskuComponent
 from app.oms.fsku.services.fsku_service_errors import FskuBadInput, FskuConflict, FskuNotFound
 from app.oms.fsku.services.fsku_service_mapper import to_detail
 from app.oms.fsku.services.fsku_service_utils import normalize_code, normalize_shape, utc_now
-from app.integrations.pms.sync_client import SyncInProcessPmsReadClient
+from app.integrations.pms.factory import create_sync_pms_read_client
 
 
 _SKU_TOKEN = re.compile(r"^[A-Z0-9][A-Z0-9._-]{0,127}$")
@@ -146,8 +146,8 @@ def parse_fsku_expr(expr: object) -> ParsedExpression:
 
 
 def _resolve_component(db: Session, parsed: ParsedComponent) -> ResolvedComponent:
-    resolved = SyncInProcessPmsReadClient(
-        db
+    resolved = create_sync_pms_read_client(
+        session=db
     ).resolve_active_code_for_outbound_default(
         code=parsed.component_sku_code,
         enabled_only=True,

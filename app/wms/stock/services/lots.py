@@ -10,7 +10,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.integrations.pms.contracts import ItemPolicy
-from app.integrations.pms.inprocess_client import InProcessPmsReadClient
+from app.integrations.pms.factory import create_pms_read_client
 
 
 def normalize_lot_code(code: str | None) -> tuple[str, str]:
@@ -153,7 +153,7 @@ async def _load_item_policy(
     *,
     item_id: int,
 ) -> ItemPolicy:
-    policy = await InProcessPmsReadClient(session).get_item_policy(item_id=int(item_id))
+    policy = await create_pms_read_client(session=session).get_item_policy(item_id=int(item_id))
     if policy is None:
         raise ValueError("item_not_found")
     return policy

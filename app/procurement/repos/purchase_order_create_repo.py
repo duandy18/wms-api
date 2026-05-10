@@ -9,7 +9,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.integrations.pms.contracts import PmsExportUom
-from app.integrations.pms.inprocess_client import InProcessPmsReadClient
+from app.integrations.pms.factory import create_pms_read_client
 from app.procurement.models.purchase_order import PurchaseOrder
 from app.procurement.models.purchase_order_line import PurchaseOrderLine
 from app.procurement.repos.purchase_order_line_completion_repo import (
@@ -38,7 +38,7 @@ async def require_item_uom_ratio_to_base(
     item_id: int,
     uom_id: int,
 ) -> tuple[int, str]:
-    row = await InProcessPmsReadClient(session).get_uom(item_uom_id=int(uom_id))
+    row = await create_pms_read_client(session=session).get_uom(item_uom_id=int(uom_id))
     if row is None or int(row.item_id) != int(item_id):
         raise ValueError(
             f"uom_id 不存在或不属于该商品：item_id={int(item_id)} uom_id={int(uom_id)}"
@@ -65,7 +65,7 @@ async def pick_default_purchase_uom(
     3) 任意第一条 UOM
     返回：(uom_id, ratio_to_base, uom_name_snapshot)
     """
-    client = InProcessPmsReadClient(session)
+    client = create_pms_read_client(session=session)
     row = await client.get_purchase_default_or_base_uom(item_id=int(item_id))
 
     if row is None:

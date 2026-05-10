@@ -6,7 +6,7 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.integrations.pms.inprocess_client import InProcessPmsReadClient
+from app.integrations.pms.factory import create_pms_read_client
 
 
 SUMMARY_CTE = """
@@ -290,7 +290,7 @@ async def _enrich_summary_ledger_rows(
     if not item_ids:
         return out
 
-    pms_client = InProcessPmsReadClient(session)
+    pms_client = create_pms_read_client(session=session)
     item_map = await pms_client.get_item_basics(item_ids=item_ids)
 
     base_uom_map: dict[int, dict[str, object | None]] = {

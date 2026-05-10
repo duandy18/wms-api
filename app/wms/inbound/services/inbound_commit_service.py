@@ -8,7 +8,7 @@ from uuid import uuid4
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.integrations.pms.inprocess_client import InProcessPmsReadClient
+from app.integrations.pms.factory import create_pms_read_client
 from app.procurement.services.purchase_order_completion_sync import (
     sync_purchase_completion_for_inbound_event,
 )
@@ -75,7 +75,7 @@ async def _require_ratio_to_base(
     item_id: int,
     uom_id: int,
 ) -> int:
-    uom = await InProcessPmsReadClient(session).get_uom(item_uom_id=int(uom_id))
+    uom = await create_pms_read_client(session=session).get_uom(item_uom_id=int(uom_id))
     if uom is None or int(uom.item_id) != int(item_id):
         raise HTTPException(
             status_code=400,
@@ -94,7 +94,7 @@ async def _load_item_display_snapshot(
     item_id: int,
     uom_id: int,
 ) -> tuple[str | None, str | None, str | None]:
-    pms_client = InProcessPmsReadClient(session)
+    pms_client = create_pms_read_client(session=session)
     item = await pms_client.get_item_basic(item_id=int(item_id))
     uom = await pms_client.get_uom(item_uom_id=int(uom_id))
 

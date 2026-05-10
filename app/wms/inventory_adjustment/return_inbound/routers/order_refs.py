@@ -9,7 +9,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_session
-from app.integrations.pms.inprocess_client import InProcessPmsReadClient
+from app.integrations.pms.factory import create_pms_read_client
 from app.wms.inventory_adjustment.return_inbound.contracts.return_task import (
     ReturnOrderRefDetailOut,
     ReturnOrderRefItem,
@@ -53,7 +53,7 @@ async def _enrich_order_ref_summary_lines(
     if not item_ids:
         return out
 
-    item_map = await InProcessPmsReadClient(session).get_item_basics(item_ids=item_ids)
+    item_map = await create_pms_read_client(session=session).get_item_basics(item_ids=item_ids)
 
     for row in out:
         item_id = int(row["item_id"])

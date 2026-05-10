@@ -6,7 +6,7 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.integrations.pms.inprocess_client import InProcessPmsReadClient
+from app.integrations.pms.factory import create_pms_read_client
 
 
 def _norm_text(v: str | None) -> str | None:
@@ -46,7 +46,7 @@ async def _load_item_display_maps(
     if not ids:
         return {}, {}
 
-    pms_client = InProcessPmsReadClient(session)
+    pms_client = create_pms_read_client(session=session)
     basics = await pms_client.get_item_basics(item_ids=ids)
     item_name_map = {
         int(item_id): str(item.name).strip()

@@ -6,7 +6,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.integrations.pms.contracts import ItemReadQuery
-from app.integrations.pms.inprocess_client import InProcessPmsReadClient
+from app.integrations.pms.factory import create_pms_read_client
 
 
 async def list_active_warehouses(
@@ -37,7 +37,7 @@ async def list_public_items(
     q: str | None,
     limit: int,
 ) -> list[dict[str, Any]]:
-    items = await InProcessPmsReadClient(session).list_item_basics(
+    items = await create_pms_read_client(session=session).list_item_basics(
         query=ItemReadQuery(
             enabled=True,
             q=q,

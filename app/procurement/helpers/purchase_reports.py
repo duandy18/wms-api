@@ -5,7 +5,7 @@ from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.integrations.pms.inprocess_client import InProcessPmsReadClient
+from app.integrations.pms.factory import create_pms_read_client
 
 
 async def resolve_report_item_ids(
@@ -27,4 +27,4 @@ async def resolve_report_item_ids(
     if not kw:
         return None
 
-    return await InProcessPmsReadClient(session).search_report_item_ids_by_keyword(keyword=kw)
+    return await create_pms_read_client(session=session).search_report_item_ids_by_keyword(keyword=kw)

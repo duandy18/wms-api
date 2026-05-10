@@ -8,7 +8,7 @@ from sqlalchemy import case, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.integrations.pms.inprocess_client import InProcessPmsReadClient
+from app.integrations.pms.factory import create_pms_read_client
 from app.wms.inventory_adjustment.count.models.count_doc import (
     CountDoc,
     CountDocLine,
@@ -292,7 +292,7 @@ class CountDocRepo:
         if not ids:
             return {}
 
-        uoms = await InProcessPmsReadClient(session).list_uoms(item_ids=ids)
+        uoms = await create_pms_read_client(session=session).list_uoms(item_ids=ids)
 
         out: dict[int, dict[str, Any]] = {}
         for uom in uoms:
@@ -382,7 +382,7 @@ class CountDocRepo:
         ).mappings().all()
 
         item_ids = sorted({int(row["item_id"]) for row in line_rows})
-        item_map = await InProcessPmsReadClient(session).get_item_basics(item_ids=item_ids)
+        item_map = await create_pms_read_client(session=session).get_item_basics(item_ids=item_ids)
 
         for row in line_rows:
             item_id = int(row["item_id"])

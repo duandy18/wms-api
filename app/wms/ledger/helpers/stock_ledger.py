@@ -12,7 +12,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.integrations.pms.inprocess_client import InProcessPmsReadClient
+from app.integrations.pms.factory import create_pms_read_client
 from app.wms.shared.services.lot_code_contract import normalize_optional_lot_code
 from app.wms.stock.models.lot import Lot
 from app.wms.ledger.models.stock_ledger import StockLedger
@@ -132,7 +132,7 @@ async def resolve_ledger_item_keyword_item_ids(
     keyword = str(getattr(payload, "item_keyword", None) or "").strip()
     if not keyword:
         return None
-    return await InProcessPmsReadClient(session).search_report_item_ids_by_keyword(keyword=keyword)
+    return await create_pms_read_client(session=session).search_report_item_ids_by_keyword(keyword=keyword)
 
 
 async def load_ledger_item_display_maps(
@@ -152,7 +152,7 @@ async def load_ledger_item_display_maps(
     if not ids:
         return {}, {}
 
-    pms_client = InProcessPmsReadClient(session)
+    pms_client = create_pms_read_client(session=session)
     item_meta_map = await pms_client.get_report_meta_by_item_ids(item_ids=ids)
     item_name_map = {
         int(item_id): str(meta.name).strip()
