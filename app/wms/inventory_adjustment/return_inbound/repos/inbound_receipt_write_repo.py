@@ -7,8 +7,7 @@ from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.pms.export.items.services.item_read_service import ItemReadService
-from app.pms.export.uoms.services.uom_read_service import PmsExportUomReadService
+from app.integrations.pms.inprocess_client import InProcessPmsReadClient
 from app.wms.inventory_adjustment.return_inbound.contracts.receipt_create_from_purchase import (
     InboundReceiptCreateFromPurchaseIn,
     InboundReceiptCreateFromPurchaseOut,
@@ -130,11 +129,12 @@ async def _load_manual_line_snapshot(
     item_id: int,
     item_uom_id: int,
 ) -> dict[str, object]:
-    item = await ItemReadService(session).aget_basic_by_id(item_id=int(item_id))
+    pms_client = InProcessPmsReadClient(session)
+    item = await pms_client.get_item_basic(item_id=int(item_id))
     if item is None:
         raise HTTPException(status_code=404, detail="item_not_found")
 
-    uom = await PmsExportUomReadService(session).aget_by_id(
+    uom = await pms_client.get_uom(
         item_uom_id=int(item_uom_id),
     )
     if uom is None:
