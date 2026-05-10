@@ -22,6 +22,7 @@ PMS_INTEGRATION_BOUNDARY_FILES = {
     "app/integrations/__init__.py",
     "app/integrations/pms/__init__.py",
     "app/integrations/pms/contracts.py",
+    "app/integrations/pms/http_client.py",
     "app/integrations/pms/client.py",
     "app/integrations/pms/inprocess_client.py",
     "app/integrations/pms/sync_client.py",
@@ -29,6 +30,7 @@ PMS_INTEGRATION_BOUNDARY_FILES = {
 
 PMS_EXPORT_BRIDGE_ALLOWLIST = {
     "app/integrations/pms/contracts.py",
+    "app/integrations/pms/http_client.py",
     "app/integrations/pms/inprocess_client.py",
     "app/integrations/pms/sync_client.py",
 }
