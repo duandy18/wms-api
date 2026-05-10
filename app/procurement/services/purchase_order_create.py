@@ -7,10 +7,10 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.procurement.models.purchase_order import PurchaseOrder
-from app.pms.export.items.contracts.item_basic import ItemBasic
-from app.pms.export.items.services.item_read_service import ItemReadService
+from app.integrations.pms.contracts import ItemBasic
+from app.integrations.pms.inprocess_client import InProcessPmsReadClient
 from app.partners.export.suppliers.services.supplier_read_service import SupplierReadService
+from app.procurement.models.purchase_order import PurchaseOrder
 from app.procurement.repos.purchase_order_create_repo import (
     insert_purchase_order_head,
     insert_purchase_order_lines,
@@ -23,8 +23,7 @@ from app.procurement.repos.purchase_order_create_repo import (
 async def _load_items_map(session: AsyncSession, item_ids: List[int]) -> Dict[int, ItemBasic]:
     if not item_ids:
         return {}
-    svc = ItemReadService(session)
-    return await svc.aget_basics_by_item_ids(item_ids=item_ids)
+    return await InProcessPmsReadClient(session).get_item_basics(item_ids=item_ids)
 
 
 async def _require_supplier_snapshot_via_partners(

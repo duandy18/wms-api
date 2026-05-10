@@ -8,8 +8,8 @@ from typing import Any, Dict, List, Tuple
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.integrations.pms.contracts import ItemBasic
 from app.procurement.models.purchase_order import PurchaseOrder
-from app.pms.export.items.contracts.item_basic import ItemBasic
 from app.procurement.repos.purchase_order_create_repo import (
     pick_default_purchase_uom,
     require_item_uom_ratio_to_base,
