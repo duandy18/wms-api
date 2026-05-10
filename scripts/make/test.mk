@@ -229,3 +229,13 @@ test-pricing-smoke: dev-reset-test-db audit-all
 	  tests/api/test_zone_brackets_constraints_and_copy.py \
 	  tests/api/test_zone_brackets_matrix_unbound_contract.py \
 	  tests/api/test_zone_brackets_matrix_grouped_contract.py
+
+
+# ---------------------------------
+# PMS HTTP mode smoke
+# Requires pms-api running locally on PMS_API_BASE_URL.
+# This target is intentionally local-only and not part of default CI.
+# ---------------------------------
+.PHONY: pms-http-smoke
+pms-http-smoke: venv
+	@PMS_CLIENT_MODE=http PMS_API_BASE_URL="$${PMS_API_BASE_URL:-http://127.0.0.1:8002}" PYTHONPATH=. $(PY) scripts/pms/http_smoke.py
