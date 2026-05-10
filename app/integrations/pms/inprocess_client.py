@@ -40,6 +40,24 @@ from app.pms.export.sku_codes.services.sku_code_read_service import (
 from app.pms.export.uoms.services.uom_read_service import PmsExportUomReadService
 
 
+
+def _contract_data(value):
+    if value is None:
+        return None
+    if hasattr(value, "model_dump"):
+        return value.model_dump(mode="python")
+    return value
+
+
+def _contract_model(model_type, value):
+    if value is None:
+        return None
+    validator = getattr(model_type, "model_validate", None)
+    if callable(validator):
+        return validator(_contract_data(value))
+    return model_type(**_contract_data(value))
+
+
 class InProcessPmsReadClient:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
@@ -178,7 +196,8 @@ class InProcessPmsReadClient:
         )
 
     async def probe_barcode(self, *, barcode: str) -> BarcodeProbeOut:
-        return await BarcodeProbeService(self.session).aprobe(barcode=str(barcode))
+        probe = await BarcodeProbeService(self.session).aprobe(barcode=barcode)
+        return _contract_model(BarcodeProbeOut, probe)
 
     async def get_sku_code(self, *, sku_code_id: int) -> PmsExportSkuCode | None:
         return await PmsExportSkuCodeReadService(self.session).aget_by_id(
