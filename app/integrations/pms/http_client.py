@@ -143,8 +143,39 @@ class HttpPmsReadClient:
         *,
         query: ItemReadQuery | None = None,
     ) -> list[ItemBasic]:
-        _ = query
-        self._unsupported("list_item_basics")
+        params: dict[str, Any] = {"limit": 500}
+
+        if query is not None:
+            data = query.model_dump(exclude_none=True) if hasattr(query, "model_dump") else {}
+            keyword = (
+                data.get("keyword")
+                or data.get("q")
+                or data.get("search")
+                or data.get("sku")
+                or data.get("name")
+            )
+            if keyword:
+                params["keyword"] = str(keyword)
+
+            if data.get("enabled") is not None:
+                params["enabled"] = bool(data["enabled"])
+
+            if data.get("limit") is not None:
+                params["limit"] = int(data["limit"])
+
+        async with httpx.AsyncClient(
+            base_url=self.base_url,
+            timeout=self.timeout,
+            transport=self.transport,
+            headers=self.headers,
+        ) as client:
+            response = await client.get("/pms/read/v1/items/basic", params=params)
+
+        response.raise_for_status()
+        data = response.json()
+        if not isinstance(data, list):
+            raise ValueError("pms-api item basic list response must be array")
+        return _parse_model_list(ItemBasic, data)
 
     async def get_item_basic(self, *, item_id: int) -> ItemBasic | None:
         rows = await self.get_item_basics(item_ids=[int(item_id)])
@@ -189,8 +220,19 @@ class HttpPmsReadClient:
         return _parse_model_map(ItemPolicy, body, "policies_by_item_id")
 
     async def get_item_policy_by_sku(self, *, sku: str) -> ItemPolicy | None:
-        _ = sku
-        self._unsupported("get_item_policy_by_sku")
+        clean_sku = str(sku or "").strip()
+        if not clean_sku:
+            return None
+
+        body = await self._request(
+            "GET",
+            "/pms/read/v1/items/policy-by-sku",
+            params={"sku": clean_sku},
+            none_status_codes={404},
+        )
+        if body is None:
+            return None
+        return _parse_model(ItemPolicy, body)
 
     async def search_report_item_ids_by_keyword(
         self,
@@ -296,8 +338,14 @@ class HttpPmsReadClient:
         return await self._get_default_or_base_uom(item_id=int(item_id), usage="OUTBOUND")
 
     async def get_barcode(self, *, barcode_id: int) -> PmsExportBarcode | None:
-        _ = barcode_id
-        self._unsupported("get_barcode")
+        body = await self._request(
+            "GET",
+            f"/pms/read/v1/barcodes/{int(barcode_id)}",
+            none_status_codes={404},
+        )
+        if body is None:
+            return None
+        return _parse_model(PmsExportBarcode, body)
 
     async def list_barcodes(
         self,
