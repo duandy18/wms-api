@@ -1,0 +1,61 @@
+# tests/ci/test_pms_integration_client_boundary_contract.py
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+
+PMS_EXPORT_IMPORT_RE = re.compile(
+    r"^\\s*from\\s+app\\.pms\\.export\\b"
+    r"|^\\s*import\\s+app\\.pms\\.export\\b"
+)
+
+
+def _rel(path: Path) -> str:
+    return path.relative_to(ROOT).as_posix()
+
+
+def _import_violations(path: Path) -> list[str]:
+    violations: list[str] = []
+    for line_no, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        stripped = line.strip()
+        if PMS_EXPORT_IMPORT_RE.search(stripped):
+            violations.append(f"{_rel(path)}:{line_no}: {stripped}")
+    return violations
+
+
+def test_pms_integration_client_boundary_files_exist() -> None:
+    expected = {
+        "app/integrations/__init__.py",
+        "app/integrations/pms/__init__.py",
+        "app/integrations/pms/contracts.py",
+        "app/integrations/pms/client.py",
+        "app/integrations/pms/inprocess_client.py",
+    }
+
+    for rel in expected:
+        assert (ROOT / rel).is_file(), rel
+
+
+def test_wms_scan_resolver_no_longer_imports_pms_export_directly() -> None:
+    path = ROOT / "app/wms/scan/services/scan_orchestrator_item_resolver.py"
+
+    assert _import_violations(path) == []
+    assert "InProcessPmsReadClient" in path.read_text(encoding="utf-8")
+
+
+def test_only_pms_integration_bridge_imports_pms_export_inside_integrations() -> None:
+    allowed = {
+        "app/integrations/pms/contracts.py",
+        "app/integrations/pms/inprocess_client.py",
+    }
+
+    violations: list[str] = []
+    for path in sorted((ROOT / "app/integrations").rglob("*.py")):
+        rel = _rel(path)
+        if rel in allowed:
+            continue
+        violations.extend(_import_violations(path))
+
+    assert violations == []
