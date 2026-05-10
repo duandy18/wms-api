@@ -15,7 +15,6 @@ from app.oms.orders.models.order_logistics import OrderLogistics  # noqa: F401
 from app.oms.stores.models.store import Store  # noqa: F401
 
 if TYPE_CHECKING:
-    from app.pms.items.models.item import Item
     from app.oms.orders.models.order_item import OrderItem
     from app.oms.orders.models.order_logistics import OrderLogistics
     from app.oms.stores.models.store import Store
@@ -120,14 +119,6 @@ class Order(Base):
         back_populates="order",
         lazy="selectin",
         cascade="all, delete-orphan",
-    )
-
-    items: Mapped[List["Item"]] = relationship(
-        "Item",
-        secondary="order_items",
-        viewonly=True,
-        lazy="selectin",
-        back_populates="orders",
     )
 
     logistics: Mapped[List["OrderLogistics"]] = relationship(
