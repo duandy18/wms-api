@@ -6,9 +6,8 @@ from typing import Any, Dict, List, Mapping
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.pms.export.items.services.item_read_service import ItemReadService
-from app.pms.export.uoms.contracts.uom import PmsExportUom
-from app.pms.export.uoms.services.uom_read_service import PmsExportUomReadService
+from app.integrations.pms.contracts import PmsExportUom
+from app.integrations.pms.inprocess_client import InProcessPmsReadClient
 
 
 def _pick_base_uom(rows: list[PmsExportUom]) -> PmsExportUom | None:
@@ -73,12 +72,12 @@ async def load_order_outbound_lines(
     order_id: int,
 ) -> List[Dict[str, Any]]:
     """
-    订单出库页：读取订单行（来源真相 = order_lines + PMS export display）
+    订单出库页：读取订单行（来源真相 = order_lines + PMS integration display）
 
     说明：
     - 核心真相是 order_lines；
-    - 商品展示字段 sku / name / spec 通过 PMS export ItemReadService 读取；
-    - base_uom 展示通过 PMS export UOM read service 读取；
+    - 商品展示字段 sku / name / spec 通过 PMS integration client 读取；
+    - base_uom 展示通过 PMS integration client 读取；
     - 不直接 JOIN PMS 内部 items / item_uoms 表。
     """
     line_rows = (
@@ -112,8 +111,9 @@ async def load_order_outbound_lines(
         }
     )
 
-    item_map = await ItemReadService(session).aget_basics_by_item_ids(item_ids=item_ids)
-    uom_rows = await PmsExportUomReadService(session).alist_uoms(item_ids=item_ids)
+    pms_client = InProcessPmsReadClient(session)
+    item_map = await pms_client.get_item_basics(item_ids=item_ids)
+    uom_rows = await pms_client.list_uoms(item_ids=item_ids)
 
     uoms_by_item_id: Dict[int, List[PmsExportUom]] = {}
     for row in uom_rows:

@@ -41,6 +41,9 @@ MIGRATED_NON_PMS_CONSUMERS = {
     "app/wms/inventory_adjustment/return_inbound/repos/inbound_receipt_write_repo.py",
     "app/wms/inventory_adjustment/return_inbound/routers/order_refs.py",
     "app/wms/ledger/helpers/stock_ledger.py",
+    "app/oms/services/platform_order_resolve_loaders.py",
+    "app/oms/fsku/services/fsku_service_write.py",
+    "app/oms/orders/repos/order_outbound_view_repo.py",
 }
 
 
@@ -64,6 +67,7 @@ def test_pms_integration_client_boundary_files_exist() -> None:
         "app/integrations/pms/contracts.py",
         "app/integrations/pms/client.py",
         "app/integrations/pms/inprocess_client.py",
+        "app/integrations/pms/sync_client.py",
     }
 
     for rel in expected:
@@ -88,6 +92,7 @@ def test_only_pms_integration_bridge_imports_pms_export_inside_integrations() ->
     allowed = {
         "app/integrations/pms/contracts.py",
         "app/integrations/pms/inprocess_client.py",
+        "app/integrations/pms/sync_client.py",
     }
 
     violations: list[str] = []
