@@ -21,6 +21,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.integrations.pms.client import PmsReadClient
 from app.integrations.pms.http_client import HttpPmsReadClient
+from app.integrations.pms.sync_client import SyncInProcessPmsReadClient
+from app.integrations.pms.sync_http_client import SyncHttpPmsReadClient
 from app.integrations.pms.inprocess_client import InProcessPmsReadClient
 
 PmsClientMode = Literal["inprocess", "http"]
@@ -67,5 +69,33 @@ def create_pms_read_client(
 __all__ = [
     "PmsClientMode",
     "create_pms_read_client",
+    "create_sync_pms_read_client",
     "get_pms_client_mode",
 ]
+
+
+def create_sync_pms_read_client(
+    *,
+    session=None,
+    mode: str | None = None,
+    pms_api_base_url: str | None = None,
+    timeout_seconds: float = 10.0,
+    transport: httpx.BaseTransport | None = None,
+):
+    selected = get_pms_client_mode(mode)
+
+    if selected == "inprocess":
+        if session is None:
+            raise RuntimeError(
+                "PMS_CLIENT_MODE=inprocess requires a synchronous Session"
+            )
+        return SyncInProcessPmsReadClient(session)
+
+    if selected == "http":
+        return SyncHttpPmsReadClient(
+            base_url=pms_api_base_url,
+            timeout_seconds=timeout_seconds,
+            transport=transport,
+        )
+
+    raise RuntimeError(f"Unsupported PMS client mode: {selected}")

@@ -6,7 +6,7 @@ from typing import Any, Dict, List
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.integrations.pms.inprocess_client import InProcessPmsReadClient
+from app.integrations.pms.factory import create_pms_read_client
 
 
 async def load_fsku_components(
@@ -51,7 +51,7 @@ async def load_items_brief(
     if not item_ids:
         return {}
 
-    rows = await InProcessPmsReadClient(session).get_item_basics(
+    rows = await create_pms_read_client(session=session).get_item_basics(
         item_ids=[int(x) for x in item_ids],
     )
 

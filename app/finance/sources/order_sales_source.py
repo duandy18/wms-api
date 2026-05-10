@@ -8,7 +8,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.finance.services.common import to_decimal
-from app.integrations.pms.inprocess_client import InProcessPmsReadClient
+from app.integrations.pms.factory import create_pms_read_client
 
 
 class OrderSalesSource:
@@ -94,7 +94,7 @@ class OrderSalesSource:
         ids = sorted({int(x) for x in item_ids if x is not None and int(x) > 0})
         if not ids:
             return {}
-        return await InProcessPmsReadClient(self.session).get_report_meta_by_item_ids(
+        return await create_pms_read_client(session=self.session).get_report_meta_by_item_ids(
             item_ids=ids,
         )
 

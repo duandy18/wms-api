@@ -8,7 +8,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.integrations.pms.contracts import BarcodeProbeStatus
-from app.integrations.pms.inprocess_client import InProcessPmsReadClient
+from app.integrations.pms.factory import create_pms_read_client
 from app.wms.inbound.repos.item_lookup_repo import get_item_policy_by_id
 from app.wms.inbound.repos.lot_resolve_repo import resolve_inbound_lot
 from app.wms.inventory_adjustment.count.services.count_freeze_guard_service import (
@@ -53,7 +53,7 @@ async def _load_item_uom_snapshot(
     item_id: int,
     item_uom_id: int,
 ) -> tuple[int, str | None, int]:
-    uom = await InProcessPmsReadClient(session).get_uom(
+    uom = await create_pms_read_client(session=session).get_uom(
         item_uom_id=int(item_uom_id),
     )
     if uom is None or int(uom.item_id) != int(item_id):
@@ -76,7 +76,7 @@ async def _resolve_barcode_uom_snapshot(
     barcode: str,
 ) -> tuple[int, str | None, int]:
     code = (barcode or "").strip()
-    client = InProcessPmsReadClient(session)
+    client = create_pms_read_client(session=session)
     probe = await client.probe_barcode(barcode=code)
 
     if (

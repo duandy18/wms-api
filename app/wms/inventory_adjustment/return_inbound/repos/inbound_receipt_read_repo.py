@@ -6,7 +6,7 @@ from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.integrations.pms.inprocess_client import InProcessPmsReadClient
+from app.integrations.pms.factory import create_pms_read_client
 
 from app.wms.inventory_adjustment.return_inbound.contracts.receipt_read import (
     InboundReceiptLineReadOut,
@@ -49,7 +49,7 @@ async def _load_inbound_default_uoms_by_item_id(
     if not ids:
         return {}
 
-    uoms = await InProcessPmsReadClient(session).list_uoms(item_ids=ids)
+    uoms = await create_pms_read_client(session=session).list_uoms(item_ids=ids)
 
     selected = {}
     for uom in sorted(
@@ -180,7 +180,7 @@ async def get_inbound_return_source_repo(
         raise HTTPException(status_code=409, detail="return_order_has_no_refundable_lines")
 
     item_ids = _clean_item_ids(row["item_id"] for row in line_rows)
-    item_map = await InProcessPmsReadClient(session).get_item_basics(item_ids=item_ids)
+    item_map = await create_pms_read_client(session=session).get_item_basics(item_ids=item_ids)
     inbound_uom_map = await _load_inbound_default_uoms_by_item_id(
         session,
         item_ids=item_ids,

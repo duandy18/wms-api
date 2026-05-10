@@ -7,7 +7,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.integrations.pms.contracts import PmsExportUom
-from app.integrations.pms.inprocess_client import InProcessPmsReadClient
+from app.integrations.pms.factory import create_pms_read_client
 
 
 def _pick_base_uom(rows: list[PmsExportUom]) -> PmsExportUom | None:
@@ -111,7 +111,7 @@ async def load_order_outbound_lines(
         }
     )
 
-    pms_client = InProcessPmsReadClient(session)
+    pms_client = create_pms_read_client(session=session)
     item_map = await pms_client.get_item_basics(item_ids=item_ids)
     uom_rows = await pms_client.list_uoms(item_ids=item_ids)
 

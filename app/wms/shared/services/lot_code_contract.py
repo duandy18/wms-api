@@ -6,7 +6,7 @@ from typing import Dict, Optional, Set, Tuple
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.integrations.pms.inprocess_client import InProcessPmsReadClient
+from app.integrations.pms.factory import create_pms_read_client
 
 # 非批次商品禁止的历史假码（严格 422）
 _FORBIDDEN_FAKE_CODES: Set[str] = {"NOEXP", "NEAR", "FAR", "IDEM"}
@@ -123,7 +123,7 @@ async def fetch_item_expiry_policy_map(session: AsyncSession, item_ids: Set[int]
     if not item_ids:
         return {}
 
-    policies = await InProcessPmsReadClient(session).get_item_policies(item_ids=item_ids)
+    policies = await create_pms_read_client(session=session).get_item_policies(item_ids=item_ids)
     return {
         int(item_id): str(policy.expiry_policy)
         for item_id, policy in policies.items()
@@ -139,7 +139,7 @@ async def fetch_item_by_sku(session: AsyncSession, sku: str) -> Optional[Tuple[i
     if not s:
         return None
 
-    policy = await InProcessPmsReadClient(session).get_item_policy_by_sku(sku=s)
+    policy = await create_pms_read_client(session=session).get_item_policy_by_sku(sku=s)
     if policy is None:
         return None
 

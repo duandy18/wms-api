@@ -8,14 +8,18 @@ PMS export services directly.
 
 from app.integrations.pms.factory import (
     create_pms_read_client,
+    create_sync_pms_read_client,
     get_pms_client_mode,
 )
 from app.integrations.pms.http_client import HttpPmsReadClient
+from app.integrations.pms.sync_http_client import SyncHttpPmsReadClient
 from app.integrations.pms.inprocess_client import InProcessPmsReadClient
 
 __all__ = [
     "HttpPmsReadClient",
     "InProcessPmsReadClient",
+    "SyncHttpPmsReadClient",
     "create_pms_read_client",
+    "create_sync_pms_read_client",
     "get_pms_client_mode",
 ]

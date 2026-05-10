@@ -6,7 +6,7 @@ from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.integrations.pms.inprocess_client import InProcessPmsReadClient
+from app.integrations.pms.factory import create_pms_read_client
 from app.wms.shared.services.expiry_rules import (
     ShelfLife,
     ShelfLifeUnit,
@@ -117,7 +117,7 @@ async def normalize_batch_dates_for_item(
     if production_date is None and expiry_date is None:
         return None, None, None
 
-    policy = await InProcessPmsReadClient(session).get_item_policy(item_id=int(item_id))
+    policy = await create_pms_read_client(session=session).get_item_policy(item_id=int(item_id))
     if policy is None:
         # 未找到 item：保守返回原值，不在共享层擅自抛错
         if production_date is not None and expiry_date is not None:

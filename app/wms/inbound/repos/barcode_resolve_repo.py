@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.integrations.pms.inprocess_client import InProcessPmsReadClient
+from app.integrations.pms.factory import create_pms_read_client
 
 
 @dataclass(frozen=True)
@@ -43,7 +43,7 @@ async def resolve_inbound_barcode(
     if not code:
         return None
 
-    probe = await InProcessPmsReadClient(session).probe_barcode(barcode=code)
+    probe = await create_pms_read_client(session=session).probe_barcode(barcode=code)
     if probe.status != "BOUND":
         return None
     if probe.item_id is None:

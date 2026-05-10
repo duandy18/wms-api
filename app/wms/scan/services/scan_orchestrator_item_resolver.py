@@ -6,7 +6,7 @@ from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.integrations.pms.inprocess_client import InProcessPmsReadClient
+from app.integrations.pms.factory import create_pms_read_client
 
 
 @dataclass(frozen=True)
@@ -27,7 +27,7 @@ async def probe_item_from_barcode(
 
     - 不直接查询 item_barcodes
     - 不直接 import PMS export service
-    - 当前实现仍为 InProcessPmsReadClient，未来可切 HTTP PMS client
+    - 当前业务通过 PMS read client factory 获取客户端，默认 inprocess，未来可切 HTTP PMS client
     - 当前返回 richer 结构，供 parse_scan 后续阶段继续透传
     """
     code = (barcode or "").strip()
@@ -35,7 +35,7 @@ async def probe_item_from_barcode(
         return None
 
     try:
-        probe = await InProcessPmsReadClient(session).probe_barcode(barcode=code)
+        probe = await create_pms_read_client(session=session).probe_barcode(barcode=code)
         if probe.status != "BOUND":
             return None
         if probe.item_id is None:
@@ -85,7 +85,7 @@ async def resolve_item_id_from_sku(session: AsyncSession, sku: str) -> Optional[
         return None
 
     try:
-        rows = await InProcessPmsReadClient(session).list_sku_codes(
+        rows = await create_pms_read_client(session=session).list_sku_codes(
             code=s,
             active=True,
         )
