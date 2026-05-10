@@ -6,10 +6,7 @@ from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.pms.export.items.services.barcode_probe_service import BarcodeProbeService
-from app.pms.export.sku_codes.services.sku_code_read_service import (
-    PmsExportSkuCodeReadService,
-)
+from app.integrations.pms.inprocess_client import InProcessPmsReadClient
 
 
 @dataclass(frozen=True)
@@ -26,10 +23,11 @@ async def probe_item_from_barcode(
     barcode: str,
 ) -> Optional[ScanBarcodeResolved]:
     """
-    WMS scan 读取链复用 PMS export barcode probe：
+    WMS scan 读取链通过 PMS integration client 解析 barcode：
 
-    - 不再直接查询 item_barcodes
-    - 从 PMS BarcodeProbeService 获取主数据解析结果
+    - 不直接查询 item_barcodes
+    - 不直接 import PMS export service
+    - 当前实现仍为 InProcessPmsReadClient，未来可切 HTTP PMS client
     - 当前返回 richer 结构，供 parse_scan 后续阶段继续透传
     """
     code = (barcode or "").strip()
@@ -37,7 +35,7 @@ async def probe_item_from_barcode(
         return None
 
     try:
-        probe = await BarcodeProbeService(session).aprobe(barcode=code)
+        probe = await InProcessPmsReadClient(session).probe_barcode(barcode=code)
         if probe.status != "BOUND":
             return None
         if probe.item_id is None:
@@ -75,7 +73,7 @@ async def resolve_item_id_from_barcode(
 
 async def resolve_item_id_from_sku(session: AsyncSession, sku: str) -> Optional[int]:
     """
-    WMS scan SKU 文本解析复用 PMS export SKU code read service。
+    WMS scan SKU 文本解析通过 PMS integration client 读取 SKU code。
 
     保持原语义：
     - 只要求命中 active SKU code；
@@ -87,7 +85,7 @@ async def resolve_item_id_from_sku(session: AsyncSession, sku: str) -> Optional[
         return None
 
     try:
-        rows = await PmsExportSkuCodeReadService(session).alist_sku_codes(
+        rows = await InProcessPmsReadClient(session).list_sku_codes(
             code=s,
             active=True,
         )
