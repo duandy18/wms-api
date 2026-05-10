@@ -7,8 +7,8 @@ independent pms-api process.
 
 Important:
 - It is not wired into WMS / OMS / Procurement / Finance yet.
-- It does not fallback to InProcessPmsReadClient.
-- A deployment must explicitly choose this implementation.
+- It does not fallback to the legacy local PMS runtime.
+- wms-api consumes PMS through the independent pms-api process.
 """
 
 from __future__ import annotations

@@ -2,8 +2,9 @@
 """
 PMS integration boundary.
 
+wms-api is a PMS consumer. PMS owner runtime lives in pms-api.
 Consumers outside PMS should depend on this package instead of importing
-PMS export services directly.
+legacy PMS owner/export services directly.
 """
 
 from app.integrations.pms.factory import (
@@ -13,11 +14,9 @@ from app.integrations.pms.factory import (
 )
 from app.integrations.pms.http_client import HttpPmsReadClient
 from app.integrations.pms.sync_http_client import SyncHttpPmsReadClient
-from app.integrations.pms.inprocess_client import InProcessPmsReadClient
 
 __all__ = [
     "HttpPmsReadClient",
-    "InProcessPmsReadClient",
     "SyncHttpPmsReadClient",
     "create_pms_read_client",
     "create_sync_pms_read_client",

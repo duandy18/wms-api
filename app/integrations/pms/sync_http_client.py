@@ -3,7 +3,7 @@
 Synchronous HTTP PMS read client.
 
 Current use case:
-- synchronous service paths that currently use SyncInProcessPmsReadClient.
+- synchronous service paths that call create_sync_pms_read_client.
 - first supported method mirrors the sync boundary:
   resolve_active_code_for_outbound_default.
 

@@ -1,11 +1,8 @@
 # tests/services/test_pms_integration_factory.py
 from __future__ import annotations
 
-from typing import cast
-
 import httpx
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.integrations.pms.factory import (
     create_pms_read_client,
@@ -14,50 +11,32 @@ from app.integrations.pms.factory import (
 )
 from app.integrations.pms.http_client import HttpPmsReadClient
 from app.integrations.pms.sync_http_client import SyncHttpPmsReadClient
-from app.integrations.pms.inprocess_client import InProcessPmsReadClient
 
 
-def test_get_pms_client_mode_defaults_to_inprocess(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_get_pms_client_mode_defaults_to_http(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("PMS_CLIENT_MODE", raising=False)
 
-    assert get_pms_client_mode() == "inprocess"
+    assert get_pms_client_mode() == "http"
 
 
-def test_get_pms_client_mode_reads_env(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_get_pms_client_mode_reads_http_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("PMS_CLIENT_MODE", "http")
 
     assert get_pms_client_mode() == "http"
 
 
-def test_get_pms_client_mode_rejects_invalid_mode(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("PMS_CLIENT_MODE", "mixed")
+def test_get_pms_client_mode_rejects_inprocess(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PMS_CLIENT_MODE", "inprocess")
 
     with pytest.raises(RuntimeError, match="Invalid PMS_CLIENT_MODE"):
         get_pms_client_mode()
-
-
-def test_create_inprocess_pms_read_client_requires_session() -> None:
-    with pytest.raises(RuntimeError, match="requires an AsyncSession"):
-        create_pms_read_client(mode="inprocess")
-
-
-def test_create_inprocess_pms_read_client() -> None:
-    fake_session = cast(AsyncSession, object())
-
-    client = create_pms_read_client(
-        mode="inprocess",
-        session=fake_session,
-    )
-
-    assert isinstance(client, InProcessPmsReadClient)
-    assert client.session is fake_session
 
 
 def test_create_http_pms_read_client_requires_base_url(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("PMS_API_BASE_URL", raising=False)
 
     with pytest.raises(RuntimeError, match="PMS_API_BASE_URL"):
-        create_pms_read_client(mode="http")
+        create_pms_read_client()
 
 
 def test_create_http_pms_read_client() -> None:
@@ -74,7 +53,6 @@ def test_create_http_pms_read_client() -> None:
     )
 
     client = create_pms_read_client(
-        mode="http",
         pms_api_base_url="http://pms-api.test",
         transport=transport,
     )
@@ -83,10 +61,11 @@ def test_create_http_pms_read_client() -> None:
     assert client.base_url == "http://pms-api.test"
 
 
+def test_create_sync_http_pms_read_client_requires_base_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("PMS_API_BASE_URL", raising=False)
 
-def test_create_sync_inprocess_pms_read_client_requires_session() -> None:
-    with pytest.raises(RuntimeError, match="requires a synchronous Session"):
-        create_sync_pms_read_client(mode="inprocess")
+    with pytest.raises(RuntimeError, match="PMS_API_BASE_URL"):
+        create_sync_pms_read_client()
 
 
 def test_create_sync_http_pms_read_client() -> None:
@@ -111,7 +90,6 @@ def test_create_sync_http_pms_read_client() -> None:
     )
 
     client = create_sync_pms_read_client(
-        mode="http",
         pms_api_base_url="http://pms-api.test",
         transport=transport,
     )
