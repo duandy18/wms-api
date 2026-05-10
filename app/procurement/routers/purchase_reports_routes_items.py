@@ -10,7 +10,7 @@ from sqlalchemy import distinct, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_session
-from app.pms.export.items.services.item_read_service import ItemReadService
+from app.integrations.pms.inprocess_client import InProcessPmsReadClient
 from app.procurement.contracts.purchase_report import ItemPurchaseReportItem
 from app.procurement.helpers.purchase_reports import resolve_report_item_ids
 from app.procurement.models.purchase_order import PurchaseOrder
@@ -72,7 +72,7 @@ def register(router: APIRouter) -> None:
         if report_item_ids is not None and not report_item_ids:
             return []
 
-        item_read_svc = ItemReadService(session)
+        pms_client = InProcessPmsReadClient(session)
         planned_line_amount_expr = (
             func.coalesce(PurchaseOrderLine.supply_price, 0)
             * PurchaseOrderLine.qty_ordered_base
@@ -130,7 +130,7 @@ def register(router: APIRouter) -> None:
         if not rows:
             return []
 
-        meta_map = await item_read_svc.aget_report_meta_by_item_ids(
+        meta_map = await pms_client.get_report_meta_by_item_ids(
             item_ids=[int(r["item_id"]) for r in rows]
         )
 
