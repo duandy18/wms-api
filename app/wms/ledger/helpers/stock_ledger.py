@@ -12,8 +12,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.pms.export.items.services.item_read_service import ItemReadService
-from app.pms.export.uoms.services.uom_read_service import PmsExportUomReadService
+from app.integrations.pms.inprocess_client import InProcessPmsReadClient
 from app.wms.shared.services.lot_code_contract import normalize_optional_lot_code
 from app.wms.stock.models.lot import Lot
 from app.wms.ledger.models.stock_ledger import StockLedger
@@ -123,7 +122,7 @@ async def resolve_ledger_item_keyword_item_ids(
     payload: LedgerQuery,
 ) -> list[int] | None:
     """
-    将 ledger.item_keyword 通过 PMS export read service 解析为 item_id 集合。
+    将 ledger.item_keyword 通过 PMS integration client 解析为 item_id 集合。
 
     返回语义：
     - None：调用方未传 item_keyword，不应增加 item 过滤；
@@ -133,7 +132,7 @@ async def resolve_ledger_item_keyword_item_ids(
     keyword = str(getattr(payload, "item_keyword", None) or "").strip()
     if not keyword:
         return None
-    return await ItemReadService(session).asearch_report_item_ids_by_keyword(keyword=keyword)
+    return await InProcessPmsReadClient(session).search_report_item_ids_by_keyword(keyword=keyword)
 
 
 async def load_ledger_item_display_maps(
@@ -142,7 +141,7 @@ async def load_ledger_item_display_maps(
     item_ids: Iterable[int],
 ) -> tuple[dict[int, str], dict[int, dict[str, object | None]]]:
     """
-    通过 PMS export read service 批量读取 ledger 当前页展示所需商品信息。
+    通过 PMS integration client 批量读取 ledger 当前页展示所需商品信息。
 
     注意：
     - 这里只补查询页展示信息，不解释历史事实；
@@ -153,14 +152,15 @@ async def load_ledger_item_display_maps(
     if not ids:
         return {}, {}
 
-    item_meta_map = await ItemReadService(session).aget_report_meta_by_item_ids(item_ids=ids)
+    pms_client = InProcessPmsReadClient(session)
+    item_meta_map = await pms_client.get_report_meta_by_item_ids(item_ids=ids)
     item_name_map = {
         int(item_id): str(meta.name).strip()
         for item_id, meta in item_meta_map.items()
         if str(meta.name or "").strip()
     }
 
-    uoms = await PmsExportUomReadService(session).alist_uoms(item_ids=ids)
+    uoms = await pms_client.list_uoms(item_ids=ids)
     base_uom_map: dict[int, dict[str, object | None]] = {
         item_id: {"base_item_uom_id": None, "base_uom_name": None}
         for item_id in ids
@@ -325,7 +325,7 @@ def build_base_ids_stmt(
     按查询条件构造基础 SQL（只选中符合条件的 id 列表）：
 
     - 支持按 item_id / warehouse_id / lot_id / lot_code / reason / reason_canon / sub_reason / ref / trace_id / 时间过滤；
-    - item_keyword 由调用方先通过 PMS export read service 解析为 item_id 集合；
+    - item_keyword 由调用方先通过 PMS integration client 解析为 item_id 集合；
     - 不再依赖 stock_id / batch_id，完全对齐当前 StockLedger 模型。
     """
     stmt = select(StockLedger.id).select_from(StockLedger)
