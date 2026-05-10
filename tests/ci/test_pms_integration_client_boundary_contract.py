@@ -40,6 +40,7 @@ MIGRATED_NON_PMS_CONSUMERS = {
     "app/wms/inventory_adjustment/return_inbound/repos/inbound_receipt_read_repo.py",
     "app/wms/inventory_adjustment/return_inbound/repos/inbound_receipt_write_repo.py",
     "app/wms/inventory_adjustment/return_inbound/routers/order_refs.py",
+    "app/wms/ledger/helpers/stock_ledger.py",
 }
 
 
