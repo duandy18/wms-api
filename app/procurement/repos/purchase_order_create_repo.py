@@ -8,8 +8,8 @@ from typing import Any, Sequence
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.pms.export.uoms.contracts.uom import PmsExportUom
-from app.pms.export.uoms.services.uom_read_service import PmsExportUomReadService
+from app.integrations.pms.contracts import PmsExportUom
+from app.integrations.pms.inprocess_client import InProcessPmsReadClient
 from app.procurement.models.purchase_order import PurchaseOrder
 from app.procurement.models.purchase_order_line import PurchaseOrderLine
 from app.procurement.repos.purchase_order_line_completion_repo import (
@@ -38,7 +38,7 @@ async def require_item_uom_ratio_to_base(
     item_id: int,
     uom_id: int,
 ) -> tuple[int, str]:
-    row = await PmsExportUomReadService(session).aget_by_id(item_uom_id=int(uom_id))
+    row = await InProcessPmsReadClient(session).get_uom(item_uom_id=int(uom_id))
     if row is None or int(row.item_id) != int(item_id):
         raise ValueError(
             f"uom_id 不存在或不属于该商品：item_id={int(item_id)} uom_id={int(uom_id)}"
@@ -57,7 +57,7 @@ async def pick_default_purchase_uom(
     item_id: int,
 ) -> tuple[int, int, str]:
     """
-    采购默认单位读取统一走 PMS export UOM service。
+    采购默认单位读取统一走 PMS integration client。
 
     优先级：
     1) is_purchase_default = true
@@ -65,11 +65,11 @@ async def pick_default_purchase_uom(
     3) 任意第一条 UOM
     返回：(uom_id, ratio_to_base, uom_name_snapshot)
     """
-    svc = PmsExportUomReadService(session)
-    row = await svc.aget_purchase_default_or_base(item_id=int(item_id))
+    client = InProcessPmsReadClient(session)
+    row = await client.get_purchase_default_or_base_uom(item_id=int(item_id))
 
     if row is None:
-        rows = await svc.alist_by_item_id(item_id=int(item_id))
+        rows = await client.list_uoms_by_item_id(item_id=int(item_id))
         row = rows[0] if rows else None
 
     if row is None:

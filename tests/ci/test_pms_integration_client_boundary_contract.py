@@ -16,6 +16,10 @@ MIGRATED_NON_PMS_CONSUMERS = {
     "app/wms/inbound/repos/barcode_resolve_repo.py",
     "app/wms/inventory_adjustment/return_inbound/services/inbound_task_probe_service.py",
     "app/wms/inventory_adjustment/return_inbound/repos/inbound_operation_write_repo.py",
+    "app/procurement/repos/purchase_order_create_repo.py",
+    "app/procurement/repos/receive_po_line_repo.py",
+    "app/procurement/services/purchase_order_create.py",
+    "app/procurement/services/purchase_order_update.py",
 }
 
 
@@ -52,11 +56,11 @@ def test_migrated_non_pms_consumers_no_longer_import_pms_export_directly() -> No
         assert _import_violations(path) == []
 
 
-def test_migrated_non_pms_consumers_use_integration_client() -> None:
+def test_migrated_non_pms_consumers_use_integration_boundary() -> None:
     for rel in sorted(MIGRATED_NON_PMS_CONSUMERS):
         path = ROOT / rel
         text = path.read_text(encoding="utf-8")
-        assert "InProcessPmsReadClient" in text
+        assert "app.integrations.pms" in text
 
 
 def test_only_pms_integration_bridge_imports_pms_export_inside_integrations() -> None:
