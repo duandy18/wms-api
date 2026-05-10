@@ -6,7 +6,7 @@ from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.pms.export.items.services.item_read_service import ItemReadService
+from app.integrations.pms.inprocess_client import InProcessPmsReadClient
 from app.wms.stock.services.lots import ensure_internal_lot_singleton, ensure_lot_full
 
 
@@ -22,7 +22,7 @@ class LotResolver:
     """
 
     async def requires_batch(self, session: AsyncSession, *, item_id: int) -> bool:
-        policy = await ItemReadService(session).aget_policy_by_id(item_id=int(item_id))
+        policy = await InProcessPmsReadClient(session).get_item_policy(item_id=int(item_id))
         if policy is None:
             raise ValueError("item_not_found")
         return str(policy.expiry_policy or "").upper() == "REQUIRED"
