@@ -14,6 +14,8 @@ PMS_EXPORT_IMPORT_RE = re.compile(
 MIGRATED_NON_PMS_CONSUMERS = {
     "app/wms/scan/services/scan_orchestrator_item_resolver.py",
     "app/wms/inbound/repos/barcode_resolve_repo.py",
+    "app/wms/inventory_adjustment/return_inbound/services/inbound_task_probe_service.py",
+    "app/wms/inventory_adjustment/return_inbound/repos/inbound_operation_write_repo.py",
 }
 
 
