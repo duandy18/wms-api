@@ -28,3 +28,4 @@ include scripts/make/audit.mk
 include scripts/make/test.mk
 include scripts/make/lint.mk
 include scripts/make/openapi.mk
+include scripts/make/pms_api.mk
