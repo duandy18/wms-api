@@ -4,7 +4,7 @@ from datetime import date
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.pms.export.items.contracts.item_policy import ItemPolicy
+from app.integrations.pms.contracts import ItemPolicy
 from app.wms.stock.services.lot_service import resolve_or_create_lot
 
 

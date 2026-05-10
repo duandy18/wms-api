@@ -29,6 +29,11 @@ MIGRATED_NON_PMS_CONSUMERS = {
     "app/wms/stock/services/lot_resolver.py",
     "app/wms/stock/services/lots.py",
     "app/wms/stock/services/stock_adjust/db_items.py",
+    "app/wms/shared/services/expiry_resolver.py",
+    "app/wms/shared/services/lot_code_contract.py",
+    "app/wms/inbound/repos/item_lookup_repo.py",
+    "app/wms/inbound/repos/lot_resolve_repo.py",
+    "app/wms/inbound/services/inbound_commit_service.py",
 }
 
 
