@@ -6,10 +6,8 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.pms.export.barcodes.services.barcode_read_service import PmsExportBarcodeReadService
-from app.pms.export.items.contracts.item_query import ItemReadQuery
-from app.pms.export.items.services.item_read_service import ItemReadService
-from app.pms.export.uoms.services.uom_read_service import PmsExportUomReadService
+from app.integrations.pms.contracts import ItemReadQuery
+from app.integrations.pms.inprocess_client import InProcessPmsReadClient
 
 
 def _norm_text(v: str | None) -> str | None:
@@ -38,7 +36,7 @@ async def _resolve_inventory_q_item_ids(
     q: str | None,
 ) -> list[int] | None:
     """
-    将库存页 q 搜索交给 PMS export item read service。
+    将库存页 q 搜索交给 PMS integration item read client。
 
     返回语义：
     - None：未传 q，不加商品过滤；
@@ -49,7 +47,7 @@ async def _resolve_inventory_q_item_ids(
     if q_norm is None:
         return None
 
-    items = await ItemReadService(session).alist_basic(
+    items = await InProcessPmsReadClient(session).list_item_basics(
         query=ItemReadQuery(
             q=q_norm,
             limit=None,
@@ -68,13 +66,14 @@ async def _load_inventory_display_maps(
     if not ids:
         return {}, {}, {}
 
-    item_map = await ItemReadService(session).aget_basics_by_item_ids(item_ids=ids)
+    pms_client = InProcessPmsReadClient(session)
+    item_map = await pms_client.get_item_basics(item_ids=ids)
 
     base_uom_map: dict[int, dict[str, object | None]] = {
         item_id: {"base_item_uom_id": None, "base_uom_name": None}
         for item_id in ids
     }
-    uoms = await PmsExportUomReadService(session).alist_uoms(item_ids=ids)
+    uoms = await pms_client.list_uoms(item_ids=ids)
     for uom in uoms:
         if not bool(getattr(uom, "is_base", False)):
             continue
@@ -91,7 +90,7 @@ async def _load_inventory_display_maps(
 
     main_barcode_map: dict[int, str | None] = {}
     if include_main_barcode:
-        barcodes = await PmsExportBarcodeReadService(session).alist_barcodes(
+        barcodes = await pms_client.list_barcodes(
             item_ids=ids,
             active=True,
         )

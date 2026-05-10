@@ -22,6 +22,9 @@ MIGRATED_NON_PMS_CONSUMERS = {
     "app/procurement/services/purchase_order_update.py",
     "app/procurement/helpers/purchase_reports.py",
     "app/procurement/routers/purchase_reports_routes_items.py",
+    "app/wms/stock/repos/inventory_options_repo.py",
+    "app/wms/stock/repos/inventory_read_repo.py",
+    "app/wms/stock/repos/inventory_explain_repo.py",
 }
 
 
