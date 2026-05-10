@@ -23,6 +23,23 @@ def _transport() -> httpx.MockTransport:
     def handler(request: httpx.Request) -> httpx.Response:
         path = request.url.path
 
+        if path == "/pms/read/v1/items/basic":
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "id": 1,
+                        "sku": "SKU-0001",
+                        "name": "笔记本",
+                        "spec": None,
+                        "enabled": True,
+                        "supplier_id": 3,
+                        "brand": "得力",
+                        "category": "办公用品",
+                    }
+                ],
+            )
+
         if path == "/pms/read/v1/items/basic/batch":
             payload = _json(request)
             assert payload["item_ids"] in ([1, 2], [1])
@@ -44,6 +61,22 @@ def _transport() -> httpx.MockTransport:
                     "missing_item_ids": [2],
                     "inactive_item_ids": [],
                     "errors": [],
+                },
+            )
+
+        if path == "/pms/read/v1/items/policy-by-sku":
+            if request.url.params["sku"] == "MISSING":
+                return httpx.Response(404, json={"detail": "pms_item_policy_not_found"})
+            return httpx.Response(
+                200,
+                json={
+                    "item_id": 1,
+                    "expiry_policy": "NONE",
+                    "shelf_life_value": None,
+                    "shelf_life_unit": None,
+                    "lot_source_policy": "INTERNAL_ONLY",
+                    "derivation_allowed": True,
+                    "uom_governance_enabled": False,
                 },
             )
 
@@ -137,6 +170,24 @@ def _transport() -> httpx.MockTransport:
                     "missing_item_ids": [],
                     "missing_default_uom_item_ids": [],
                     "errors": [],
+                },
+            )
+
+        if path == "/pms/read/v1/barcodes/2":
+            return httpx.Response(
+                200,
+                json={
+                    "id": 2,
+                    "item_id": 1,
+                    "item_uom_id": 7,
+                    "barcode": "6921734948311",
+                    "symbology": "CUSTOM",
+                    "active": True,
+                    "is_primary": True,
+                    "uom": "本",
+                    "display_name": None,
+                    "uom_name": "本",
+                    "ratio_to_base": 1,
                 },
             )
 
@@ -317,14 +368,21 @@ async def test_http_pms_read_client_requires_explicit_base_url(monkeypatch) -> N
         HttpPmsReadClient()
 
 
-async def test_http_pms_read_client_unsupported_methods_are_explicit() -> None:
+async def test_http_pms_read_client_compat_methods_are_backed_by_http() -> None:
     client = _client()
 
-    with pytest.raises(NotImplementedError):
-        await client.list_item_basics()
+    rows = await client.list_item_basics()
+    assert len(rows) == 1
+    assert rows[0].sku == "SKU-0001"
 
-    with pytest.raises(NotImplementedError):
-        await client.get_item_policy_by_sku(sku="SKU-0001")
+    policy = await client.get_item_policy_by_sku(sku="SKU-0001")
+    assert policy is not None
+    assert policy.item_id == 1
+    assert policy.expiry_policy == "NONE"
 
-    with pytest.raises(NotImplementedError):
-        await client.get_barcode(barcode_id=1)
+    missing_policy = await client.get_item_policy_by_sku(sku="MISSING")
+    assert missing_policy is None
+
+    barcode = await client.get_barcode(barcode_id=2)
+    assert barcode is not None
+    assert barcode.barcode == "6921734948311"
