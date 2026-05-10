@@ -6,7 +6,7 @@ from typing import Dict, Optional, Set, Tuple
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.pms.export.items.services.item_read_service import ItemReadService
+from app.integrations.pms.inprocess_client import InProcessPmsReadClient
 
 # 非批次商品禁止的历史假码（严格 422）
 _FORBIDDEN_FAKE_CODES: Set[str] = {"NOEXP", "NEAR", "FAR", "IDEM"}
@@ -116,14 +116,14 @@ def _requires_batch_from_expiry_policy(expiry_policy: Optional[str]) -> bool:
 
 async def fetch_item_expiry_policy_map(session: AsyncSession, item_ids: Set[int]) -> Dict[int, str]:
     """
-    真相源：PMS export item policy read service。
+    真相源：PMS integration item policy read client。
 
     返回：{item_id: 'NONE' | 'REQUIRED'}
     """
     if not item_ids:
         return {}
 
-    policies = await ItemReadService(session).aget_policies_by_item_ids(item_ids=item_ids)
+    policies = await InProcessPmsReadClient(session).get_item_policies(item_ids=item_ids)
     return {
         int(item_id): str(policy.expiry_policy)
         for item_id, policy in policies.items()
@@ -133,13 +133,13 @@ async def fetch_item_expiry_policy_map(session: AsyncSession, item_ids: Set[int]
 async def fetch_item_by_sku(session: AsyncSession, sku: str) -> Optional[Tuple[int, bool]]:
     """
     返回 (item_id, requires_batch)
-    requires_batch 由 PMS export item policy 投影得出。
+    requires_batch 由 PMS integration item policy 投影得出。
     """
     s = (sku or "").strip()
     if not s:
         return None
 
-    policy = await ItemReadService(session).aget_policy_by_sku(sku=s)
+    policy = await InProcessPmsReadClient(session).get_item_policy_by_sku(sku=s)
     if policy is None:
         return None
 
