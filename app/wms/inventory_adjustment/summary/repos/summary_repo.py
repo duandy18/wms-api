@@ -6,8 +6,7 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.pms.export.items.services.item_read_service import ItemReadService
-from app.pms.export.uoms.services.uom_read_service import PmsExportUomReadService
+from app.integrations.pms.inprocess_client import InProcessPmsReadClient
 
 
 SUMMARY_CTE = """
@@ -282,7 +281,7 @@ async def _enrich_summary_ledger_rows(
     为库存调节汇总详情的 ledger_rows 补齐商品展示字段。
 
     WMS 事实仍来自 stock_ledger / lots；
-    商品名和基础单位展示通过 PMS export read service 获取，
+    商品名和基础单位展示通过 PMS integration client 获取，
     不在 WMS summary repo 里直接读取 PMS owner items / item_uoms。
     """
     out = [dict(row) for row in rows]
@@ -291,13 +290,14 @@ async def _enrich_summary_ledger_rows(
     if not item_ids:
         return out
 
-    item_map = await ItemReadService(session).aget_basics_by_item_ids(item_ids=item_ids)
+    pms_client = InProcessPmsReadClient(session)
+    item_map = await pms_client.get_item_basics(item_ids=item_ids)
 
     base_uom_map: dict[int, dict[str, object | None]] = {
         item_id: {"base_item_uom_id": None, "base_uom_name": None}
         for item_id in item_ids
     }
-    uoms = await PmsExportUomReadService(session).alist_uoms(item_ids=item_ids)
+    uoms = await pms_client.list_uoms(item_ids=item_ids)
     for uom in uoms:
         if not bool(getattr(uom, "is_base", False)):
             continue

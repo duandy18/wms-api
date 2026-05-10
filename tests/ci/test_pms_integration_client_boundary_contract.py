@@ -34,6 +34,8 @@ MIGRATED_NON_PMS_CONSUMERS = {
     "app/wms/inbound/repos/item_lookup_repo.py",
     "app/wms/inbound/repos/lot_resolve_repo.py",
     "app/wms/inbound/services/inbound_commit_service.py",
+    "app/wms/inventory_adjustment/count/repos/count_doc_repo.py",
+    "app/wms/inventory_adjustment/summary/repos/summary_repo.py",
 }
 
 
