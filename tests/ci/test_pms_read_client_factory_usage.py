@@ -18,6 +18,7 @@ FORBIDDEN_PATTERNS = (
     re.compile(r"^\s*from\s+app\.integrations\.pms\.sync_client\s+import\b"),
     re.compile(r"\bInProcessPmsReadClient\s*\("),
     re.compile(r"\bSyncInProcessPmsReadClient\s*\("),
+    re.compile(r"PMS_CLIENT_MODE\s*=\s*[\"']inprocess[\"']"),
 )
 
 

@@ -3,11 +3,11 @@
 PMS read client protocol.
 
 This is the consumer-side PMS boundary. WMS / OMS / Procurement / Finance
-should gradually depend on this protocol instead of importing PMS export
+must depend on this protocol instead of importing PMS owner/export
 services directly.
 
 No fallback policy belongs here:
-- current implementation: InProcessPmsReadClient
+- current implementation: HttpPmsReadClient
 - future implementation: HttpPmsReadClient
 - one deployment must choose one implementation explicitly
 """

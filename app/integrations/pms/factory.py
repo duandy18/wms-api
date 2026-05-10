@@ -2,13 +2,14 @@
 """
 PMS read client factory.
 
-This is the explicit cutover point between:
-- in-process PMS reads inside wms-api
-- HTTP PMS reads through the independent pms-api process
+PMS owner runtime has moved to the independent pms-api process.
 
-No fallback:
-- PMS_CLIENT_MODE=inprocess requires an AsyncSession
-- PMS_CLIENT_MODE=http requires PMS_API_BASE_URL or explicit pms_api_base_url
+wms-api is now a PMS consumer only:
+- async reads use HttpPmsReadClient
+- sync reads use SyncHttpPmsReadClient
+- PMS_CLIENT_MODE must resolve to http
+- PMS_API_BASE_URL is required unless an explicit base URL is passed
+- no in-process fallback
 """
 
 from __future__ import annotations
@@ -21,22 +22,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.integrations.pms.client import PmsReadClient
 from app.integrations.pms.http_client import HttpPmsReadClient
-from app.integrations.pms.sync_client import SyncInProcessPmsReadClient
 from app.integrations.pms.sync_http_client import SyncHttpPmsReadClient
-from app.integrations.pms.inprocess_client import InProcessPmsReadClient
 
-PmsClientMode = Literal["inprocess", "http"]
+PmsClientMode = Literal["http"]
 
 
 def get_pms_client_mode(value: str | None = None) -> PmsClientMode:
-    raw = (value or os.getenv("PMS_CLIENT_MODE") or "inprocess").strip().lower()
+    raw = (value or os.getenv("PMS_CLIENT_MODE") or "http").strip().lower()
 
-    if raw in {"inprocess", "http"}:
-        return raw  # type: ignore[return-value]
+    if raw == "http":
+        return "http"
 
-    raise RuntimeError(
-        "Invalid PMS_CLIENT_MODE. Expected one of: inprocess, http"
-    )
+    raise RuntimeError("Invalid PMS_CLIENT_MODE. Expected: http")
 
 
 def create_pms_read_client(
@@ -47,17 +44,32 @@ def create_pms_read_client(
     timeout_seconds: float = 10.0,
     transport: httpx.AsyncBaseTransport | None = None,
 ) -> PmsReadClient:
+    _ = session
     selected = get_pms_client_mode(mode)
-
-    if selected == "inprocess":
-        if session is None:
-            raise RuntimeError(
-                "PMS_CLIENT_MODE=inprocess requires an AsyncSession"
-            )
-        return InProcessPmsReadClient(session)
 
     if selected == "http":
         return HttpPmsReadClient(
+            base_url=pms_api_base_url,
+            timeout_seconds=timeout_seconds,
+            transport=transport,
+        )
+
+    raise RuntimeError(f"Unsupported PMS client mode: {selected}")
+
+
+def create_sync_pms_read_client(
+    *,
+    session=None,
+    mode: str | None = None,
+    pms_api_base_url: str | None = None,
+    timeout_seconds: float = 10.0,
+    transport: httpx.BaseTransport | None = None,
+):
+    _ = session
+    selected = get_pms_client_mode(mode)
+
+    if selected == "http":
+        return SyncHttpPmsReadClient(
             base_url=pms_api_base_url,
             timeout_seconds=timeout_seconds,
             transport=transport,
@@ -72,30 +84,3 @@ __all__ = [
     "create_sync_pms_read_client",
     "get_pms_client_mode",
 ]
-
-
-def create_sync_pms_read_client(
-    *,
-    session=None,
-    mode: str | None = None,
-    pms_api_base_url: str | None = None,
-    timeout_seconds: float = 10.0,
-    transport: httpx.BaseTransport | None = None,
-):
-    selected = get_pms_client_mode(mode)
-
-    if selected == "inprocess":
-        if session is None:
-            raise RuntimeError(
-                "PMS_CLIENT_MODE=inprocess requires a synchronous Session"
-            )
-        return SyncInProcessPmsReadClient(session)
-
-    if selected == "http":
-        return SyncHttpPmsReadClient(
-            base_url=pms_api_base_url,
-            timeout_seconds=timeout_seconds,
-            transport=transport,
-        )
-
-    raise RuntimeError(f"Unsupported PMS client mode: {selected}")
