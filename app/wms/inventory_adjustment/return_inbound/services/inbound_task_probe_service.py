@@ -2,8 +2,7 @@ from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.pms.export.items.services.barcode_probe_service import BarcodeProbeService
-from app.pms.export.uoms.services.uom_read_service import PmsExportUomReadService
+from app.integrations.pms.inprocess_client import InProcessPmsReadClient
 from app.wms.inventory_adjustment.return_inbound.contracts.probe import (
     InboundTaskProbeOut,
     InboundTaskProbeStatus,
@@ -23,7 +22,7 @@ async def _load_actual_uom_name(
     if item_uom_id is None:
         return None
 
-    uom = await PmsExportUomReadService(session).aget_by_id(
+    uom = await InProcessPmsReadClient(session).get_uom(
         item_uom_id=int(item_uom_id),
     )
     if uom is None:
@@ -81,7 +80,7 @@ async def probe_inbound_task_barcode(
     code = (barcode or "").strip()
     lines = await get_inbound_task_probe_lines(session, receipt_no=receipt_no)
 
-    probe = await BarcodeProbeService(session).aprobe(barcode=code)
+    probe = await InProcessPmsReadClient(session).probe_barcode(barcode=code)
     if probe.status != "BOUND" or probe.item_id is None:
         return InboundTaskProbeOut(
             ok=True,

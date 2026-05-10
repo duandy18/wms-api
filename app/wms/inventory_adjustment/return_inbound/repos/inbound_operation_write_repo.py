@@ -7,9 +7,8 @@ from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.pms.export.items.contracts.barcode_probe import BarcodeProbeStatus
-from app.pms.export.items.services.barcode_probe_service import BarcodeProbeService
-from app.pms.export.uoms.services.uom_read_service import PmsExportUomReadService
+from app.integrations.pms.contracts import BarcodeProbeStatus
+from app.integrations.pms.inprocess_client import InProcessPmsReadClient
 from app.wms.inbound.repos.item_lookup_repo import get_item_policy_by_id
 from app.wms.inbound.repos.lot_resolve_repo import resolve_inbound_lot
 from app.wms.inventory_adjustment.count.services.count_freeze_guard_service import (
@@ -54,7 +53,7 @@ async def _load_item_uom_snapshot(
     item_id: int,
     item_uom_id: int,
 ) -> tuple[int, str | None, int]:
-    uom = await PmsExportUomReadService(session).aget_by_id(
+    uom = await InProcessPmsReadClient(session).get_uom(
         item_uom_id=int(item_uom_id),
     )
     if uom is None or int(uom.item_id) != int(item_id):
@@ -77,7 +76,8 @@ async def _resolve_barcode_uom_snapshot(
     barcode: str,
 ) -> tuple[int, str | None, int]:
     code = (barcode or "").strip()
-    probe = await BarcodeProbeService(session).aprobe(barcode=code)
+    client = InProcessPmsReadClient(session)
+    probe = await client.probe_barcode(barcode=code)
 
     if (
         probe.status != BarcodeProbeStatus.BOUND
@@ -91,7 +91,7 @@ async def _resolve_barcode_uom_snapshot(
             detail=f"barcode_unbound_or_item_mismatch:{code}",
         )
 
-    uom = await PmsExportUomReadService(session).aget_by_id(
+    uom = await client.get_uom(
         item_uom_id=int(probe.item_uom_id),
     )
     if uom is None or int(uom.item_id) != int(item_id):
