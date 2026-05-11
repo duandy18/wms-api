@@ -24,10 +24,9 @@ def _load_external_pms_orm_anchors() -> None:
     """
     Register minimal external PMS ORM anchors eagerly.
 
-    FastAPI runtime can trigger SQLAlchemy mapper configuration before
-    init_models() is called, for example during /users/login. WMS models still
-    contain transitional relationship("Item") / FK references, so Item / ItemUOM
-    / ItemSkuCode anchors must be registered as soon as app.db.base is imported.
+    PMS owner runtime has moved to pms-api. During the shared-database
+    transition, wms-api keeps minimal PMS anchor tables in metadata so Alembic
+    can consistently filter PMS-owned tables while DB physical FKs still exist.
     """
     importlib.import_module("app.db.external_pms_models")
 

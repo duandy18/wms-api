@@ -99,12 +99,10 @@ class InboundReceiptLine(Base):
 
     item_id: Mapped[int] = mapped_column(
         Integer,
-        ForeignKey("items.id", name="fk_inbound_receipt_lines_item", ondelete="RESTRICT"),
         nullable=False,
     )
     item_uom_id: Mapped[int] = mapped_column(
         Integer,
-        ForeignKey("item_uoms.id", name="fk_inbound_receipt_lines_item_uom", ondelete="RESTRICT"),
         nullable=False,
     )
 

@@ -186,7 +186,6 @@ class InboundEventLine(Base):
 
     item_id: Mapped[int] = mapped_column(
         Integer,
-        ForeignKey("items.id", name="fk_inbound_event_lines_item", ondelete="RESTRICT"),
         nullable=False,
     )
 
@@ -195,7 +194,6 @@ class InboundEventLine(Base):
 
     actual_uom_id: Mapped[int] = mapped_column(
         Integer,
-        ForeignKey("item_uoms.id", name="fk_inbound_event_lines_actual_uom", ondelete="RESTRICT"),
         nullable=False,
     )
     actual_uom_name_snapshot: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)

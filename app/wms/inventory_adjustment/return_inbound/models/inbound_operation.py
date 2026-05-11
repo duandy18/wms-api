@@ -95,7 +95,6 @@ class WmsInboundOperationLine(Base):
 
     item_id: Mapped[int] = mapped_column(
         Integer,
-        ForeignKey("items.id", name="fk_wms_inbound_operation_lines_item", ondelete="RESTRICT"),
         nullable=False,
     )
     item_name_snapshot: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
@@ -103,7 +102,6 @@ class WmsInboundOperationLine(Base):
 
     actual_item_uom_id: Mapped[int] = mapped_column(
         Integer,
-        ForeignKey("item_uoms.id", name="fk_wms_inbound_operation_lines_actual_item_uom", ondelete="RESTRICT"),
         nullable=False,
     )
     actual_uom_name_snapshot: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)

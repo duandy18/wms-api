@@ -18,7 +18,7 @@ class StockSnapshot(Base):
 
     snapshot_date: Mapped[date] = mapped_column(Date, nullable=False)
     warehouse_id: Mapped[int] = mapped_column(Integer, sa.ForeignKey("warehouses.id"), nullable=False)
-    item_id: Mapped[int] = mapped_column(Integer, sa.ForeignKey("items.id"), nullable=False)
+    item_id: Mapped[int] = mapped_column(Integer, nullable=False)
 
     # Phase 3: lot-world grain
     lot_id: Mapped[int] = mapped_column(Integer, nullable=False)

@@ -110,24 +110,6 @@ class FskuComponent(Base):
             name="fk_oms_fsku_components_fsku",
             ondelete="CASCADE",
         ),
-        sa.ForeignKeyConstraint(
-            ["resolved_item_id"],
-            ["items.id"],
-            name="fk_oms_fsku_components_resolved_item",
-            ondelete="RESTRICT",
-        ),
-        sa.ForeignKeyConstraint(
-            ["resolved_item_sku_code_id", "resolved_item_id"],
-            ["item_sku_codes.id", "item_sku_codes.item_id"],
-            name="fk_oms_fsku_components_resolved_sku_code",
-            ondelete="RESTRICT",
-        ),
-        sa.ForeignKeyConstraint(
-            ["resolved_item_uom_id", "resolved_item_id"],
-            ["item_uoms.id", "item_uoms.item_id"],
-            name="fk_oms_fsku_components_resolved_uom",
-            ondelete="RESTRICT",
-        ),
         sa.UniqueConstraint(
             "fsku_id",
             "component_sku_code",

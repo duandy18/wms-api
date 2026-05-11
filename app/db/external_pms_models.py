@@ -2,11 +2,10 @@
 """
 External PMS ORM anchors for the shared-database transition.
 
-PMS owner runtime has moved to pms-api. wms-api still has WMS/OMS/Procurement
-tables with database FKs and legacy SQLAlchemy relationship("Item") references
-to PMS-owned tables.
+PMS owner runtime has moved to pms-api. wms-api still shares a database with
+PMS owner tables until the final physical-FK retirement step.
 
-These ORM classes are FK / mapper anchors only:
+These ORM classes are metadata anchors only:
 - do not add PMS business fields here
 - do not use these classes for PMS reads/writes
 - do not let Alembic manage these tables from wms-api

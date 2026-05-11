@@ -37,7 +37,6 @@ class StockLot(Base):
 
     item_id: Mapped[int] = mapped_column(
         sa.Integer,
-        sa.ForeignKey("items.id", ondelete="RESTRICT"),
         nullable=False,
         index=True,
     )
@@ -66,7 +65,6 @@ class StockLot(Base):
     )
 
     warehouse = relationship("Warehouse", lazy="selectin")
-    item = relationship("Item", lazy="selectin")
     lot = relationship(Lot, lazy="selectin", viewonly=True, overlaps="warehouse,item")
 
     def __repr__(self) -> str:
