@@ -7,17 +7,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.wms.shared.enums import MovementType
 from app.wms.stock.services.lots import ensure_internal_lot_singleton, ensure_lot_full
 from app.wms.stock.services.stock_adjust import adjust_lot_impl
+from tests.helpers.procurement_pms_projection import install_procurement_pms_projection_fake
 
 UTC = timezone.utc
 
 
 async def _requires_batch(session: AsyncSession, item_id: int) -> bool:
     """
-    Phase M 第一阶段：测试也不再读取 has_shelf_life（镜像字段）。
-    批次受控唯一真相源：items.expiry_policy == 'REQUIRED'
+    PMS 拆库后，测试只读取 WMS PMS projection。
+    批次受控唯一真相源：PMS projection expiry_policy == 'REQUIRED'
     """
+    install_procurement_pms_projection_fake(session)
+
     row = await session.execute(
-        text("SELECT expiry_policy FROM items WHERE id=:i LIMIT 1"),
+        text("SELECT expiry_policy FROM wms_pms_item_projection WHERE item_id=:i LIMIT 1"),
         {"i": int(item_id)},
     )
     v = row.scalar_one_or_none()
@@ -63,6 +66,8 @@ async def _qty(session: AsyncSession, item_id: int, wh: int, code: str | None) -
 
 
 async def _lot_id_for_slot(session: AsyncSession, *, item_id: int, wh: int, code: str | None) -> int:
+    install_procurement_pms_projection_fake(session)
+
     if code is None:
         return int(
             await ensure_internal_lot_singleton(
@@ -99,6 +104,8 @@ async def _write_delta(
     ref: str,
     ref_line: int,
 ):
+    install_procurement_pms_projection_fake(session)
+
     lot_id = await _lot_id_for_slot(session, item_id=int(item_id), wh=int(wh), code=code)
     prod = date.today() if code is not None else None
     exp = (prod + timedelta(days=365)) if prod is not None else None

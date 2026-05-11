@@ -7,6 +7,8 @@ from httpx import AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from tests.helpers.procurement_pms_projection import install_procurement_pms_projection_fake
+
 
 pytestmark = pytest.mark.asyncio
 
@@ -19,19 +21,21 @@ async def _login_admin_headers(client: AsyncClient) -> dict[str, str]:
 
 
 async def _pick_any_item_and_uom(session: AsyncSession) -> tuple[int, int, str, str | None]:
+    install_procurement_pms_projection_fake(session)
+
     row = (
         await session.execute(
             text(
                 """
                 SELECT
-                  i.id AS item_id,
-                  iu.id AS item_uom_id,
+                  i.item_id AS item_id,
+                  iu.item_uom_id AS item_uom_id,
                   COALESCE(iu.display_name, iu.uom) AS uom_name,
                   i.spec AS item_spec
-                FROM items i
-                JOIN item_uoms iu
-                  ON iu.item_id = i.id
-                ORDER BY iu.is_outbound_default DESC, iu.is_base DESC, i.id ASC, iu.id ASC
+                FROM wms_pms_item_projection i
+                JOIN wms_pms_uom_projection iu
+                  ON iu.item_id = i.item_id
+                ORDER BY iu.is_outbound_default DESC, iu.is_base DESC, i.item_id ASC, iu.item_uom_id ASC
                 LIMIT 1
                 """
             )

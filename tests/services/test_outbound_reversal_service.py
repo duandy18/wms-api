@@ -9,6 +9,7 @@ from pydantic import ValidationError
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import app.oms.orders.models.order_line  # noqa: F401 - register order_lines table metadata for outbound_event_lines FK
 from app.wms.inbound.contracts.inbound_commit import InboundCommitIn
 from app.wms.inbound.models.inbound_event import WmsEvent
 from app.wms.inbound.services.inbound_commit_service import commit_inbound
@@ -20,7 +21,7 @@ from app.wms.inventory_adjustment.outbound_reversal.services.outbound_reversal_s
     list_outbound_reversal_options,
     reverse_outbound_event,
 )
-from app.wms.outbound.models.outbound_event import OutboundEventLine
+from tests.helpers.procurement_pms_projection import install_procurement_pms_projection_fake
 from app.wms.outbound.repos.outbound_event_repo import (
     insert_outbound_stock_ledger,
     load_stocks_lot_for_update,
@@ -33,6 +34,8 @@ def _date_to_utc_datetime(d: date) -> datetime:
 
 
 async def _pick_seed_item_uom(session: AsyncSession) -> dict[str, object]:
+    install_procurement_pms_projection_fake(session)
+
     wh_row = await session.execute(
         text(
             """
@@ -49,19 +52,19 @@ async def _pick_seed_item_uom(session: AsyncSession) -> dict[str, object]:
         text(
             """
             SELECT
-              i.id AS item_id,
-              u.id AS uom_id,
-              COALESCE(i.lot_source_policy::text, 'INTERNAL_ONLY') AS lot_source_policy,
-              COALESCE(i.expiry_policy::text, 'NONE') AS expiry_policy
-            FROM item_uoms u
-            JOIN items i
-              ON i.id = u.item_id
+              i.item_id AS item_id,
+              u.item_uom_id AS uom_id,
+              COALESCE(i.lot_source_policy, 'INTERNAL_ONLY') AS lot_source_policy,
+              COALESCE(i.expiry_policy, 'NONE') AS expiry_policy
+            FROM wms_pms_uom_projection u
+            JOIN wms_pms_item_projection i
+              ON i.item_id = u.item_id
             ORDER BY
               CASE
-                WHEN COALESCE(i.lot_source_policy::text, 'INTERNAL_ONLY') IN ('SUPPLIER_ONLY', 'SUPPLIER') THEN 0
+                WHEN COALESCE(i.lot_source_policy, 'INTERNAL_ONLY') IN ('SUPPLIER_ONLY', 'SUPPLIER') THEN 0
                 ELSE 1
               END,
-              u.id ASC
+              u.item_uom_id ASC
             LIMIT 1
             """
         )
@@ -110,6 +113,8 @@ async def _load_stocks_lot_qty(
 
 
 async def _seed_outbound_source_event(session: AsyncSession) -> dict[str, object]:
+    install_procurement_pms_projection_fake(session)
+
     picked = await _pick_seed_item_uom(session)
 
     warehouse_id = int(picked["warehouse_id"])
@@ -182,22 +187,49 @@ async def _seed_outbound_source_event(session: AsyncSession) -> dict[str, object
     session.add(event)
     await session.flush()
 
-    line = OutboundEventLine(
-        event_id=int(event.id),
-        ref_line=1,
-        item_id=int(item_id),
-        qty_outbound=int(qty_outbound),
-        lot_id=int(lot_id),
-        lot_code_snapshot=lot_code_input,
-        order_line_id=None,
-        manual_doc_line_id=1,
-        item_name_snapshot="ut item",
-        item_sku_snapshot="ut-sku",
-        item_spec_snapshot="ut-spec",
-        remark="ut outbound line",
+    await session.execute(
+        text(
+            """
+            INSERT INTO outbound_event_lines (
+              event_id,
+              ref_line,
+              item_id,
+              qty_outbound,
+              lot_id,
+              lot_code_snapshot,
+              order_line_id,
+              manual_doc_line_id,
+              item_name_snapshot,
+              item_sku_snapshot,
+              item_spec_snapshot,
+              remark
+            )
+            VALUES (
+              :event_id,
+              1,
+              :item_id,
+              :qty_outbound,
+              :lot_id,
+              :lot_code_snapshot,
+              NULL,
+              1,
+              'ut item',
+              'ut-sku',
+              'ut-spec',
+              'ut outbound line'
+            )
+            """
+        ),
+        {
+            "event_id": int(event.id),
+            "item_id": int(item_id),
+            "qty_outbound": int(qty_outbound),
+            "lot_id": int(lot_id),
+            "lot_code_snapshot": lot_code_input,
+        },
     )
-    session.add(line)
     await session.flush()
+
 
     slot_qty = await load_stocks_lot_for_update(
         session,

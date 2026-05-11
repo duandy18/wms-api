@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.wms.stock.services.lots import ensure_internal_lot_singleton, ensure_lot_full
 from app.wms.stock.services.stock_adjust import adjust_lot_impl
+from tests.helpers.procurement_pms_projection import install_procurement_pms_projection_fake
 from tests.services._helpers import ensure_store
 
 pytestmark = pytest.mark.asyncio
@@ -29,15 +30,17 @@ async def _pick_any_item_id(session: AsyncSession) -> tuple[int, bool]:
     - item_id
     - requires_expiry
     """
+    install_procurement_pms_projection_fake(session)
+
     row = (
         await session.execute(
             text(
                 """
-                SELECT id, expiry_policy::text
-                FROM items
+                SELECT item_id, expiry_policy
+                FROM wms_pms_item_projection
                 ORDER BY
-                  CASE WHEN expiry_policy::text = 'NONE' THEN 0 ELSE 1 END,
-                  id ASC
+                  CASE WHEN COALESCE(expiry_policy, 'NONE') = 'NONE' THEN 0 ELSE 1 END,
+                  item_id ASC
                 LIMIT 1
                 """
             )
@@ -50,6 +53,8 @@ async def _pick_any_item_id(session: AsyncSession) -> tuple[int, bool]:
 
 
 async def _seed_order_and_stock(session: AsyncSession) -> tuple[int, int, int, int, int]:
+    install_procurement_pms_projection_fake(session)
+
     platform = "PDD"
     store_code = "1"
     warehouse_id = 1
