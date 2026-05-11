@@ -26,14 +26,14 @@ async def _pick_supplier_item(session: AsyncSession) -> int:
         await session.execute(
             text(
                 """
-                SELECT i.id
-                  FROM items i
-                  JOIN item_uoms u
-                    ON u.item_id = i.id
+                SELECT i.item_id
+                  FROM wms_pms_item_projection i
+                  JOIN wms_pms_uom_projection u
+                    ON u.item_id = i.item_id
                    AND (u.is_purchase_default IS TRUE OR u.is_base IS TRUE)
                  WHERE i.supplier_id = 1
                    AND i.enabled IS TRUE
-                 ORDER BY i.id ASC
+                 ORDER BY i.item_id ASC
                  LIMIT 1
                 """
             )
@@ -48,10 +48,10 @@ async def _pick_purchase_uom(session: AsyncSession, *, item_id: int) -> tuple[in
         await session.execute(
             text(
                 """
-                SELECT id, ratio_to_base
-                  FROM item_uoms
+                SELECT item_uom_id AS id, ratio_to_base
+                  FROM wms_pms_uom_projection
                  WHERE item_id = :item_id
-                 ORDER BY is_purchase_default DESC, is_base DESC, id ASC
+                 ORDER BY is_purchase_default DESC, is_base DESC, item_uom_id ASC
                  LIMIT 1
                 """
             ),
@@ -68,20 +68,16 @@ async def _load_item_basic(session: AsyncSession, *, item_id: int) -> ItemBasic:
             text(
                 """
                 SELECT
-                    i.id,
-                    i.sku,
-                    i.name,
-                    i.spec,
-                    i.enabled,
-                    i.supplier_id,
-                    b.name_cn AS brand,
-                    c.category_name AS category
-                  FROM items i
-             LEFT JOIN pms_brands b
-                    ON b.id = i.brand_id
-             LEFT JOIN pms_business_categories c
-                    ON c.id = i.category_id
-                 WHERE i.id = :item_id
+                    item_id AS id,
+                    sku,
+                    name,
+                    spec,
+                    enabled,
+                    supplier_id,
+                    brand,
+                    category
+                  FROM wms_pms_item_projection
+                 WHERE item_id = :item_id
                  LIMIT 1
                 """
             ),
@@ -108,7 +104,7 @@ async def _load_uom(session: AsyncSession, *, item_uom_id: int) -> PmsExportUom:
             text(
                 """
                 SELECT
-                    id,
+                    item_uom_id AS id,
                     item_id,
                     uom,
                     display_name,
@@ -119,8 +115,8 @@ async def _load_uom(session: AsyncSession, *, item_uom_id: int) -> PmsExportUom:
                     is_purchase_default,
                     is_inbound_default,
                     is_outbound_default
-                  FROM item_uoms
-                 WHERE id = :item_uom_id
+                  FROM wms_pms_uom_projection
+                 WHERE item_uom_id = :item_uom_id
                  LIMIT 1
                 """
             ),

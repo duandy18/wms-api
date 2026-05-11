@@ -5,6 +5,8 @@ from uuid import uuid4
 import pytest
 from sqlalchemy import text
 
+from tests.helpers.procurement_pms_projection import install_procurement_pms_projection_fake
+
 
 def _uniq(prefix: str) -> str:
     return f"{prefix}-{uuid4().hex[:8]}"
@@ -12,34 +14,36 @@ def _uniq(prefix: str) -> str:
 
 async def _pick_item_resolution(async_session_maker) -> dict[str, object]:
     async with async_session_maker() as session:
+        install_procurement_pms_projection_fake(session)
+
         row = (
             await session.execute(
                 text(
                     """
                     SELECT
-                      sc.id AS item_sku_code_id,
+                      sc.sku_code_id AS item_sku_code_id,
                       sc.item_id AS item_id,
-                      sc.code AS sku_code,
+                      sc.sku_code AS sku_code,
                       i.name AS item_name,
-                      u.id AS item_uom_id,
+                      u.item_uom_id AS item_uom_id,
                       COALESCE(NULLIF(u.display_name, ''), u.uom) AS uom
-                    FROM item_sku_codes sc
-                    JOIN items i ON i.id = sc.item_id
+                    FROM wms_pms_sku_code_projection sc
+                    JOIN wms_pms_item_projection i ON i.item_id = sc.item_id
                     JOIN LATERAL (
-                      SELECT id, uom, display_name
-                      FROM item_uoms
-                      WHERE item_id = i.id
+                      SELECT item_uom_id, uom, display_name
+                      FROM wms_pms_uom_projection
+                      WHERE item_id = i.item_id
                       ORDER BY
                         is_outbound_default DESC,
                         is_base DESC,
-                        id ASC
+                        item_uom_id ASC
                       LIMIT 1
                     ) u ON TRUE
                     WHERE sc.is_active = TRUE
                       AND i.enabled = TRUE
                     ORDER BY
                       sc.is_primary DESC,
-                      sc.id ASC
+                      sc.sku_code_id ASC
                     LIMIT 1
                     """
                 )
@@ -56,6 +60,8 @@ async def _create_published_fsku_with_component(async_session_maker) -> int:
     expr = f"{item['sku_code']}*1*1"
 
     async with async_session_maker() as session:
+        install_procurement_pms_projection_fake(session)
+
         row = (
             await session.execute(
                 text(
@@ -245,6 +251,8 @@ async def test_platform_code_mapping_persists_and_ingest_can_resolve(client, asy
     assert int(b1["data"]["fsku_id"]) == int(fsku_id)
 
     async with async_session_maker() as session:
+        install_procurement_pms_projection_fake(session)
+
         row = (
             await session.execute(
                 text(
