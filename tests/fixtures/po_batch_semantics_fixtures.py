@@ -2,13 +2,12 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from uuid import uuid4
 
 import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.pms.items.models.item import Item
-from app.pms.items.models.item_uom import ItemUOM
 from app.procurement.models.purchase_order import PurchaseOrder
 from app.procurement.models.purchase_order_line import PurchaseOrderLine
 
@@ -35,9 +34,101 @@ async def _get_any_warehouse_id(session: AsyncSession) -> int:
     return int(r[0])
 
 
-# ---------------------------------------------------------
-# 内部辅助：创建一个最小可运行 PO + 一行（按 Phase M-5 新合同）
-# ---------------------------------------------------------
+async def _create_test_item(
+    session: AsyncSession,
+    *,
+    supplier_id: int,
+    expiry_policy: str,
+) -> tuple[int, str, str]:
+    exp = str(expiry_policy or "").strip().upper() or "NONE"
+    sku = f"UT-SKU-{uuid4().hex[:16]}"
+    name = "UT-Item"
+
+    row = (
+        await session.execute(
+            text(
+                """
+                INSERT INTO items (
+                    name,
+                    sku,
+                    enabled,
+                    supplier_id,
+                    lot_source_policy,
+                    expiry_policy,
+                    derivation_allowed,
+                    uom_governance_enabled,
+                    shelf_life_value,
+                    shelf_life_unit
+                )
+                VALUES (
+                    :name,
+                    :sku,
+                    TRUE,
+                    :supplier_id,
+                    CAST('SUPPLIER_ONLY' AS lot_source_policy),
+                    CAST(:expiry_policy AS expiry_policy),
+                    TRUE,
+                    TRUE,
+                    :shelf_life_value,
+                    CASE
+                        WHEN :shelf_life_unit IS NULL THEN NULL
+                        ELSE CAST(:shelf_life_unit AS shelf_life_unit)
+                    END
+                )
+                RETURNING id, sku, name
+                """
+            ),
+            {
+                "name": name,
+                "sku": sku,
+                "supplier_id": int(supplier_id),
+                "expiry_policy": exp,
+                "shelf_life_value": 30 if _is_required_expiry_policy(exp) else None,
+                "shelf_life_unit": "DAY" if _is_required_expiry_policy(exp) else None,
+            },
+        )
+    ).first()
+
+    assert row is not None
+    return int(row[0]), str(row[1]), str(row[2])
+
+
+async def _create_base_item_uom(session: AsyncSession, *, item_id: int) -> int:
+    row = (
+        await session.execute(
+            text(
+                """
+                INSERT INTO item_uoms (
+                    item_id,
+                    uom,
+                    ratio_to_base,
+                    display_name,
+                    is_base,
+                    is_purchase_default,
+                    is_inbound_default,
+                    is_outbound_default
+                )
+                VALUES (
+                    :item_id,
+                    'EA',
+                    1,
+                    NULL,
+                    TRUE,
+                    TRUE,
+                    TRUE,
+                    TRUE
+                )
+                RETURNING id
+                """
+            ),
+            {"item_id": int(item_id)},
+        )
+    ).first()
+
+    assert row is not None
+    return int(row[0])
+
+
 async def _create_po_with_one_line(
     session: AsyncSession,
     *,
@@ -45,44 +136,16 @@ async def _create_po_with_one_line(
 ):
     exp = str(expiry_policy or "").strip().upper() or "NONE"
 
-    # 1️⃣ 复用 seed 的 supplier/warehouse（不猜表必填字段）
     wid = await _get_any_warehouse_id(session)
     sid, sname = await _get_any_supplier(session)
 
-    # 2️⃣ 创建商品（按当前 items schema）
-    # 注意：sku 唯一；fixture 用时间戳避免冲突
-    ts = int(datetime.now(tz=timezone.utc).timestamp() * 1000)
-    item = Item(
-        name="UT-Item",
-        sku=f"UT-SKU-{ts}",
-        uom="EA",
-        enabled=True,
+    item_id, item_sku, item_name = await _create_test_item(
+        session,
         supplier_id=sid,
-        lot_source_policy="SUPPLIER_ONLY",
         expiry_policy=exp,
-        derivation_allowed=True,
-        uom_governance_enabled=True,
-        shelf_life_value=(30 if _is_required_expiry_policy(exp) else None),
-        shelf_life_unit=("DAY" if _is_required_expiry_policy(exp) else None),
     )
-    session.add(item)
-    await session.flush()
+    item_uom_id = await _create_base_item_uom(session, item_id=item_id)
 
-    # 3️⃣ 创建 base item_uom（ratio=1）
-    uom = ItemUOM(
-        item_id=int(item.id),
-        uom="EA",
-        ratio_to_base=1,
-        display_name=None,
-        is_base=True,
-        is_purchase_default=True,
-        is_inbound_default=True,
-        is_outbound_default=True,
-    )
-    session.add(uom)
-    await session.flush()
-
-    # 4️⃣ 创建采购单（按 purchase_orders NOT NULL）
     now = datetime.now(tz=timezone.utc)
     po = PurchaseOrder(
         warehouse_id=wid,
@@ -99,16 +162,15 @@ async def _create_po_with_one_line(
     session.add(po)
     await session.flush()
 
-    # 5️⃣ 创建采购行（按 Phase M-5 新合同）
     qty_base = 10
     line = PurchaseOrderLine(
         po_id=int(po.id),
         line_no=1,
-        item_id=int(item.id),
-        item_name=item.name,
-        item_sku=item.sku,
+        item_id=int(item_id),
+        item_name=item_name,
+        item_sku=item_sku,
         spec_text=None,
-        purchase_uom_id_snapshot=int(uom.id),
+        purchase_uom_id_snapshot=int(item_uom_id),
         purchase_ratio_to_base_snapshot=1,
         qty_ordered_input=qty_base,
         qty_ordered_base=qty_base,

@@ -19,6 +19,21 @@ class Base(DeclarativeBase):
 
 _INITIALIZED: bool = False  # 防重复初始化
 
+
+def _load_external_pms_orm_anchors() -> None:
+    """
+    Register minimal external PMS ORM anchors eagerly.
+
+    FastAPI runtime can trigger SQLAlchemy mapper configuration before
+    init_models() is called, for example during /users/login. WMS models still
+    contain transitional relationship("Item") / FK references, so Item / ItemUOM
+    / ItemSkuCode anchors must be registered as soon as app.db.base is imported.
+    """
+    importlib.import_module("app.db.external_pms_models")
+
+
+_load_external_pms_orm_anchors()
+
 # 显式排除清单：
 # 仅用于临时屏蔽“文件仍存在、但不得进入主线 metadata”的模型。
 # 当前旧 batch / 旧 inbound_receipt 模型已物理删除；PMS owner ORM 已迁入 pms-api。
