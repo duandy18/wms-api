@@ -18,20 +18,6 @@ REQUIRED_PROJECTION_TABLES = (
     "wms_pms_barcode_projection",
 )
 
-LEGACY_OWNER_TABLES = (
-    "items",
-    "item_uoms",
-    "item_barcodes",
-    "item_sku_codes",
-    "pms_brands",
-    "pms_business_categories",
-    "item_attribute_defs",
-    "item_attribute_options",
-    "item_attribute_values",
-    "sku_code_templates",
-    "sku_code_template_segments",
-)
-
 LEGACY_OWNER_WRITE_PATTERN = re.compile(
     r"""
     \bINSERT\s+INTO\s+
@@ -125,8 +111,9 @@ def test_seed_test_baseline_executes_projection_seed_after_base_seed() -> None:
     assert source.index("base_seed.sql") < source.index("pms_projection_seed.sql")
 
 
-def test_conftest_keeps_projection_batch_policy_update() -> None:
+def test_conftest_updates_projection_batch_policy_only() -> None:
     conftest = _read(CONFTEST_PATH)
 
+    assert "UPDATE items" not in conftest
     assert "UPDATE wms_pms_item_projection" in conftest
     assert "test-baseline:required:" in conftest

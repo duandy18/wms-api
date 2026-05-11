@@ -130,22 +130,15 @@ async def _db_clean_and_seed(async_engine: AsyncEngine):
         truncate_sql = _load_truncate_sql()
         await conn.execute(text(truncate_sql))
 
-        # 2) 统一种子（items/barcodes/lots/stocks_lot + shipping + admin + RBAC）
+        # 2) 统一种子：
+        #    - legacy PMS owner seed 暂时由 base_seed.sql 保留，第四刀再收紧；
+        #    - WMS PMS projection baseline 已由 pms_projection_seed.sql 独立构造。
         await seed_in_conn(conn)
 
         # 2.1) Batch-as-Lot 终态测试基线（关键收口）：
         # 很多合同/三账/出库链路测试依赖“可携带批次码”的物料；
-        # 在终态合同中这对应 expiry_policy=REQUIRED。
-        # 因此在 baseline seed 后，强制把常用测试 item 设为 REQUIRED，避免大量测试因 NONE 禁止 batch_code 而失败。
-        await conn.execute(
-            text(
-                """
-                UPDATE items
-                   SET expiry_policy = 'REQUIRED'::expiry_policy
-                 WHERE expiry_policy IS DISTINCT FROM 'REQUIRED'::expiry_policy
-                """
-            )
-        )
+        # 在 WMS 终态合同中，批次策略只应通过 wms_pms_item_projection 读取。
+        # 因此这里仅更新 projection，不再回写 legacy owner items。
         await conn.execute(
             text(
                 """
