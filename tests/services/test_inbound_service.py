@@ -2,7 +2,6 @@
 from datetime import date, datetime, timedelta, timezone
 
 import pytest
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # 测试辅助：按项目实际路径导入
@@ -35,14 +34,7 @@ async def test_inbound_creates_batch_and_increases_stock(session: AsyncSession):
     """
     wh, loc, item, code = 1, 1, 5001, "INB-DEMO-BATCH"
 
-    await ensure_wh_loc_item(session, wh=wh, loc=loc, item=item)
-
-    # 当前主链：要创建新的 SUPPLIER lot，测试商品必须显式走 REQUIRED
-    await session.execute(
-        text("UPDATE items SET expiry_policy='REQUIRED'::expiry_policy WHERE id=:i"),
-        {"i": int(item)},
-    )
-    await session.commit()
+    await ensure_wh_loc_item(session, wh=wh, loc=loc, item=item, expiry_policy="REQUIRED")
 
     ref = f"IN-{int(datetime.now(UTC).timestamp())}"
     prod = date.today()

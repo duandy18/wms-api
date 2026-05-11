@@ -182,10 +182,6 @@ async def test_stock_inventory_q_filter_uses_pms_export_item_search(
     lot_code = "UT-STOCK-Q-001"
 
     await ensure_wh_loc_item(session, wh=warehouse_id, loc=warehouse_id, item=item_id)
-    await session.execute(
-        text("UPDATE items SET expiry_policy='REQUIRED'::expiry_policy WHERE id=:i"),
-        {"i": int(item_id)},
-    )
     await seed_supplier_lot_slot(
         session,
         item=item_id,
@@ -221,10 +217,6 @@ async def test_stock_inventory_explain_uses_pms_export_item_metadata(
     lot_code = "UT-STOCK-EXPLAIN-001"
 
     await ensure_wh_loc_item(session, wh=warehouse_id, loc=warehouse_id, item=item_id)
-    await session.execute(
-        text("UPDATE items SET expiry_policy='REQUIRED'::expiry_policy WHERE id=:i"),
-        {"i": int(item_id)},
-    )
     await seed_supplier_lot_slot(
         session,
         item=item_id,
@@ -278,14 +270,10 @@ async def test_stock_inventory_detail_returns_totals_and_slices(
     warehouse_id = 1
     lot_code = "UT-STOCK-DETAIL-001"
 
-    # 先确保基础行存在；否则直接 UPDATE items 可能打空
+    # 先确保 warehouse + PMS projection 基础行存在
     await ensure_wh_loc_item(session, wh=warehouse_id, loc=warehouse_id, item=item_id)
 
-    # 当前主链：新建 SUPPLIER lot 前，测试商品必须显式走 REQUIRED
-    await session.execute(
-        text("UPDATE items SET expiry_policy='REQUIRED'::expiry_policy WHERE id=:i"),
-        {"i": int(item_id)},
-    )
+    # PMS projection policy is seeded by seed_supplier_lot_slot.
 
     await seed_supplier_lot_slot(
         session,
