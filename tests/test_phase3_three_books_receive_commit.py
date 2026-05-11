@@ -13,6 +13,7 @@ from app.wms.snapshot.services.snapshot_run import run_snapshot
 from app.wms.stock.services.lots import ensure_internal_lot_singleton, ensure_lot_full
 from app.wms.stock.services.stock_adjust import adjust_lot_impl
 from app.wms.shared.services.three_books_consistency import verify_commit_three_books
+from tests.helpers.procurement_pms_projection import install_procurement_pms_projection_fake
 
 
 UTC = timezone.utc
@@ -20,17 +21,20 @@ UTC = timezone.utc
 
 async def _pick_test_item(session: AsyncSession) -> tuple[int, bool]:
     """
-    尽量挑一个不需要有效期管理的商品（避免被业务校验噪音卡住）。
-    若找不到，则退回任意一个 item（expiry_policy=REQUIRED 也行，测试会显式填写 production_date / expiry_date）。
+    尽量挑一个不需要有效期管理的商品。
+    PMS 拆库后，测试只读取 WMS PMS projection，不再读取旧 items。
     """
+    install_procurement_pms_projection_fake(session)
+
     row = (
         await session.execute(
             text(
                 """
-                SELECT id
-                  FROM items
-                 WHERE COALESCE(expiry_policy::text, 'NONE') <> 'REQUIRED'
-                 ORDER BY id ASC
+                SELECT item_id
+                  FROM wms_pms_item_projection
+                 WHERE COALESCE(expiry_policy, 'NONE') <> 'REQUIRED'
+                   AND COALESCE(enabled, true) = true
+                 ORDER BY item_id ASC
                  LIMIT 1
                 """
             )
@@ -39,25 +43,39 @@ async def _pick_test_item(session: AsyncSession) -> tuple[int, bool]:
     if row:
         return int(row[0]), False
 
-    row2 = (await session.execute(text("SELECT id FROM items ORDER BY id ASC LIMIT 1"))).first()
+    row2 = (
+        await session.execute(
+            text(
+                """
+                SELECT item_id
+                  FROM wms_pms_item_projection
+                 WHERE COALESCE(enabled, true) = true
+                 ORDER BY item_id ASC
+                 LIMIT 1
+                """
+            )
+        )
+    ).first()
     if not row2:
-        raise RuntimeError("测试库没有 items 种子数据，无法运行 Phase 3 合同测试")
+        raise RuntimeError("测试库没有 PMS projection item 种子数据，无法运行 Phase 3 合同测试")
     return int(row2[0]), True
 
 
 async def _ensure_base_uom(session: AsyncSession, *, item_id: int) -> Tuple[int, int]:
     """
     终态：receipt_line 必须写入 uom_id + ratio_to_base_snapshot + qty_base。
-    优先取 is_base=true；若该 item 没有 item_uoms，则补一条最小 base uom（PCS, ratio=1）。
+    PMS 拆库后，测试从 wms_pms_uom_projection 取 base uom。
     """
+    install_procurement_pms_projection_fake(session)
+
     row = (
         await session.execute(
             text(
                 """
-                SELECT id, ratio_to_base
-                  FROM item_uoms
+                SELECT item_uom_id, ratio_to_base
+                  FROM wms_pms_uom_projection
                  WHERE item_id = :i AND is_base = true
-                 ORDER BY id
+                 ORDER BY item_uom_id
                  LIMIT 1
                 """
             ),
@@ -67,56 +85,41 @@ async def _ensure_base_uom(session: AsyncSession, *, item_id: int) -> Tuple[int,
     if row is not None:
         return int(row[0]), int(row[1])
 
-    # 缺失时补齐最小合法 base uom（不依赖外部 seed 的稳定性）
-    await session.execute(
-        text(
-            """
-            INSERT INTO item_uoms(
-              item_id, uom, ratio_to_base, display_name,
-              is_base, is_purchase_default, is_inbound_default, is_outbound_default
-            )
-            VALUES(
-              :i, 'PCS', 1, 'PCS',
-              TRUE, TRUE, TRUE, TRUE
-            )
-            ON CONFLICT ON CONSTRAINT uq_item_uoms_item_uom
-            DO UPDATE SET
-              ratio_to_base = EXCLUDED.ratio_to_base,
-              display_name = EXCLUDED.display_name,
-              is_base = EXCLUDED.is_base,
-              is_purchase_default = EXCLUDED.is_purchase_default,
-              is_inbound_default = EXCLUDED.is_outbound_default
-            """
-        ),
-        {"i": int(item_id)},
-    )
-
     row2 = (
         await session.execute(
             text(
                 """
-                SELECT id, ratio_to_base
-                  FROM item_uoms
-                 WHERE item_id = :i AND is_base = true
-                 ORDER BY id
+                SELECT item_uom_id, ratio_to_base
+                  FROM wms_pms_uom_projection
+                 WHERE item_id = :i
+                 ORDER BY item_uom_id
                  LIMIT 1
                 """
             ),
             {"i": int(item_id)},
         )
     ).first()
-    assert row2 is not None, {"msg": "failed to ensure base uom", "item_id": int(item_id)}
+    assert row2 is not None, {"msg": "item has no PMS projection uom", "item_id": int(item_id)}
     return int(row2[0]), int(row2[1])
 
 
 async def _is_required_item(session: AsyncSession, *, item_id: int) -> bool:
+    install_procurement_pms_projection_fake(session)
+
     row = await session.execute(
-        text("SELECT expiry_policy::text FROM items WHERE id=:i LIMIT 1"),
+        text(
+            """
+            SELECT expiry_policy
+              FROM wms_pms_item_projection
+             WHERE item_id = :i
+             LIMIT 1
+            """
+        ),
         {"i": int(item_id)},
     )
     policy = row.scalar_one_or_none()
     if policy is None:
-        raise RuntimeError(f"item_not_found: {item_id}")
+        raise RuntimeError(f"item_projection_not_found: {item_id}")
     return str(policy).strip().upper() == "REQUIRED"
 
 
@@ -301,9 +304,9 @@ async def _insert_released_receipt_with_line(
                 :iid,
                 :uom_id,
                 :qty_input,
-                (SELECT name FROM items WHERE id = :iid),
-                (SELECT spec FROM items WHERE id = :iid),
-                (SELECT COALESCE(NULLIF(display_name, ''), NULLIF(uom, '')) FROM item_uoms WHERE id = :uom_id),
+                (SELECT name FROM wms_pms_item_projection WHERE item_id = :iid),
+                (SELECT spec FROM wms_pms_item_projection WHERE item_id = :iid),
+                (SELECT COALESCE(NULLIF(display_name, ''), NULLIF(uom, '')) FROM wms_pms_uom_projection WHERE item_uom_id = :uom_id),
                 :ratio,
                 'UT-PH3-LINE',
                 NOW(),
@@ -343,6 +346,8 @@ async def test_phase3_receive_commit_three_books_strict(session: AsyncSession):
     - expiry_policy=NONE：batch_code=NULL 且 production/expiry=NULL；库存聚合到无批次槽位（INTERNAL lot_code NULL）
     - expiry_policy=REQUIRED：batch_code 非空；日期按测试显式填写
     """
+    install_procurement_pms_projection_fake(session)
+
     now = datetime.now(UTC)
 
     item_id, may_need_expiry = await _pick_test_item(session)
