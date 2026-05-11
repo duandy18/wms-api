@@ -60,12 +60,21 @@ async def seed_in_conn(conn) -> None:
     - 运行时权限真相源 = user_permissions
     - 不再创建 roles / user_roles / role_permissions
     - admin 测试用户直接拥有全部 permissions
+
+    PMS legacy baseline 去 owner 化：
+    - base_seed.sql 暂时保留旧 PMS owner seed，支撑 legacy baseline 过渡区。
+    - pms_projection_seed.sql 是 WMS PMS projection-only baseline。
+    - projection seed 不再从旧 PMS owner 表物化。
     """
     root = _repo_root()
     base_sql_path = root / "tests" / "fixtures" / "base_seed.sql"
+    pms_projection_sql_path = root / "tests" / "fixtures" / "pms_projection_seed.sql"
 
     # 1) 主数据基线
     await conn.execute(text(_load_sql(base_sql_path)))
+
+    # 1.1) WMS PMS projection-only baseline
+    await conn.execute(text(_load_sql(pms_projection_sql_path)))
 
     # 2) admin 用户（可登录）
     await ensure_admin_user(username="admin", password="admin123", full_name="Dev Admin")
