@@ -259,3 +259,12 @@ pms-http-business-smoke: venv
 .PHONY: pms-projection-sync
 pms-projection-sync: venv
 	@PMS_API_BASE_URL="$${PMS_API_BASE_URL:-http://127.0.0.1:8002}" PYTHONPATH=. $(PY) scripts/pms/sync_projection.py --limit "$${PMS_PROJECTION_SYNC_LIMIT:-500}"
+
+# ---------------------------------
+# PMS projection reconciliation
+# Verifies WMS scalar PMS references against WMS local projection tables.
+# This target is local/manual and may fail when projection is stale.
+# ---------------------------------
+.PHONY: pms-projection-reconcile
+pms-projection-reconcile: venv
+	@PYTHONPATH=. $(PY) scripts/pms/reconcile_projection.py --fail-on-issues --per-reference-limit "$${PMS_PROJECTION_RECONCILE_LIMIT:-200}"
