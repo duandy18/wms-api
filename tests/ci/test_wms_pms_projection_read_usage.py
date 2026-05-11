@@ -32,3 +32,34 @@ def test_inventory_options_items_do_not_write_projection() -> None:
     assert "INSERT INTO wms_pms_" not in text
     assert "UPDATE wms_pms_" not in text
     assert "DELETE FROM wms_pms_" not in text
+
+def test_scan_probe_reads_barcode_and_sku_from_projection_not_http() -> None:
+    text = (ROOT / "app/wms/scan/services/scan_orchestrator_item_resolver.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "resolve_projection_barcode" in text
+    assert "resolve_projection_sku_code_item_id" in text
+    assert "create_pms_read_client" not in text
+    assert "probe_barcode" not in text
+    assert "list_sku_codes" not in text
+
+
+def test_projection_read_helper_reads_only_projection_tables() -> None:
+    text = (ROOT / "app/integrations/pms/projection_read.py").read_text(encoding="utf-8")
+
+    assert "wms_pms_barcode_projection" in text
+    assert "wms_pms_sku_code_projection" in text
+    assert "wms_pms_uom_projection" in text
+
+    forbidden = re.compile(
+        r"\bFROM\s+(items|item_uoms|item_sku_codes|item_barcodes)\b"
+        r"|\bJOIN\s+(items|item_uoms|item_sku_codes|item_barcodes)\b",
+        re.IGNORECASE,
+    )
+    assert forbidden.search(text) is None
+
+    assert "create_pms_read_client" not in text
+    assert "INSERT INTO wms_pms_" not in text
+    assert "UPDATE wms_pms_" not in text
+    assert "DELETE FROM wms_pms_" not in text

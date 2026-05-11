@@ -6,7 +6,10 @@ from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.integrations.pms.factory import create_pms_read_client
+from app.integrations.pms.projection_read import (
+    resolve_projection_barcode,
+    resolve_projection_sku_code_item_id,
+)
 
 
 @dataclass(frozen=True)
@@ -23,34 +26,41 @@ async def probe_item_from_barcode(
     barcode: str,
 ) -> Optional[ScanBarcodeResolved]:
     """
-    WMS scan 读取链通过 PMS integration client 解析 barcode：
+    WMS /scan probe reads barcode current-state from WMS local PMS projection.
 
-    - 不直接查询 item_barcodes
-    - 不直接 import PMS export service
-    - 当前业务通过 PMS read client factory 获取客户端，默认 inprocess，未来可切 HTTP PMS client
-    - 当前返回 richer 结构，供 parse_scan 后续阶段继续透传
+    Boundary:
+    - /scan is probe-only and does not post inventory facts;
+    - this read path must not call pms-api per scan request;
+    - this read path must not read PMS owner tables directly;
+    - write validation remains in formal WMS submit flows and PMS HTTP integration.
     """
     code = (barcode or "").strip()
     if not code:
         return None
 
     try:
-        probe = await create_pms_read_client(session=session).probe_barcode(barcode=code)
-        if probe.status != "BOUND":
-            return None
-        if probe.item_id is None:
+        resolved = await resolve_projection_barcode(session, barcode=code)
+        if resolved is None:
             return None
 
         return ScanBarcodeResolved(
-            item_id=int(probe.item_id),
+            item_id=int(resolved.item_id),
             item_uom_id=(
-                int(probe.item_uom_id) if probe.item_uom_id is not None else None
+                int(resolved.item_uom_id)
+                if resolved.item_uom_id is not None
+                else None
             ),
             ratio_to_base=(
-                int(probe.ratio_to_base) if probe.ratio_to_base is not None else None
+                int(resolved.ratio_to_base)
+                if resolved.ratio_to_base is not None
+                else None
             ),
-            symbology=(str(probe.symbology) if probe.symbology is not None else None),
-            active=probe.active if probe.active is not None else None,
+            symbology=(
+                str(resolved.symbology)
+                if resolved.symbology is not None
+                else None
+            ),
+            active=resolved.active if resolved.active is not None else None,
         )
     except Exception:
         return None
@@ -62,8 +72,8 @@ async def resolve_item_id_from_barcode(
 ) -> Optional[int]:
     """
     兼容壳：
-    - 现阶段 parse_scan 仍只消费 item_id
-    - 后续阶段将逐步改为直接消费 probe_item_from_barcode 的 richer 结果
+    - parse_scan 仍可只消费 item_id；
+    - richer barcode projection result 仍由 probe_item_from_barcode 承载。
     """
     resolved = await probe_item_from_barcode(session, barcode)
     if resolved is None:
@@ -73,24 +83,23 @@ async def resolve_item_id_from_barcode(
 
 async def resolve_item_id_from_sku(session: AsyncSession, sku: str) -> Optional[int]:
     """
-    WMS scan SKU 文本解析通过 PMS integration client 读取 SKU code。
+    WMS /scan SKU text probe reads active sku_code current-state from projection.
 
-    保持原语义：
-    - 只要求命中 active SKU code；
-    - 不要求出库默认单位 / 基础单位；
-    - 不在 WMS scan 内直接读取 PMS item_sku_codes / items 表。
+    Boundary:
+    - only resolves active SKU code to item_id;
+    - does not require outbound default/base uom;
+    - does not call pms-api per scan request;
+    - does not read PMS owner tables directly.
     """
     s = (sku or "").strip().upper()
     if not s:
         return None
 
     try:
-        rows = await create_pms_read_client(session=session).list_sku_codes(
-            code=s,
-            active=True,
+        return await resolve_projection_sku_code_item_id(
+            session,
+            sku_code=s,
+            active_only=True,
         )
-        if not rows:
-            return None
-        return int(rows[0].item_id)
     except Exception:
         return None

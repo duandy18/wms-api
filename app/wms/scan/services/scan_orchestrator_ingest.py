@@ -156,15 +156,6 @@ async def ingest(scan: Dict[str, Any], session: Optional[AsyncSession]) -> Dict[
             "qty_base": qty_base,
         }
 
-    base_kwargs: Dict[str, Any] = {
-        "item_id": item_id,
-        "warehouse_id": wh_id,
-        "lot_code": lot_code,
-        "ref": scan_ref_norm,
-        "production_date": production_date,
-        "expiry_date": expiry_date,
-    }
-
     try:
         if not probe:
             ev = await AUDIT.other(session, scan_ref_norm)
@@ -188,7 +179,6 @@ async def ingest(scan: Dict[str, Any], session: Optional[AsyncSession]) -> Dict[
             audit=AUDIT,
             scan_ref_norm=scan_ref_norm,
             parsed=parsed,
-            base_kwargs=base_kwargs,
             qty=exec_qty,
             item_id=item_id,
             wh_id=wh_id,
