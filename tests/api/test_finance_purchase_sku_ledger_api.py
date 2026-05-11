@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from typing import Any
 
 import httpx
 import pytest
+from pytest import MonkeyPatch
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.integrations.pms.contracts import ItemBasic, PmsExportUom
 
 
 async def _headers(client: httpx.AsyncClient) -> dict[str, str]:
@@ -17,12 +21,26 @@ async def _headers(client: httpx.AsyncClient) -> dict[str, str]:
     return {"Authorization": f"Bearer {login.json()['access_token']}"}
 
 
-async def _pick_supplier_item(client: httpx.AsyncClient, headers: dict[str, str]) -> int:
-    resp = await client.get("/items?supplier_id=1&enabled=true", headers=headers)
-    assert resp.status_code == 200, resp.text
-    items = resp.json()
-    assert items, items
-    return int(items[0]["id"])
+async def _pick_supplier_item(session: AsyncSession) -> int:
+    row = (
+        await session.execute(
+            text(
+                """
+                SELECT i.id
+                  FROM items i
+                  JOIN item_uoms u
+                    ON u.item_id = i.id
+                   AND (u.is_purchase_default IS TRUE OR u.is_base IS TRUE)
+                 WHERE i.supplier_id = 1
+                   AND i.enabled IS TRUE
+                 ORDER BY i.id ASC
+                 LIMIT 1
+                """
+            )
+        )
+    ).first()
+    assert row is not None, "expected seeded enabled supplier item with purchase/base uom"
+    return int(row[0])
 
 
 async def _pick_purchase_uom(session: AsyncSession, *, item_id: int) -> tuple[int, int]:
@@ -44,6 +62,157 @@ async def _pick_purchase_uom(session: AsyncSession, *, item_id: int) -> tuple[in
     return int(row["id"]), int(row["ratio_to_base"])
 
 
+async def _load_item_basic(session: AsyncSession, *, item_id: int) -> ItemBasic:
+    row = (
+        await session.execute(
+            text(
+                """
+                SELECT
+                    i.id,
+                    i.sku,
+                    i.name,
+                    i.spec,
+                    i.enabled,
+                    i.supplier_id,
+                    b.name_cn AS brand,
+                    c.category_name AS category
+                  FROM items i
+             LEFT JOIN pms_brands b
+                    ON b.id = i.brand_id
+             LEFT JOIN pms_business_categories c
+                    ON c.id = i.category_id
+                 WHERE i.id = :item_id
+                 LIMIT 1
+                """
+            ),
+            {"item_id": int(item_id)},
+        )
+    ).mappings().first()
+    assert row is not None
+
+    return ItemBasic(
+        id=int(row["id"]),
+        sku=str(row["sku"]),
+        name=str(row["name"]),
+        spec=(str(row["spec"]) if row["spec"] is not None else None),
+        enabled=bool(row["enabled"]),
+        supplier_id=(int(row["supplier_id"]) if row["supplier_id"] is not None else None),
+        brand=(str(row["brand"]) if row["brand"] is not None else None),
+        category=(str(row["category"]) if row["category"] is not None else None),
+    )
+
+
+async def _load_uom(session: AsyncSession, *, item_uom_id: int) -> PmsExportUom:
+    row = (
+        await session.execute(
+            text(
+                """
+                SELECT
+                    id,
+                    item_id,
+                    uom,
+                    display_name,
+                    COALESCE(NULLIF(display_name, ''), uom) AS uom_name,
+                    ratio_to_base,
+                    net_weight_kg,
+                    is_base,
+                    is_purchase_default,
+                    is_inbound_default,
+                    is_outbound_default
+                  FROM item_uoms
+                 WHERE id = :item_uom_id
+                 LIMIT 1
+                """
+            ),
+            {"item_uom_id": int(item_uom_id)},
+        )
+    ).mappings().first()
+    assert row is not None
+
+    return PmsExportUom(
+        id=int(row["id"]),
+        item_id=int(row["item_id"]),
+        uom=str(row["uom"]),
+        display_name=(str(row["display_name"]) if row["display_name"] is not None else None),
+        uom_name=str(row["uom_name"]),
+        ratio_to_base=int(row["ratio_to_base"]),
+        net_weight_kg=(
+            float(row["net_weight_kg"]) if row["net_weight_kg"] is not None else None
+        ),
+        is_base=bool(row["is_base"]),
+        is_purchase_default=bool(row["is_purchase_default"]),
+        is_inbound_default=bool(row["is_inbound_default"]),
+        is_outbound_default=bool(row["is_outbound_default"]),
+    )
+
+
+class _FakePmsReadClient:
+    def __init__(
+        self,
+        *,
+        items_by_id: dict[int, ItemBasic],
+        uoms_by_id: dict[int, PmsExportUom],
+    ) -> None:
+        self._items_by_id = items_by_id
+        self._uoms_by_id = uoms_by_id
+
+    async def get_item_basics(self, *, item_ids: list[int]) -> dict[int, ItemBasic]:
+        return {
+            int(item_id): self._items_by_id[int(item_id)]
+            for item_id in item_ids
+            if int(item_id) in self._items_by_id
+        }
+
+    async def get_item_basic(self, *, item_id: int) -> ItemBasic | None:
+        return self._items_by_id.get(int(item_id))
+
+    async def get_uom(self, *, item_uom_id: int) -> PmsExportUom | None:
+        return self._uoms_by_id.get(int(item_uom_id))
+
+
+def _patch_pms_read_client(
+    monkeypatch: MonkeyPatch,
+    *,
+    items_by_id: dict[int, ItemBasic],
+    uoms_by_id: dict[int, PmsExportUom],
+) -> None:
+    fake = _FakePmsReadClient(items_by_id=items_by_id, uoms_by_id=uoms_by_id)
+
+    def _factory(*args: Any, **kwargs: Any) -> _FakePmsReadClient:
+        _ = args
+        _ = kwargs
+        return fake
+
+    modules = (
+        "app.procurement.services.purchase_order_create",
+        "app.procurement.repos.purchase_order_create_repo",
+        "app.procurement.repos.receive_po_line_repo",
+        "app.finance.sources.purchase_cost_source",
+    )
+
+    for module_name in modules:
+        module = __import__(module_name, fromlist=["dummy"])
+        if hasattr(module, "create_pms_read_client"):
+            monkeypatch.setattr(module, "create_pms_read_client", _factory)
+
+
+async def _patch_pms_for_purchase_item(
+    monkeypatch: MonkeyPatch,
+    session: AsyncSession,
+    *,
+    item_id: int,
+    uom_id: int,
+) -> None:
+    item = await _load_item_basic(session, item_id=item_id)
+    uom = await _load_uom(session, item_uom_id=uom_id)
+
+    _patch_pms_read_client(
+        monkeypatch,
+        items_by_id={int(item_id): item},
+        uoms_by_id={int(uom_id): uom},
+    )
+
+
 def _decimal(value: object) -> Decimal:
     return Decimal(str(value))
 
@@ -52,10 +221,12 @@ def _decimal(value: object) -> Decimal:
 async def test_finance_purchase_sku_ledger_returns_po_line_level_prices_and_accounting_unit_price(
     client: httpx.AsyncClient,
     session: AsyncSession,
+    monkeypatch: MonkeyPatch,
 ) -> None:
     headers = await _headers(client)
-    item_id = await _pick_supplier_item(client, headers)
+    item_id = await _pick_supplier_item(session)
     uom_id, ratio_to_base = await _pick_purchase_uom(session, item_id=item_id)
+    await _patch_pms_for_purchase_item(monkeypatch, session, item_id=item_id, uom_id=uom_id)
 
     payload_1 = {
         "warehouse_id": 1,
@@ -190,10 +361,12 @@ async def test_finance_purchase_sku_ledger_returns_po_line_level_prices_and_acco
 async def test_finance_purchase_sku_ledger_filters_by_item_keyword_and_supplier(
     client: httpx.AsyncClient,
     session: AsyncSession,
+    monkeypatch: MonkeyPatch,
 ) -> None:
     headers = await _headers(client)
-    item_id = await _pick_supplier_item(client, headers)
+    item_id = await _pick_supplier_item(session)
     uom_id, _ratio_to_base = await _pick_purchase_uom(session, item_id=item_id)
+    await _patch_pms_for_purchase_item(monkeypatch, session, item_id=item_id, uom_id=uom_id)
 
     payload = {
         "warehouse_id": 1,
@@ -234,10 +407,12 @@ async def test_finance_purchase_sku_ledger_filters_by_item_keyword_and_supplier(
 async def test_finance_purchase_sku_ledger_options_include_items_suppliers_and_warehouses(
     client: httpx.AsyncClient,
     session: AsyncSession,
+    monkeypatch: MonkeyPatch,
 ) -> None:
     headers = await _headers(client)
-    item_id = await _pick_supplier_item(client, headers)
+    item_id = await _pick_supplier_item(session)
     uom_id, _ratio_to_base = await _pick_purchase_uom(session, item_id=item_id)
+    await _patch_pms_for_purchase_item(monkeypatch, session, item_id=item_id, uom_id=uom_id)
 
     payload = {
         "warehouse_id": 1,
@@ -275,10 +450,12 @@ async def test_finance_purchase_sku_ledger_options_include_items_suppliers_and_w
 async def test_finance_purchase_sku_ledger_options_are_cascading(
     client: httpx.AsyncClient,
     session: AsyncSession,
+    monkeypatch: MonkeyPatch,
 ) -> None:
     headers = await _headers(client)
-    item_id = await _pick_supplier_item(client, headers)
+    item_id = await _pick_supplier_item(session)
     uom_id, _ratio_to_base = await _pick_purchase_uom(session, item_id=item_id)
+    await _patch_pms_for_purchase_item(monkeypatch, session, item_id=item_id, uom_id=uom_id)
 
     payload = {
         "warehouse_id": 1,

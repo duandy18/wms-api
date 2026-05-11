@@ -1,9 +1,15 @@
 # tests/api/test_fskus_contract.py
 from __future__ import annotations
 
-from uuid import uuid4
 from typing import Any, Dict, List
+from uuid import uuid4
+
 import pytest
+from pytest import MonkeyPatch
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.integrations.pms.contracts import PmsExportSkuCodeResolution
 
 
 def _assert_problem_shape(obj: Dict[str, Any]) -> None:
@@ -24,37 +30,153 @@ async def _auth_headers(client) -> Dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
-async def _pick_any_item_id(client, headers: Dict[str, str]) -> int:
-    r = await client.get("/items", params={"limit": 1}, headers=headers)
-    assert r.status_code == 200, r.text
-    data = r.json()
-    assert isinstance(data, list) and data
-    return int(data[0]["id"])
+async def _pick_any_item_id(session: AsyncSession) -> int:
+    row = (
+        await session.execute(
+            text(
+                """
+                SELECT i.id
+                  FROM items i
+                  JOIN item_sku_codes c
+                    ON c.item_id = i.id
+                   AND c.code = i.sku
+                   AND c.is_active IS TRUE
+                  JOIN item_uoms u
+                    ON u.item_id = i.id
+                   AND (u.is_outbound_default IS TRUE OR u.is_base IS TRUE)
+                 WHERE i.enabled IS TRUE
+                 ORDER BY i.id ASC
+                 LIMIT 1
+                """
+            )
+        )
+    ).first()
+    assert row is not None, "expected seeded enabled item with active sku code and outbound/base uom"
+    return int(row[0])
 
 
-async def _pick_item_sku_by_id(client, headers: Dict[str, str], *, item_id: int) -> str:
-    r = await client.get("/items?limit=200", headers=headers)
-    assert r.status_code == 200, r.text
-    data = r.json()
-    for item in data:
-        if int(item["id"]) == int(item_id):
-            sku = str(item["sku"]).strip()
-            assert sku, item
-            return sku
-    raise AssertionError(f"item_id not found in /items list: {item_id}")
+async def _pick_item_sku_by_id(session: AsyncSession, *, item_id: int) -> str:
+    row = (
+        await session.execute(
+            text(
+                """
+                SELECT sku
+                  FROM items
+                 WHERE id = :item_id
+                 LIMIT 1
+                """
+            ),
+            {"item_id": int(item_id)},
+        )
+    ).first()
+    assert row is not None, f"item_id not found in seeded items: {item_id}"
+    sku = str(row[0]).strip()
+    assert sku
+    return sku
+
+
+async def _load_resolution_by_sku(
+    session: AsyncSession,
+    *,
+    sku: str,
+) -> PmsExportSkuCodeResolution:
+    row = (
+        await session.execute(
+            text(
+                """
+                SELECT
+                    c.id AS sku_code_id,
+                    i.id AS item_id,
+                    c.code AS sku_code,
+                    c.code_type::text AS code_type,
+                    c.is_primary AS is_primary,
+                    i.sku AS item_sku,
+                    i.name AS item_name,
+                    u.id AS item_uom_id,
+                    u.uom AS uom,
+                    u.display_name AS display_name,
+                    COALESCE(NULLIF(u.display_name, ''), u.uom) AS uom_name,
+                    u.ratio_to_base AS ratio_to_base
+                  FROM item_sku_codes c
+                  JOIN items i
+                    ON i.id = c.item_id
+                  JOIN item_uoms u
+                    ON u.item_id = i.id
+                   AND (u.is_outbound_default IS TRUE OR u.is_base IS TRUE)
+                 WHERE c.code = :sku
+                   AND c.is_active IS TRUE
+                   AND i.enabled IS TRUE
+                 ORDER BY u.is_outbound_default DESC, u.is_base DESC, u.id ASC
+                 LIMIT 1
+                """
+            ),
+            {"sku": str(sku).strip()},
+        )
+    ).mappings().first()
+
+    assert row is not None, f"expected PMS resolution seed for sku={sku!r}"
+
+    return PmsExportSkuCodeResolution(
+        sku_code_id=int(row["sku_code_id"]),
+        item_id=int(row["item_id"]),
+        sku_code=str(row["sku_code"]),
+        code_type=str(row["code_type"]),
+        is_primary=bool(row["is_primary"]),
+        item_sku=str(row["item_sku"]),
+        item_name=str(row["item_name"]),
+        item_uom_id=int(row["item_uom_id"]),
+        uom=str(row["uom"]),
+        display_name=(str(row["display_name"]) if row["display_name"] is not None else None),
+        uom_name=str(row["uom_name"]),
+        ratio_to_base=int(row["ratio_to_base"]),
+    )
+
+
+class _FakeSyncPmsReadClient:
+    def __init__(self, resolution_by_code: dict[str, PmsExportSkuCodeResolution]) -> None:
+        self._resolution_by_code = {
+            str(code).strip(): row for code, row in resolution_by_code.items()
+        }
+
+    def resolve_active_code_for_outbound_default(
+        self,
+        *,
+        code: str,
+        enabled_only: bool = True,
+    ) -> PmsExportSkuCodeResolution | None:
+        _ = enabled_only
+        return self._resolution_by_code.get(str(code).strip())
+
+
+def _patch_fsku_pms_resolver(
+    monkeypatch: MonkeyPatch,
+    resolution_by_code: dict[str, PmsExportSkuCodeResolution],
+) -> None:
+    import app.oms.fsku.services.fsku_service_write as fsku_write
+
+    def _factory(*args, **kwargs) -> _FakeSyncPmsReadClient:
+        _ = args
+        _ = kwargs
+        return _FakeSyncPmsReadClient(resolution_by_code)
+
+    monkeypatch.setattr(fsku_write, "create_sync_pms_read_client", _factory)
 
 
 async def _create_draft_fsku(
     client,
     headers: Dict[str, str],
     *,
+    session: AsyncSession,
+    monkeypatch: MonkeyPatch,
     name: str = "FSKU-TEST",
     shape: str = "bundle",
     fsku_expr: str | None = None,
 ) -> Dict[str, Any]:
     if fsku_expr is None:
-        item_id = await _pick_any_item_id(client, headers)
-        sku = await _pick_item_sku_by_id(client, headers, item_id=item_id)
+        item_id = await _pick_any_item_id(session)
+        sku = await _pick_item_sku_by_id(session, item_id=item_id)
+        resolution = await _load_resolution_by_sku(session, sku=sku)
+        _patch_fsku_pms_resolver(monkeypatch, {sku: resolution})
         alloc_unit_price = 1 + (uuid4().int % 100000)
         fsku_expr = f"{sku}*1*{alloc_unit_price}"
 
@@ -67,12 +189,25 @@ async def _create_draft_fsku(
     return r.json()
 
 
-async def _replace_components(client, headers: Dict[str, str], fsku_id: int, components: List[dict]):
+async def _replace_components(
+    client,
+    headers: Dict[str, str],
+    fsku_id: int,
+    components: List[dict],
+    *,
+    session: AsyncSession,
+    monkeypatch: MonkeyPatch,
+):
     parts: list[str] = []
+    resolution_by_code: dict[str, PmsExportSkuCodeResolution] = {}
+
     for c in components:
-        sku = await _pick_item_sku_by_id(client, headers, item_id=int(c["resolved_item_id"]))
+        sku = await _pick_item_sku_by_id(session, item_id=int(c["resolved_item_id"]))
+        resolution_by_code[sku] = await _load_resolution_by_sku(session, sku=sku)
         qty = int(c.get("qty") or 1)
         parts.append(f"{sku}*{qty}*1")
+
+    _patch_fsku_pms_resolver(monkeypatch, resolution_by_code)
 
     expr = "+".join(parts)
     r = await client.post(
@@ -107,7 +242,6 @@ async def test_fsku_list_contract_with_archive_fields(client):
 
     one = items[0]
 
-    # —— 主键 / 展示字段
     for k in (
         "id",
         "code",
@@ -128,7 +262,6 @@ async def test_fsku_list_contract_with_archive_fields(client):
     assert one["status"] in ("draft", "published", "retired")
     assert isinstance(one["components_summary"], str)
 
-    # 归档语义必须来自 status/retired_at
     if one["status"] == "retired":
         assert one["retired_at"] is not None
     else:
@@ -136,20 +269,32 @@ async def test_fsku_list_contract_with_archive_fields(client):
 
 
 @pytest.mark.asyncio
-async def test_fsku_archive_lifecycle(client):
+async def test_fsku_archive_lifecycle(
+    client,
+    session: AsyncSession,
+    monkeypatch: MonkeyPatch,
+):
     """
     归档（retire）行为必须在列表中可见
     """
     headers = await _auth_headers(client)
-    item_id = await _pick_any_item_id(client, headers)
+    item_id = await _pick_any_item_id(session)
 
-    f = await _create_draft_fsku(client, headers, name="FSKU-ARCHIVE-TEST")
+    f = await _create_draft_fsku(
+        client,
+        headers,
+        session=session,
+        monkeypatch=monkeypatch,
+        name="FSKU-ARCHIVE-TEST",
+    )
 
     await _replace_components(
         client,
         headers,
         fsku_id=f["id"],
         components=[{"resolved_item_id": item_id, "qty": 1, "role": "primary"}],
+        session=session,
+        monkeypatch=monkeypatch,
     )
 
     r_pub = await client.post(f"/oms/fskus/{f['id']}/publish", headers=headers)
@@ -162,7 +307,6 @@ async def test_fsku_archive_lifecycle(client):
     assert body["status"] == "retired"
     assert body["retired_at"] is not None
 
-    # 列表中必须能看到
     r_list = await client.get("/oms/fskus", headers=headers)
     items = r_list.json()["items"]
     hit = next(x for x in items if x["id"] == f["id"])
@@ -171,21 +315,33 @@ async def test_fsku_archive_lifecycle(client):
 
 
 @pytest.mark.asyncio
-async def test_fsku_unretire_lifecycle(client):
+async def test_fsku_unretire_lifecycle(
+    client,
+    session: AsyncSession,
+    monkeypatch: MonkeyPatch,
+):
     """
     契约封板：FSKU 生命周期单向（draft → published → retired），发布事实不可逆。
     因此 unretire endpoint 仅兼容保留，但必须永远返回 409（state_conflict）+ Problem shape。
     """
     headers = await _auth_headers(client)
-    item_id = await _pick_any_item_id(client, headers)
+    item_id = await _pick_any_item_id(session)
 
-    f = await _create_draft_fsku(client, headers, name="FSKU-UNRETIRE-TEST")
+    f = await _create_draft_fsku(
+        client,
+        headers,
+        session=session,
+        monkeypatch=monkeypatch,
+        name="FSKU-UNRETIRE-TEST",
+    )
 
     await _replace_components(
         client,
         headers,
         fsku_id=f["id"],
         components=[{"resolved_item_id": item_id, "qty": 1, "role": "primary"}],
+        session=session,
+        monkeypatch=monkeypatch,
     )
 
     r_pub = await client.post(f"/oms/fskus/{f['id']}/publish", headers=headers)
@@ -211,7 +367,11 @@ async def test_fsku_unretire_lifecycle(client):
 
 
 @pytest.mark.asyncio
-async def test_fsku_unretire_guard_requires_retired(client):
+async def test_fsku_unretire_guard_requires_retired(
+    client,
+    session: AsyncSession,
+    monkeypatch: MonkeyPatch,
+):
     """
     契约封板：unretire 永远不允许（兼容保留但必须 409 + Problem）
     - draft -> 409 + Problem
@@ -219,9 +379,15 @@ async def test_fsku_unretire_guard_requires_retired(client):
     - retired -> 409 + Problem
     """
     headers = await _auth_headers(client)
-    item_id = await _pick_any_item_id(client, headers)
+    item_id = await _pick_any_item_id(session)
 
-    f = await _create_draft_fsku(client, headers, name="FSKU-UNRETIRE-GUARD")
+    f = await _create_draft_fsku(
+        client,
+        headers,
+        session=session,
+        monkeypatch=monkeypatch,
+        name="FSKU-UNRETIRE-GUARD",
+    )
 
     r_un_draft = await client.post(f"/oms/fskus/{f['id']}/unretire", headers=headers)
     assert r_un_draft.status_code == 409, r_un_draft.text
@@ -232,6 +398,8 @@ async def test_fsku_unretire_guard_requires_retired(client):
         headers,
         fsku_id=f["id"],
         components=[{"resolved_item_id": item_id, "qty": 1, "role": "primary"}],
+        session=session,
+        monkeypatch=monkeypatch,
     )
 
     r_pub = await client.post(f"/oms/fskus/{f['id']}/publish", headers=headers)

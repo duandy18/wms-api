@@ -89,3 +89,11 @@ def test_alembic_env_keeps_external_anchors_for_fk_resolution() -> None:
 
     assert "PMS_EXTERNAL_ANCHOR_TABLES" in text
     assert "t.name in PMS_OWNED_TABLES and t.name not in PMS_EXTERNAL_ANCHOR_TABLES" in text
+
+
+
+def test_db_base_eagerly_loads_external_pms_orm_anchors() -> None:
+    text = (ROOT / "app" / "db" / "base.py").read_text(encoding="utf-8")
+
+    assert "_load_external_pms_orm_anchors()" in text
+    assert 'importlib.import_module("app.db.external_pms_models")' in text

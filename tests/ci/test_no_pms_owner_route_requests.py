@@ -11,14 +11,7 @@ OWNER_ROUTE_RE = re.compile(
     r"""(/items\b|/items/|/item-uoms\b|/item-uoms/|/item-barcodes\b|/item-barcodes/|/pms/brands\b|/pms/brands/|/pms/categories\b|/pms/categories/|/pms/item-attribute|/pms/sku-coding)"""
 )
 
-# Transitional exceptions:
-# These are not PMS owner tests, but still use retired PMS owner routes to
-# prepare/read data. They must be refactored in the next PR to use seed data
-# or PMS HTTP read surface instead.
-TEMP_ALLOWED = {
-    "tests/api/test_fskus_contract.py",
-    "tests/api/test_finance_purchase_sku_ledger_api.py",
-}
+TEMP_ALLOWED: set[str] = set()
 
 
 def test_tests_do_not_call_retired_pms_owner_routes() -> None:

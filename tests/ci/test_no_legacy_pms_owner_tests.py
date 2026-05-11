@@ -5,9 +5,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 
-ALLOWED_TEST_IMPORTS = {
-    "tests/fixtures/po_batch_semantics_fixtures.py",
-}
+ALLOWED_TEST_IMPORTS: set[str] = set()
 
 
 def test_tests_do_not_import_legacy_pms_owner_runtime() -> None:
