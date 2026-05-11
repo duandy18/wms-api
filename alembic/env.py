@@ -74,9 +74,8 @@ def build_scoped_metadata(scope: str) -> MetaData:
     按 scope 构建一个缩小版的 MetaData，减少 alembic check 的噪音。
 
     PMS owner tables live in pms-api. wms-api keeps minimal external ORM
-    anchors in Base.metadata only to let transitional WMS/OMS/Procurement
-    foreign keys and relationship("Item") references resolve. Alembic must
-    ignore PMS-owned tables from wms-api.
+    anchors in Base.metadata during the shared-database transition. Alembic
+    must ignore PMS-owned tables from wms-api.
     """
     md = MetaData()
     if scope == "all":

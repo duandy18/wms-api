@@ -140,7 +140,6 @@ class CountDocLine(Base):
 
     item_id: Mapped[int] = mapped_column(
         sa.Integer,
-        sa.ForeignKey("items.id", name="fk_count_doc_lines_item", ondelete="RESTRICT"),
         nullable=False,
         index=True,
     )
@@ -189,12 +188,6 @@ class CountDocLine(Base):
     )
 
     __table_args__ = (
-        sa.ForeignKeyConstraint(
-            ["counted_item_uom_id", "item_id"],
-            ["item_uoms.id", "item_uoms.item_id"],
-            name="fk_count_doc_lines_counted_item_uom_pair",
-            ondelete="RESTRICT",
-        ),
         sa.UniqueConstraint("doc_id", "line_no", name="uq_count_doc_lines_doc_line"),
         sa.UniqueConstraint("doc_id", "item_id", name="uq_count_doc_lines_doc_item"),
         sa.CheckConstraint(

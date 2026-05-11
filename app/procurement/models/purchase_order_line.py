@@ -42,7 +42,6 @@ class PurchaseOrderLine(Base):
 
     item_id: Mapped[int] = mapped_column(
         sa.Integer,
-        sa.ForeignKey("items.id", ondelete="RESTRICT"),
         nullable=False,
         index=True,
     )
@@ -53,7 +52,6 @@ class PurchaseOrderLine(Base):
 
     purchase_uom_id_snapshot: Mapped[int] = mapped_column(
         sa.Integer,
-        sa.ForeignKey("item_uoms.id", name="fk_po_line_purchase_uom"),
         nullable=False,
     )
     purchase_uom_name_snapshot: Mapped[str] = mapped_column(

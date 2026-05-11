@@ -50,7 +50,6 @@ class Lot(Base):
 
     item_id: Mapped[int] = mapped_column(
         Integer,
-        ForeignKey("items.id", ondelete="RESTRICT"),
         nullable=False,
     )
 
