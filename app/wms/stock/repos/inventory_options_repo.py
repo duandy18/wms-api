@@ -5,8 +5,12 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.integrations.pms.contracts import ItemReadQuery
-from app.integrations.pms.factory import create_pms_read_client
+
+def _norm_text(value: str | None) -> str | None:
+    if value is None:
+        return None
+    text_value = str(value).strip()
+    return text_value or None
 
 
 async def list_active_warehouses(
@@ -37,21 +41,46 @@ async def list_public_items(
     q: str | None,
     limit: int,
 ) -> list[dict[str, Any]]:
-    items = await create_pms_read_client(session=session).list_item_basics(
-        query=ItemReadQuery(
-            enabled=True,
-            q=q,
-            limit=int(limit),
+    """
+    Inventory options read PMS current-state from WMS local projection.
+
+    Boundary:
+    - projection is a WMS read index synced from pms-api read-v1 HTTP;
+    - this read path must not call pms-api per request;
+    - write validation still belongs to pms-api HTTP integration;
+    - historical facts still belong to snapshot / ledger / lot rows.
+    """
+    q_norm = _norm_text(q)
+    safe_limit = max(1, min(int(limit), 500))
+
+    conditions = ["p.enabled IS TRUE"]
+    params: dict[str, Any] = {"limit": safe_limit}
+
+    if q_norm is not None:
+        conditions.append(
+            """
+            (
+                p.sku ILIKE :q
+                OR p.name ILIKE :q
+            )
+            """
         )
+        params["q"] = f"%{q_norm}%"
+
+    sql = text(
+        f"""
+        SELECT
+            p.item_id AS id,
+            p.sku,
+            p.name
+        FROM wms_pms_item_projection AS p
+        WHERE {" AND ".join(conditions)}
+        ORDER BY p.item_id ASC
+        LIMIT :limit
+        """
     )
-    return [
-        {
-            "id": int(item.id),
-            "sku": str(item.sku),
-            "name": str(item.name),
-        }
-        for item in items
-    ]
+    rows = (await session.execute(sql, params)).mappings().all()
+    return [dict(r) for r in rows]
 
 
 __all__ = [
