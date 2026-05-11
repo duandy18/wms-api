@@ -21,7 +21,7 @@ _INITIALIZED: bool = False  # 防重复初始化
 
 # 显式排除清单：
 # 仅用于临时屏蔽“文件仍存在、但不得进入主线 metadata”的模型。
-# 当前旧 batch / 旧 inbound_receipt 模型已物理删除，清单保持为空。
+# 当前旧 batch / 旧 inbound_receipt 模型已物理删除；PMS owner ORM 已迁入 pms-api。
 _DEFAULT_EXCLUDE: Set[str] = set()
 
 # Phase M-5：表名级别的 legacy 黑名单（防止未来模块改名/移动导致 ex 失效）
@@ -100,14 +100,11 @@ def init_models(
 
     loaded: List[str] = []
 
-    # ✅ 显式加载链：只放“主线真相表”的模型（避免把 legacy 表带进 metadata）
+    # ✅ 显式加载链：只放 wms-api owner 模型；PMS owner ORM 不再进入 wms-api metadata。
     explicit_chain = [
         "app.partners.suppliers.models.supplier",
         "app.partners.suppliers.models.supplier_contact",
-        "app.pms.sku_coding.models.sku_coding",
-        "app.pms.items.models.item",
-        "app.pms.items.models.item_uom",
-        "app.pms.items.models.item_barcode",
+        "app.db.external_pms_models",
         "app.procurement.models.purchase_order",
         "app.procurement.models.purchase_order_line",
         "app.wms.inventory_adjustment.return_inbound.models.inbound_receipt",
@@ -135,8 +132,6 @@ def init_models(
     for pkg_name in (
         "app.procurement.models",
         "app.finance.models",
-        "app.pms.items.models",
-        "app.pms.sku_coding.models",
         "app.partners.suppliers.models",
         "app.wms.inventory_adjustment.return_inbound.models",
         "app.wms.inventory_adjustment.count.models",
