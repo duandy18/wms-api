@@ -50,6 +50,92 @@ async def test_stock_options_returns_warehouses_and_items(client: AsyncClient) -
 
 
 @pytest.mark.asyncio
+async def test_stock_options_items_use_pms_projection(
+    client: AsyncClient,
+    session: AsyncSession,
+) -> None:
+    headers = await _login_admin_headers(client)
+
+    item_id = 990101
+    await session.execute(
+        text(
+            """
+            INSERT INTO wms_pms_item_projection (
+                item_id,
+                sku,
+                name,
+                spec,
+                enabled,
+                supplier_id,
+                brand,
+                category,
+                expiry_policy,
+                shelf_life_value,
+                shelf_life_unit,
+                lot_source_policy,
+                derivation_allowed,
+                uom_governance_enabled,
+                pms_updated_at,
+                source_hash,
+                sync_version,
+                synced_at
+            )
+            VALUES (
+                :item_id,
+                :sku,
+                :name,
+                NULL,
+                TRUE,
+                NULL,
+                NULL,
+                NULL,
+                'NONE',
+                NULL,
+                NULL,
+                'INTERNAL_ONLY',
+                TRUE,
+                FALSE,
+                now(),
+                :source_hash,
+                'ut-stock-options-projection',
+                now()
+            )
+            ON CONFLICT (item_id) DO UPDATE SET
+                sku = EXCLUDED.sku,
+                name = EXCLUDED.name,
+                enabled = EXCLUDED.enabled,
+                pms_updated_at = EXCLUDED.pms_updated_at,
+                source_hash = EXCLUDED.source_hash,
+                sync_version = EXCLUDED.sync_version,
+                synced_at = now()
+            """
+        ),
+        {
+            "item_id": item_id,
+            "sku": "UT-PROJ-STOCK-OPT-990101",
+            "name": "库存选项Projection商品990101",
+            "source_hash": "ut-stock-options-projection-990101",
+        },
+    )
+    await session.commit()
+
+    r = await client.get(
+        "/stock/options",
+        headers=headers,
+        params={"item_q": "UT-PROJ-STOCK-OPT-990101", "item_limit": 20},
+    )
+    assert r.status_code == 200, r.text
+
+    items = r.json()["items"]
+    assert any(
+        int(item["id"]) == item_id
+        and item["sku"] == "UT-PROJ-STOCK-OPT-990101"
+        and item["name"] == "库存选项Projection商品990101"
+        for item in items
+    ), items
+
+
+@pytest.mark.asyncio
 async def test_stock_inventory_returns_inventory_rows_with_lot_code_only(client: AsyncClient) -> None:
     headers = await _login_admin_headers(client)
 
