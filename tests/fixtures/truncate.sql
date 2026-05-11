@@ -15,8 +15,19 @@
 -- Pricing Phase-surcharge-config：
 -- - surcharge 主线已切到 surcharge_configs + surcharge_config_cities；
 -- - tests 清库不再触碰 shipping_provider_surcharges 旧表。
+--
+-- PMS Split Stabilization：
+-- - PMS owner 真相已拆到 pms-api / pms DB；
+-- - WMS 测试里 wms_pms_*_projection 是 PMS current-state 测试投影；
+-- - projection 表必须每个 test function 清空，禁止跨用例残留。
 
 TRUNCATE TABLE
+  -- PMS read projections
+  wms_pms_barcode_projection,
+  wms_pms_sku_code_projection,
+  wms_pms_uom_projection,
+  wms_pms_item_projection,
+
   -- platform order ingestion jobs
   -- finance facts
   finance_order_sales_lines,
