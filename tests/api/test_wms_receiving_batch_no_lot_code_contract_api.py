@@ -9,6 +9,8 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from tests.helpers.procurement_pms_projection import install_procurement_pms_projection_fake
+
 
 async def _login_admin_headers(client: httpx.AsyncClient) -> dict[str, str]:
     response = await client.post(
@@ -42,18 +44,18 @@ async def _pick_enabled_item_with_uom(session: AsyncSession) -> dict[str, object
             text(
                 """
                 SELECT
-                  i.id AS item_id,
-                  u.id AS item_uom_id,
+                  i.item_id AS item_id,
+                  u.item_uom_id AS item_uom_id,
                   COALESCE(NULLIF(u.display_name, ''), u.uom) AS uom_name,
                   u.ratio_to_base AS ratio_to_base
-                FROM items i
-                JOIN item_uoms u
-                  ON u.item_id = i.id
+                FROM wms_pms_item_projection i
+                JOIN wms_pms_uom_projection u
+                  ON u.item_id = i.item_id
                 WHERE COALESCE(i.enabled, true) = true
                 ORDER BY
                   CASE WHEN u.is_inbound_default THEN 0 WHEN u.is_base THEN 1 ELSE 2 END,
-                  i.id,
-                  u.id
+                  i.item_id,
+                  u.item_uom_id
                 LIMIT 1
                 """
             )
@@ -78,12 +80,18 @@ async def _force_supplier_required_item_policy(
     await session.execute(
         text(
             """
-            UPDATE items
-               SET lot_source_policy = 'SUPPLIER_ONLY'::lot_source_policy,
-                   expiry_policy = 'REQUIRED'::expiry_policy,
+            UPDATE wms_pms_item_projection
+               SET lot_source_policy = 'SUPPLIER_ONLY',
+                   expiry_policy = 'REQUIRED',
+                   shelf_life_value = COALESCE(shelf_life_value, 30),
+                   shelf_life_unit = COALESCE(shelf_life_unit, 'DAY'),
                    derivation_allowed = TRUE,
-                   uom_governance_enabled = TRUE
-             WHERE id = :item_id
+                   uom_governance_enabled = TRUE,
+                   pms_updated_at = CURRENT_TIMESTAMP,
+                   source_hash = 'ut-receiving-batch-required:' || item_id::text,
+                   sync_version = 'ut-receiving-batch-required',
+                   synced_at = CURRENT_TIMESTAMP
+             WHERE item_id = :item_id
             """
         ),
         {"item_id": int(item_id)},
@@ -232,6 +240,7 @@ async def test_wms_receiving_batch_no_maps_to_event_lot_code_input_and_lot_id(
       - stock_ledger 不落 batch_no / batch_code 字符串事实
     """
     headers = await _login_admin_headers(client)
+    install_procurement_pms_projection_fake(session)
 
     warehouse_id = await _pick_active_warehouse_id(session)
     picked = await _pick_enabled_item_with_uom(session)
