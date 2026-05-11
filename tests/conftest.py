@@ -146,6 +146,22 @@ async def _db_clean_and_seed(async_engine: AsyncEngine):
                 """
             )
         )
+        await conn.execute(
+            text(
+                """
+                UPDATE wms_pms_item_projection
+                   SET expiry_policy = 'REQUIRED',
+                       lot_source_policy = 'SUPPLIER_ONLY',
+                       shelf_life_value = COALESCE(shelf_life_value, 30),
+                       shelf_life_unit = COALESCE(shelf_life_unit, 'DAY'),
+                       pms_updated_at = CURRENT_TIMESTAMP,
+                       source_hash = 'test-baseline:required:' || item_id::text || ':' || COALESCE(sku, ''),
+                       sync_version = 'test-baseline',
+                       synced_at = CURRENT_TIMESTAMP
+                 WHERE expiry_policy IS DISTINCT FROM 'REQUIRED'
+                """
+            )
+        )
 
         # 3) Route C 测试基线：服务省份规则 + 店铺绑定（显式）
         row = await conn.execute(text("SELECT id FROM warehouses ORDER BY id ASC LIMIT 1"))
