@@ -61,6 +61,14 @@ def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
+def _scan_lines(pattern: re.Pattern[str], text: str) -> list[str]:
+    return [
+        line.strip()
+        for line in text.splitlines()
+        if pattern.search(line)
+    ]
+
+
 def test_projection_baseline_seed_sql_exists_and_writes_required_projection_tables() -> None:
     sql = _read(PROJECTION_SEED_PATH)
 
@@ -85,19 +93,21 @@ def test_base_seed_no_longer_materializes_pms_projection_baseline() -> None:
     assert hits == []
 
 
+def test_base_seed_is_legacy_owner_independent() -> None:
+    sql = _read(BASE_SEED_PATH)
+
+    write_hits = _scan_lines(LEGACY_OWNER_WRITE_PATTERN, sql)
+    read_hits = _scan_lines(LEGACY_OWNER_READ_PATTERN, sql)
+
+    assert write_hits == []
+    assert read_hits == []
+
+
 def test_projection_seed_is_owner_independent() -> None:
     sql = _read(PROJECTION_SEED_PATH)
 
-    write_hits = [
-        line.strip()
-        for line in sql.splitlines()
-        if LEGACY_OWNER_WRITE_PATTERN.search(line)
-    ]
-    read_hits = [
-        line.strip()
-        for line in sql.splitlines()
-        if LEGACY_OWNER_READ_PATTERN.search(line)
-    ]
+    write_hits = _scan_lines(LEGACY_OWNER_WRITE_PATTERN, sql)
+    read_hits = _scan_lines(LEGACY_OWNER_READ_PATTERN, sql)
 
     assert write_hits == []
     assert read_hits == []
