@@ -6,6 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.wms.stock.services.lots import ensure_lot_full
 from app.wms.stock.services.stock_adjust import adjust_lot_impl
+from tests.helpers.pms_projection import seed_pms_projection_item_with_base_uom
+from tests.helpers.procurement_pms_projection import install_procurement_pms_projection_fake
 
 pytestmark = pytest.mark.asyncio
 
@@ -19,59 +21,28 @@ async def _ensure_min_domain_v2(
     """
     Phase M-5：lot-world 下确保最小域存在（不再创建/触碰 legacy stocks）。
     - warehouses: id = warehouse_id
-    - items     : id = item_id（policy NOT NULL）
-    - item_uoms : 每 item 至少一个 base uom（PCS, ratio=1），并作为默认
+    - PMS current-state: wms_pms_*_projection 中的 item/uom/sku-code
     """
-    # 仓库（最小一行）
+    install_procurement_pms_projection_fake(session)
+
     await session.execute(
         text("INSERT INTO warehouses(id, name) VALUES (:w, :name) ON CONFLICT (id) DO NOTHING"),
         {"w": warehouse_id, "name": f"WH-{warehouse_id}"},
     )
 
-    # 商品（最小一行，Phase M-5：policy NOT NULL）
-    # 设为 REQUIRED：让 smoke 用 batch_code + production_date 跑稳定的 supplier-lot 路径
-    await session.execute(
-        text(
-            """
-            INSERT INTO items(
-              id, sku, name,
-              lot_source_policy, expiry_policy, derivation_allowed, uom_governance_enabled,
-              shelf_life_value, shelf_life_unit
-            )
-            VALUES(
-              :i, :sku, :name,
-              'SUPPLIER_ONLY'::lot_source_policy, 'REQUIRED'::expiry_policy, TRUE, TRUE,
-              30, 'DAY'
-            )
-            ON CONFLICT (id) DO NOTHING
-            """
-        ),
-        {"i": int(item_id), "sku": f"SKU-{item_id}", "name": f"ITEM-{item_id}"},
-    )
-
-    # 单位真相：item_uoms（base+defaults）
-    await session.execute(
-        text(
-            """
-            INSERT INTO item_uoms(
-              item_id, uom, ratio_to_base, display_name,
-              is_base, is_purchase_default, is_inbound_default, is_outbound_default
-            )
-            VALUES(
-              :i, 'PCS', 1, 'PCS',
-              TRUE, TRUE, TRUE, TRUE
-            )
-            ON CONFLICT ON CONSTRAINT uq_item_uoms_item_uom
-            DO UPDATE SET
-              ratio_to_base = EXCLUDED.ratio_to_base,
-              display_name = EXCLUDED.display_name,
-              is_base = EXCLUDED.is_base,
-              is_purchase_default = EXCLUDED.is_purchase_default,
-              is_inbound_default = EXCLUDED.is_inbound_default,
-              is_outbound_default = EXCLUDED.is_outbound_default
-            """
-        ),
-        {"i": int(item_id)},
+    await seed_pms_projection_item_with_base_uom(
+        session,
+        item_id=int(item_id),
+        item_uom_id=int(item_id),
+        sku_code_id=int(item_id),
+        sku=f"SKU-{item_id}",
+        name=f"ITEM-{item_id}",
+        expiry_policy="REQUIRED",
+        lot_source_policy="SUPPLIER_ONLY",
+        ratio_to_base=1,
+        uom="PCS",
+        display_name="PCS",
+        sync_version="ut-inbound-smoke-projection",
     )
 
     await session.commit()
@@ -114,25 +85,15 @@ async def _qty_lot(session: AsyncSession, *, warehouse_id: int, item_id: int, ba
 async def test_inbound_ledger_snapshot_smoke(session: AsyncSession):
     """
     入库烟雾测试（最小闭环，lot-world 余额 + ledger 一致性）：
-
-    场景：
-    1. 确保最小维度存在；
-    2. 通过 lot-only 写入口做入库 +5；
-    3. 断言：
-       - stocks_lot 的 qty 变化正确；
-       - stock_ledger 中对应 ref/ref_line 的 after_qty 与余额一致。
-
-    注意：
-    - 本测试只验证“ledger 唯一事实 → 余额一致”的闭环。
     """
+    install_procurement_pms_projection_fake(session)
+
     WH, ITEM, BATCH = 1, 777, "SMOKE-BATCH-001"
 
-    # 1) 确保最小域存在
     await _ensure_min_domain_v2(session, warehouse_id=WH, item_id=ITEM)
 
     before = await _qty_lot(session, warehouse_id=WH, item_id=ITEM, batch_code=BATCH)
 
-    # 2) 入库 +5（走 lot-only ledger 写入口）
     production_date = date.today()
     expiry_date = production_date + timedelta(days=30)
     lot_id = await ensure_lot_full(
@@ -162,11 +123,9 @@ async def test_inbound_ledger_snapshot_smoke(session: AsyncSession):
     )
     await session.commit()
 
-    # 3) 断言余额
     qty_now = await _qty_lot(session, warehouse_id=WH, item_id=ITEM, batch_code=BATCH)
     assert qty_now == before + 5
 
-    # 4) 断言 ledger.after_qty 对齐余额
     row = (
         await session.execute(
             text(

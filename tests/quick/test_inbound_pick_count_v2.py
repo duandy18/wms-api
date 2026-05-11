@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.wms.shared.enums import MovementType
 from app.wms.stock.services.lots import ensure_internal_lot_singleton
 from app.wms.stock.services.stock_adjust import adjust_lot_impl
+from tests.helpers.procurement_pms_projection import install_procurement_pms_projection_fake
 
 UTC = timezone.utc
 
@@ -17,6 +18,8 @@ async def _ensure_internal_lot(session: AsyncSession, *, item_id: int, wh: int, 
     “非批次商品的 NULL 槽位”由 INTERNAL 单例 lot 承载（lot_code=NULL，(wh,item) 只有一个）。
     """
     _ = ref
+    install_procurement_pms_projection_fake(session)
+
     return await ensure_internal_lot_singleton(
         session,
         item_id=int(item_id),
@@ -45,12 +48,27 @@ async def _qty(session: AsyncSession, item_id: int, wh: int, lot_id: int) -> int
 
 @pytest.mark.asyncio
 async def test_receive_then_pick_then_count(session: AsyncSession):
+    install_procurement_pms_projection_fake(session)
+
     item_id = 1
     wh = 1
 
-    # 本用例要测 NONE/internal-lot 语义：局部把该 item 改回 NONE
+    # 本用例要测 NONE/internal-lot 语义：局部把该 item 的 PMS projection 改回 NONE
     await session.execute(
-        text("UPDATE items SET expiry_policy='NONE'::expiry_policy WHERE id=:i"),
+        text(
+            """
+            UPDATE wms_pms_item_projection
+               SET expiry_policy = 'NONE',
+                   lot_source_policy = 'INTERNAL_ONLY',
+                   shelf_life_value = NULL,
+                   shelf_life_unit = NULL,
+                   pms_updated_at = CURRENT_TIMESTAMP,
+                   source_hash = 'ut-quick-inbound-pick-count:none:' || item_id::text,
+                   sync_version = 'ut-quick-inbound-pick-count:none',
+                   synced_at = CURRENT_TIMESTAMP
+             WHERE item_id = :i
+            """
+        ),
         {"i": int(item_id)},
     )
     await session.commit()
