@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.wms.shared.services.three_books_consistency import verify_commit_three_books
 from app.wms.snapshot.services.snapshot_run import run_snapshot
+from tests.helpers.procurement_pms_projection import install_procurement_pms_projection_fake
 from tests.utils.ensure_minimal import set_stock_qty
 
 pytestmark = pytest.mark.asyncio
@@ -45,23 +46,25 @@ async def _pick_enabled_items_with_base_uom(
     *,
     limit: int,
 ) -> list[dict[str, object]]:
+    install_procurement_pms_projection_fake(session)
+
     rows = (
         await session.execute(
             text(
                 """
-                SELECT DISTINCT ON (i.id)
-                  i.id AS item_id,
+                SELECT DISTINCT ON (i.item_id)
+                  i.item_id AS item_id,
                   i.name AS item_name,
                   i.spec AS item_spec,
-                  u.id AS item_uom_id,
+                  u.item_uom_id AS item_uom_id,
                   COALESCE(NULLIF(u.display_name, ''), u.uom) AS uom_name,
                   u.ratio_to_base AS ratio_to_base
-                FROM items i
-                JOIN item_uoms u
-                  ON u.item_id = i.id
+                FROM wms_pms_item_projection i
+                JOIN wms_pms_uom_projection u
+                  ON u.item_id = i.item_id
                 WHERE COALESCE(i.enabled, true) = true
                   AND COALESCE(u.is_base, false) = true
-                ORDER BY i.id ASC, u.id ASC
+                ORDER BY i.item_id ASC, u.item_uom_id ASC
                 """
             )
         )
