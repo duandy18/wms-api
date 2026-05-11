@@ -6,8 +6,13 @@ from uuid import uuid4
 
 import pytest
 import httpx
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from tests.helpers.procurement_pms_projection import (
+    install_procurement_pms_projection_fake,
+    pick_purchase_uom_id,
+    seed_purchase_projection_item,
+)
 
 
 async def _login_admin_headers(client: httpx.AsyncClient) -> Dict[str, str]:
@@ -18,88 +23,19 @@ async def _login_admin_headers(client: httpx.AsyncClient) -> Dict[str, str]:
 
 
 async def _pick_any_uom_id(session: AsyncSession, *, item_id: int) -> int:
-    r1 = await session.execute(
-        text(
-            """
-            SELECT id
-              FROM item_uoms
-             WHERE item_id = :i AND is_base = true
-             ORDER BY id
-             LIMIT 1
-            """
-        ),
-        {"i": int(item_id)},
-    )
-    got = r1.scalar_one_or_none()
-    if got is not None:
-        return int(got)
-
-    r2 = await session.execute(
-        text(
-            """
-            SELECT id
-              FROM item_uoms
-             WHERE item_id = :i
-             ORDER BY id
-             LIMIT 1
-            """
-        ),
-        {"i": int(item_id)},
-    )
-    got2 = r2.scalar_one_or_none()
-    assert got2 is not None, {"msg": "item has no item_uoms", "item_id": int(item_id)}
-    return int(got2)
+    install_procurement_pms_projection_fake(session)
+    return await pick_purchase_uom_id(session, item_id=int(item_id))
 
 
 async def _insert_item_internal_none(session: AsyncSession, *, sku_prefix: str) -> int:
-    sku = f"{sku_prefix}-{uuid4().hex[:10]}"
-    name = f"UT-{sku}"
-
-    row = await session.execute(
-        text(
-            """
-            INSERT INTO items(
-              name, sku, enabled, supplier_id,
-              lot_source_policy, expiry_policy, derivation_allowed, uom_governance_enabled,
-              shelf_life_value, shelf_life_unit
-            )
-            VALUES(
-              :name, :sku, TRUE, 1,
-              'INTERNAL_ONLY'::lot_source_policy, 'NONE'::expiry_policy, TRUE, TRUE,
-              NULL, NULL
-            )
-            RETURNING id
-            """
-        ),
-        {"name": name, "sku": sku},
+    seeded = await seed_purchase_projection_item(
+        session,
+        supplier_id=1,
+        sku_prefix=sku_prefix,
+        expiry_policy="NONE",
+        lot_source_policy="INTERNAL_ONLY",
     )
-    item_id = int(row.scalar_one())
-
-    await session.execute(
-        text(
-            """
-            INSERT INTO item_uoms(
-              item_id, uom, ratio_to_base, display_name,
-              is_base, is_purchase_default, is_inbound_default, is_outbound_default
-            )
-            VALUES(
-              :i, 'PCS', 1, 'PCS',
-              TRUE, TRUE, TRUE, TRUE
-            )
-            ON CONFLICT ON CONSTRAINT uq_item_uoms_item_uom
-            DO UPDATE SET
-              ratio_to_base = EXCLUDED.ratio_to_base,
-              display_name = EXCLUDED.display_name,
-              is_base = EXCLUDED.is_base,
-              is_purchase_default = EXCLUDED.is_purchase_default,
-              is_inbound_default = EXCLUDED.is_inbound_default,
-              is_outbound_default = EXCLUDED.is_outbound_default
-            """
-        ),
-        {"i": int(item_id)},
-    )
-
-    return item_id
+    return int(seeded["item_id"])
 
 
 def _assert_po_head_contract(detail: Dict[str, Any]) -> None:
