@@ -250,3 +250,12 @@ pms-http-smoke: venv
 .PHONY: pms-http-business-smoke
 pms-http-business-smoke: venv
 	@PMS_CLIENT_MODE=http PMS_API_BASE_URL="$${PMS_API_BASE_URL:-http://127.0.0.1:8002}" PYTHONPATH=. $(PY) scripts/pms/http_business_smoke.py
+
+# ---------------------------------
+# PMS projection sync
+# Requires pms-api running locally on PMS_API_BASE_URL.
+# This target is intentionally local/manual and is not part of default CI.
+# ---------------------------------
+.PHONY: pms-projection-sync
+pms-projection-sync: venv
+	@PMS_API_BASE_URL="$${PMS_API_BASE_URL:-http://127.0.0.1:8002}" PYTHONPATH=. $(PY) scripts/pms/sync_projection.py --limit "$${PMS_PROJECTION_SYNC_LIMIT:-500}"
