@@ -22,7 +22,7 @@ async def _login_admin_headers(client: AsyncClient) -> dict[str, str]:
 
 
 async def _pick_any_item_id(session: AsyncSession) -> int:
-    row = await session.execute(text("SELECT id FROM items ORDER BY id ASC LIMIT 1"))
+    row = await session.execute(text("SELECT item_id FROM wms_pms_item_projection ORDER BY item_id ASC LIMIT 1"))
     item_id = row.scalar_one_or_none()
     assert item_id is not None
     return int(item_id)

@@ -29,22 +29,25 @@ from app.wms.inventory_adjustment.return_inbound.routers.order_refs import (
 )
 from app.wms.stock.services.lots import ensure_internal_lot_singleton, ensure_lot_full
 from app.wms.stock.services.stock_adjust import adjust_lot_impl
+from tests.helpers.procurement_pms_projection import install_procurement_pms_projection_fake
 
 UTC = timezone.utc
 
 
 async def _item_batch_mode_is_required(session: AsyncSession, *, item_id: int) -> bool:
     """
-    Phase M 第一阶段：测试不再读取 has_shelf_life（镜像字段）。
-    批次受控唯一真相源：items.expiry_policy == 'REQUIRED'
+    PMS 拆库后，测试只读取 WMS PMS projection。
+    批次受控唯一真相源：PMS projection expiry_policy == 'REQUIRED'
     """
+    install_procurement_pms_projection_fake(session)
+
     row = (
         await session.execute(
             text(
                 """
                 SELECT expiry_policy
-                  FROM items
-                 WHERE id = :iid
+                  FROM wms_pms_item_projection
+                 WHERE item_id = :iid
                  LIMIT 1
                 """
             ),
@@ -59,15 +62,17 @@ async def _item_batch_mode_is_required(session: AsyncSession, *, item_id: int) -
 async def _pick_base_uom_and_ratio(session: AsyncSession, *, item_id: int) -> Tuple[int, int]:
     """
     终态：收货行必须显式落 uom_id + ratio_to_base_snapshot + qty_base。
-    这里选 base uom（is_base=true），保证测试稳定。
+    PMS 拆库后，测试只读取 WMS PMS projection。
     """
+    install_procurement_pms_projection_fake(session)
+
     row = await session.execute(
         text(
             """
-            SELECT id, ratio_to_base
-              FROM item_uoms
+            SELECT item_uom_id AS id, ratio_to_base
+              FROM wms_pms_uom_projection
              WHERE item_id = :i AND is_base = true
-             ORDER BY id
+             ORDER BY item_uom_id
              LIMIT 1
             """
         ),
@@ -79,6 +84,8 @@ async def _pick_base_uom_and_ratio(session: AsyncSession, *, item_id: int) -> Tu
 
 
 async def _ensure_supplier_lot(session: AsyncSession, *, warehouse_id: int, item_id: int, code: str) -> int:
+    install_procurement_pms_projection_fake(session)
+
     """
     SUPPLIER lot（当前终态合同）：
     - REQUIRED lot 身份 = (warehouse_id, item_id, production_date)
@@ -107,6 +114,8 @@ async def _ensure_supplier_lot(session: AsyncSession, *, warehouse_id: int, item
 
 
 async def _ensure_internal_lot_for_receipt(session: AsyncSession, *, warehouse_id: int, item_id: int, receipt_id: int) -> int:
+    install_procurement_pms_projection_fake(session)
+
     """
     INTERNAL lot（终态合同）：
     - 单例：每 (warehouse_id,item_id) 只有一个 INTERNAL lot
@@ -168,6 +177,8 @@ async def _write_stock_delta_for_test(
     production_date: Optional[date],
     expiry_date: Optional[date],
 ) -> None:
+    install_procurement_pms_projection_fake(session)
+
     lot_id = await _ensure_stock_lot_for_adjust(
         session,
         warehouse_id=int(warehouse_id),
@@ -309,9 +320,9 @@ async def _insert_released_return_receipt(
                 :item_id,
                 :uom_id,
                 :qty_input,
-                (SELECT name FROM items WHERE id = :item_id),
-                (SELECT spec FROM items WHERE id = :item_id),
-                (SELECT COALESCE(NULLIF(display_name, ''), NULLIF(uom, '')) FROM item_uoms WHERE id = :uom_id),
+                (SELECT name FROM wms_pms_item_projection WHERE item_id = :item_id),
+                (SELECT spec FROM wms_pms_item_projection WHERE item_id = :item_id),
+                (SELECT COALESCE(NULLIF(display_name, ''), NULLIF(uom, '')) FROM wms_pms_uom_projection WHERE item_uom_id = :uom_id),
                 :ratio,
                 'UT-RMA-LINE',
                 NOW(),
@@ -397,10 +408,10 @@ async def _insert_released_return_receipt(
                 :op_id,
                 1,
                 :item_id,
-                (SELECT name FROM items WHERE id = :item_id),
-                (SELECT spec FROM items WHERE id = :item_id),
+                (SELECT name FROM wms_pms_item_projection WHERE item_id = :item_id),
+                (SELECT spec FROM wms_pms_item_projection WHERE item_id = :item_id),
                 :uom_id,
-                (SELECT COALESCE(NULLIF(display_name, ''), NULLIF(uom, '')) FROM item_uoms WHERE id = :uom_id),
+                (SELECT COALESCE(NULLIF(display_name, ''), NULLIF(uom, '')) FROM wms_pms_uom_projection WHERE item_uom_id = :uom_id),
                 :ratio,
                 :qty_input,
                 :qty_base,
@@ -891,13 +902,15 @@ async def test_return_order_ref_summary_item_display_uses_pms_export(
 async def test_return_inbound_probe_loads_uom_name_through_pms_export(
     session: AsyncSession,
 ) -> None:
+    install_procurement_pms_projection_fake(session)
+
     row = (
         await session.execute(
             text(
                 """
-                SELECT id, item_id, COALESCE(NULLIF(display_name, ''), uom) AS uom_name
-                FROM item_uoms
-                ORDER BY id
+                SELECT item_uom_id AS id, item_id, COALESCE(NULLIF(display_name, ''), uom) AS uom_name
+                FROM wms_pms_uom_projection
+                ORDER BY item_uom_id
                 LIMIT 1
                 """
             )
@@ -934,21 +947,23 @@ async def test_return_inbound_probe_loads_uom_name_through_pms_export(
 async def test_return_inbound_manual_line_snapshot_reads_through_pms_export(
     session: AsyncSession,
 ) -> None:
+    install_procurement_pms_projection_fake(session)
+
     row = (
         await session.execute(
             text(
                 """
                 SELECT
-                  i.id AS item_id,
+                  i.item_id AS item_id,
                   i.name AS item_name,
                   i.spec AS item_spec,
-                  u.id AS item_uom_id,
+                  u.item_uom_id AS item_uom_id,
                   COALESCE(NULLIF(u.display_name, ''), u.uom) AS uom_name,
                   u.ratio_to_base AS ratio_to_base
-                FROM items i
-                JOIN item_uoms u
-                  ON u.item_id = i.id
-                ORDER BY i.id ASC, u.id ASC
+                FROM wms_pms_item_projection i
+                JOIN wms_pms_uom_projection u
+                  ON u.item_id = i.item_id
+                ORDER BY i.item_id ASC, u.item_uom_id ASC
                 LIMIT 1
                 """
             )
@@ -974,13 +989,15 @@ async def test_return_inbound_manual_line_snapshot_reads_through_pms_export(
 async def test_return_inbound_manual_line_snapshot_rejects_mismatched_uom(
     session: AsyncSession,
 ) -> None:
+    install_procurement_pms_projection_fake(session)
+
     rows = (
         await session.execute(
             text(
                 """
-                SELECT item_id, id AS item_uom_id
-                FROM item_uoms
-                ORDER BY item_id ASC, id ASC
+                SELECT item_id, item_uom_id
+                FROM wms_pms_uom_projection
+                ORDER BY item_id ASC, item_uom_id ASC
                 LIMIT 20
                 """
             )
@@ -1014,17 +1031,19 @@ async def test_return_inbound_manual_line_snapshot_rejects_mismatched_uom(
 async def test_return_inbound_operation_loads_uom_snapshot_through_pms_export(
     session: AsyncSession,
 ) -> None:
+    install_procurement_pms_projection_fake(session)
+
     row = (
         await session.execute(
             text(
                 """
                 SELECT
-                  id AS item_uom_id,
+                  item_uom_id,
                   item_id,
                   COALESCE(NULLIF(display_name, ''), uom) AS uom_name,
                   ratio_to_base
-                FROM item_uoms
-                ORDER BY item_id ASC, id ASC
+                FROM wms_pms_uom_projection
+                ORDER BY item_id ASC, item_uom_id ASC
                 LIMIT 1
                 """
             )
@@ -1047,6 +1066,8 @@ async def test_return_inbound_operation_loads_uom_snapshot_through_pms_export(
 async def test_return_inbound_operation_resolves_barcode_through_pms_export(
     session: AsyncSession,
 ) -> None:
+    install_procurement_pms_projection_fake(session)
+
     row = (
         await session.execute(
             text(
@@ -1057,12 +1078,12 @@ async def test_return_inbound_operation_resolves_barcode_through_pms_export(
                   ib.item_uom_id,
                   COALESCE(NULLIF(u.display_name, ''), u.uom) AS uom_name,
                   u.ratio_to_base
-                FROM item_barcodes ib
-                JOIN item_uoms u
-                  ON u.id = ib.item_uom_id
+                FROM wms_pms_barcode_projection ib
+                JOIN wms_pms_uom_projection u
+                  ON u.item_uom_id = ib.item_uom_id
                  AND u.item_id = ib.item_id
                 WHERE ib.active IS TRUE
-                ORDER BY ib.is_primary DESC, ib.id ASC
+                ORDER BY ib.is_primary DESC, ib.barcode_id ASC
                 LIMIT 1
                 """
             )
@@ -1086,6 +1107,8 @@ async def test_return_inbound_operation_resolves_barcode_through_pms_export(
 async def test_return_inbound_operation_rejects_barcode_item_mismatch(
     session: AsyncSession,
 ) -> None:
+    install_procurement_pms_projection_fake(session)
+
     row = (
         await session.execute(
             text(
@@ -1093,9 +1116,9 @@ async def test_return_inbound_operation_rejects_barcode_item_mismatch(
                 SELECT
                   ib.barcode,
                   ib.item_id
-                FROM item_barcodes ib
+                FROM wms_pms_barcode_projection ib
                 WHERE ib.active IS TRUE
-                ORDER BY ib.is_primary DESC, ib.id ASC
+                ORDER BY ib.is_primary DESC, ib.barcode_id ASC
                 LIMIT 1
                 """
             )

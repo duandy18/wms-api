@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.wms.stock.services.lots import ensure_lot_full
 from app.wms.stock.services.stock_adjust import adjust_lot_impl
+from tests.helpers.procurement_pms_projection import install_procurement_pms_projection_fake
 
 pytestmark = pytest.mark.asyncio
 UTC = timezone.utc
@@ -27,10 +28,27 @@ async def test_stock_adjust_writes_trace_id(session: AsyncSession):
       4) 在同一个测试中查询 stock_ledger，按 ref='UT-ADJUST-1' 过滤；
       5) 断言存在一条记录，且 trace_id='TR-UNIT-1'。
     """
+    install_procurement_pms_projection_fake(session)
+
     now = datetime.now(UTC)
 
-    # 1) 取一个已经存在的 item_id，避免触发 items 外键错误（Phase 4E：批次主档已迁移到 lots）
-    row = await session.execute(text("SELECT id FROM items ORDER BY id ASC LIMIT 1"))
+    # 1) 取一个已经存在的 item_id，避免触发旧 PMS owner 表依赖
+    row = await session.execute(
+        text(
+            """
+            SELECT item_id
+              FROM wms_pms_item_projection
+             ORDER BY
+               CASE
+                 WHEN COALESCE(lot_source_policy, 'INTERNAL_ONLY') IN ('SUPPLIER_ONLY', 'SUPPLIER') THEN 0
+                 WHEN COALESCE(expiry_policy, 'NONE') = 'REQUIRED' THEN 1
+                 ELSE 2
+               END,
+               item_id ASC
+             LIMIT 1
+            """
+        )
+    )
     item_id = row.scalar_one()
     assert item_id is not None
 

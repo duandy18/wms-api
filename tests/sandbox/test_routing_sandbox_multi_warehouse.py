@@ -97,7 +97,7 @@ async def _pick_existing_item_ids(session: AsyncSession, n: int = 3) -> List[int
     从测试基线（seed_test_baseline）已存在的 items 中挑选若干个 item_id，
     避免在沙盘测试里硬插 items 导致 NOT NULL/约束漂移。
     """
-    rows = await session.execute(sa.text("SELECT id FROM items ORDER BY id ASC LIMIT :n"), {"n": int(n)})
+    rows = await session.execute(sa.text("SELECT item_id FROM wms_pms_item_projection ORDER BY item_id ASC LIMIT :n"), {"n": int(n)})
     ids = [int(r[0]) for r in rows.fetchall()]
     if len(ids) < n:
         raise RuntimeError(f"sandbox requires at least {n} seeded items, got {ids}")

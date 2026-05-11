@@ -12,12 +12,15 @@ from app.wms.inbound.services.inbound_commit_service import commit_inbound
 from app.wms.inventory_adjustment.inbound_reversal.contracts.inbound_reversal import (
     InboundReversalIn,
 )
+from tests.helpers.procurement_pms_projection import install_procurement_pms_projection_fake
 from app.wms.inventory_adjustment.inbound_reversal.services.inbound_reversal_service import (
     reverse_inbound_event,
 )
 
 
 async def _pick_seed_item_uom(session):
+    install_procurement_pms_projection_fake(session)
+
     wh_row = await session.execute(
         text(
             """
@@ -34,19 +37,19 @@ async def _pick_seed_item_uom(session):
         text(
             """
             SELECT
-              i.id AS item_id,
-              u.id AS uom_id,
-              i.lot_source_policy::text AS lot_source_policy,
-              i.expiry_policy::text AS expiry_policy
-            FROM item_uoms u
-            JOIN items i
-              ON i.id = u.item_id
+              i.item_id AS item_id,
+              u.item_uom_id AS uom_id,
+              i.lot_source_policy AS lot_source_policy,
+              i.expiry_policy AS expiry_policy
+            FROM wms_pms_uom_projection u
+            JOIN wms_pms_item_projection i
+              ON i.item_id = u.item_id
             ORDER BY
               CASE
-                WHEN i.lot_source_policy::text IN ('SUPPLIER_ONLY', 'SUPPLIER') THEN 0
+                WHEN COALESCE(i.lot_source_policy, 'INTERNAL_ONLY') IN ('SUPPLIER_ONLY', 'SUPPLIER') THEN 0
                 ELSE 1
               END,
-              u.id ASC
+              u.item_uom_id ASC
             LIMIT 1
             """
         )
