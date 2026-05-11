@@ -35,17 +35,17 @@ async def _pick_any_item_id(session: AsyncSession) -> int:
         await session.execute(
             text(
                 """
-                SELECT i.id
-                  FROM items i
-                  JOIN item_sku_codes c
-                    ON c.item_id = i.id
-                   AND c.code = i.sku
+                SELECT i.item_id
+                  FROM wms_pms_item_projection i
+                  JOIN wms_pms_sku_code_projection c
+                    ON c.item_id = i.item_id
+                   AND c.sku_code = i.sku
                    AND c.is_active IS TRUE
-                  JOIN item_uoms u
-                    ON u.item_id = i.id
+                  JOIN wms_pms_uom_projection u
+                    ON u.item_id = i.item_id
                    AND (u.is_outbound_default IS TRUE OR u.is_base IS TRUE)
                  WHERE i.enabled IS TRUE
-                 ORDER BY i.id ASC
+                 ORDER BY i.item_id ASC
                  LIMIT 1
                 """
             )
@@ -61,8 +61,8 @@ async def _pick_item_sku_by_id(session: AsyncSession, *, item_id: int) -> str:
             text(
                 """
                 SELECT sku
-                  FROM items
-                 WHERE id = :item_id
+                  FROM wms_pms_item_projection
+                 WHERE item_id = :item_id
                  LIMIT 1
                 """
             ),
@@ -85,28 +85,28 @@ async def _load_resolution_by_sku(
             text(
                 """
                 SELECT
-                    c.id AS sku_code_id,
-                    i.id AS item_id,
-                    c.code AS sku_code,
-                    c.code_type::text AS code_type,
+                    c.sku_code_id AS sku_code_id,
+                    i.item_id AS item_id,
+                    c.sku_code AS sku_code,
+                    c.code_type AS code_type,
                     c.is_primary AS is_primary,
                     i.sku AS item_sku,
                     i.name AS item_name,
-                    u.id AS item_uom_id,
+                    u.item_uom_id AS item_uom_id,
                     u.uom AS uom,
                     u.display_name AS display_name,
                     COALESCE(NULLIF(u.display_name, ''), u.uom) AS uom_name,
                     u.ratio_to_base AS ratio_to_base
-                  FROM item_sku_codes c
-                  JOIN items i
-                    ON i.id = c.item_id
-                  JOIN item_uoms u
-                    ON u.item_id = i.id
+                  FROM wms_pms_sku_code_projection c
+                  JOIN wms_pms_item_projection i
+                    ON i.item_id = c.item_id
+                  JOIN wms_pms_uom_projection u
+                    ON u.item_id = i.item_id
                    AND (u.is_outbound_default IS TRUE OR u.is_base IS TRUE)
-                 WHERE c.code = :sku
+                 WHERE c.sku_code = :sku
                    AND c.is_active IS TRUE
                    AND i.enabled IS TRUE
-                 ORDER BY u.is_outbound_default DESC, u.is_base DESC, u.id ASC
+                 ORDER BY u.is_outbound_default DESC, u.is_base DESC, u.item_uom_id ASC
                  LIMIT 1
                 """
             ),

@@ -23,29 +23,29 @@ async def _pick_item_resolution(session) -> dict[str, object]:
             text(
                 """
                 SELECT
-                  sc.id AS item_sku_code_id,
+                  sc.sku_code_id AS item_sku_code_id,
                   sc.item_id AS item_id,
-                  sc.code AS sku_code,
+                  sc.sku_code AS sku_code,
                   i.name AS item_name,
-                  u.id AS item_uom_id,
+                  u.item_uom_id AS item_uom_id,
                   COALESCE(NULLIF(u.display_name, ''), u.uom) AS uom
-                FROM item_sku_codes sc
-                JOIN items i ON i.id = sc.item_id
+                FROM wms_pms_sku_code_projection sc
+                JOIN wms_pms_item_projection i ON i.item_id = sc.item_id
                 JOIN LATERAL (
-                  SELECT id, uom, display_name
-                  FROM item_uoms
-                  WHERE item_id = i.id
+                  SELECT item_uom_id, uom, display_name
+                  FROM wms_pms_uom_projection
+                  WHERE item_id = i.item_id
                   ORDER BY
                     is_outbound_default DESC,
                     is_base DESC,
-                    id ASC
+                    item_uom_id ASC
                   LIMIT 1
                 ) u ON TRUE
                 WHERE sc.is_active = TRUE
                   AND i.enabled = TRUE
                 ORDER BY
                   sc.is_primary DESC,
-                  sc.id ASC
+                  sc.sku_code_id ASC
                 LIMIT 1
                 """
             )

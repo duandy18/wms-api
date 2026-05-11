@@ -8,6 +8,8 @@ from typing import Optional, Tuple
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from tests.helpers.procurement_pms_projection import install_procurement_pms_projection_fake
+
 
 @dataclass(frozen=True)
 class PoLineWorld:
@@ -69,13 +71,15 @@ async def _require_base_item_uom(session: AsyncSession, *, item_id: int) -> Tupl
     - uom_id（item_uoms.id）
     - ratio_to_base（item_uoms.ratio_to_base）
     """
+    install_procurement_pms_projection_fake(session)
+
     row = await session.execute(
         text(
             """
-            SELECT id, ratio_to_base
-            FROM item_uoms
+            SELECT item_uom_id AS id, ratio_to_base
+            FROM wms_pms_uom_projection
             WHERE item_id = :i AND is_base = true
-            ORDER BY id ASC
+            ORDER BY item_uom_id ASC
             LIMIT 1
             """
         ),

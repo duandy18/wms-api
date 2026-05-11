@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.procurement.models.purchase_order import PurchaseOrder
 from app.procurement.models.purchase_order_line import PurchaseOrderLine
+from tests.helpers.procurement_pms_projection import seed_purchase_projection_item
 
 
 def _is_required_expiry_policy(expiry_policy: str) -> bool:
@@ -41,56 +42,15 @@ async def _create_test_item(
     expiry_policy: str,
 ) -> tuple[int, str, str]:
     exp = str(expiry_policy or "").strip().upper() or "NONE"
-    sku = f"UT-SKU-{uuid4().hex[:16]}"
-    name = "UT-Item"
-
-    row = (
-        await session.execute(
-            text(
-                """
-                INSERT INTO items (
-                    name,
-                    sku,
-                    enabled,
-                    supplier_id,
-                    lot_source_policy,
-                    expiry_policy,
-                    derivation_allowed,
-                    uom_governance_enabled,
-                    shelf_life_value,
-                    shelf_life_unit
-                )
-                VALUES (
-                    :name,
-                    :sku,
-                    TRUE,
-                    :supplier_id,
-                    CAST('SUPPLIER_ONLY' AS lot_source_policy),
-                    CAST(:expiry_policy AS expiry_policy),
-                    TRUE,
-                    TRUE,
-                    :shelf_life_value,
-                    CASE
-                        WHEN :shelf_life_unit IS NULL THEN NULL
-                        ELSE CAST(:shelf_life_unit AS shelf_life_unit)
-                    END
-                )
-                RETURNING id, sku, name
-                """
-            ),
-            {
-                "name": name,
-                "sku": sku,
-                "supplier_id": int(supplier_id),
-                "expiry_policy": exp,
-                "shelf_life_value": 30 if _is_required_expiry_policy(exp) else None,
-                "shelf_life_unit": "DAY" if _is_required_expiry_policy(exp) else None,
-            },
-        )
-    ).first()
-
-    assert row is not None
-    return int(row[0]), str(row[1]), str(row[2])
+    seeded = await seed_purchase_projection_item(
+        session,
+        supplier_id=int(supplier_id),
+        sku_prefix=f"UT-SKU-{uuid4().hex[:8]}",
+        enabled=True,
+        expiry_policy=exp,
+        lot_source_policy="SUPPLIER_ONLY" if _is_required_expiry_policy(exp) else "INTERNAL_ONLY",
+    )
+    return int(seeded["item_id"]), str(seeded["sku"]), str(seeded["name"])
 
 
 async def _create_base_item_uom(session: AsyncSession, *, item_id: int) -> int:
@@ -98,27 +58,12 @@ async def _create_base_item_uom(session: AsyncSession, *, item_id: int) -> int:
         await session.execute(
             text(
                 """
-                INSERT INTO item_uoms (
-                    item_id,
-                    uom,
-                    ratio_to_base,
-                    display_name,
-                    is_base,
-                    is_purchase_default,
-                    is_inbound_default,
-                    is_outbound_default
-                )
-                VALUES (
-                    :item_id,
-                    'EA',
-                    1,
-                    NULL,
-                    TRUE,
-                    TRUE,
-                    TRUE,
-                    TRUE
-                )
-                RETURNING id
+                SELECT item_uom_id
+                  FROM wms_pms_uom_projection
+                 WHERE item_id = :item_id
+                   AND is_base IS TRUE
+                 ORDER BY item_uom_id ASC
+                 LIMIT 1
                 """
             ),
             {"item_id": int(item_id)},

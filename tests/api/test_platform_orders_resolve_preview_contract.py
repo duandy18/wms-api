@@ -10,6 +10,8 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from tests.helpers.procurement_pms_projection import install_procurement_pms_projection_fake
+
 pytestmark = pytest.mark.asyncio
 
 
@@ -121,6 +123,8 @@ async def _create_published_fsku_with_component(
     item_id: int,
     component_qty: int = 1,
 ) -> Tuple[int, str]:
+    install_procurement_pms_projection_fake(session)
+
     uniq = uuid4().hex[:10]
     code = f"UT-PREVIEW-{uniq}"
     name = f"UT-PREVIEW-FSKU-{uniq}"
@@ -131,24 +135,24 @@ async def _create_published_fsku_with_component(
                 """
                 WITH code_row AS (
                   SELECT
-                    c.id AS sku_code_id,
+                    c.sku_code_id AS sku_code_id,
                     c.item_id,
-                    c.code AS sku_code
-                  FROM item_sku_codes c
+                    c.sku_code AS sku_code
+                  FROM wms_pms_sku_code_projection c
                   WHERE c.item_id = :item_id
                     AND c.is_active = TRUE
-                  ORDER BY c.is_primary DESC, c.id ASC
+                  ORDER BY c.is_primary DESC, c.sku_code_id ASC
                   LIMIT 1
                 ),
                 uom_row AS (
                   SELECT
-                    u.id AS item_uom_id,
+                    u.item_uom_id AS item_uom_id,
                     u.item_id,
                     COALESCE(NULLIF(u.display_name, ''), NULLIF(u.uom, ''), u.uom) AS uom_name
-                  FROM item_uoms u
+                  FROM wms_pms_uom_projection u
                   WHERE u.item_id = :item_id
                     AND (u.is_outbound_default = TRUE OR u.is_base = TRUE)
-                  ORDER BY u.is_outbound_default DESC, u.is_base DESC, u.id ASC
+                  ORDER BY u.is_outbound_default DESC, u.is_base DESC, u.item_uom_id ASC
                   LIMIT 1
                 )
                 SELECT
@@ -158,7 +162,7 @@ async def _create_published_fsku_with_component(
                   ur.item_uom_id,
                   ur.uom_name
                 FROM code_row cr
-                JOIN items i ON i.id = cr.item_id
+                JOIN wms_pms_item_projection i ON i.item_id = cr.item_id
                 JOIN uom_row ur ON ur.item_id = cr.item_id
                 """
             ),
