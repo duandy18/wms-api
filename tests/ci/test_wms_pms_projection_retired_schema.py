@@ -8,7 +8,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 pytestmark = pytest.mark.asyncio
 
 
-async def test_wms_pms_projection_tables_are_retired(session: AsyncSession) -> None:
+async def test_legacy_wms_pms_projection_tables_are_retired(session: AsyncSession) -> None:
+    """
+    Historical WMS PMS projection schema was retired by migration 9f3d2c8a7b41.
+
+    The new v2 read projection uses final table names:
+    - wms_pms_item_projection
+    - wms_pms_uom_projection
+    - wms_pms_sku_code_projection
+    - wms_pms_barcode_projection
+
+    This guard only blocks the legacy table names and the retired sync cursor.
+    """
     rows = await session.execute(
         text(
             """
@@ -16,7 +27,6 @@ async def test_wms_pms_projection_tables_are_retired(session: AsyncSession) -> N
             FROM information_schema.tables
             WHERE table_schema = 'public'
               AND table_name IN (
-                'wms_pms_item_projection',
                 'wms_pms_item_uom_projection',
                 'wms_pms_item_policy_projection',
                 'wms_pms_item_sku_code_projection',
