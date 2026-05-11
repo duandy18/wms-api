@@ -8,10 +8,16 @@ from typing import Iterable, List, Optional, Tuple
 from sqlalchemy import text as SA
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import app.wms.shared.services.expiry_resolver as expiry_resolver_module
+import app.wms.stock.repos.inventory_explain_repo as inventory_explain_repo_module
+import app.wms.stock.repos.inventory_read_repo as inventory_read_repo_module
+import app.wms.stock.services.lots as lots_module
+import app.wms.stock.services.stock_adjust.db_items as db_items_module
 from app.wms.stock.services.lot_service import ensure_internal_lot_singleton as ensure_internal_lot_singleton_svc
 from app.wms.stock.services.lot_service import ensure_lot_full as ensure_lot_full_svc
 from app.wms.stock.services.stock_adjust import adjust_lot_impl
-from tests.utils.ensure_minimal import ensure_item
+from tests.helpers.pms_projection import seed_pms_projection_item_with_base_uom
+from tests.helpers.pms_read_client_fake import projection_backed_pms_read_client_factory
 
 UTC = timezone.utc
 
@@ -88,6 +94,24 @@ def _stable_required_dates_from_code(code_raw: str, *, days: int) -> tuple[date,
     return production_date, expiry_date
 
 
+def _install_projection_pms_client(session: AsyncSession) -> None:
+    """
+    Test-only PMS client patch for inventory helpers.
+
+    Boundary:
+    - only patches test runtime modules that inventory helper calls indirectly;
+    - fake reads WMS PMS projection tables only;
+    - does not alter app.integrations.pms.factory;
+    - does not reintroduce in-process PMS owner reads.
+    """
+    factory = projection_backed_pms_read_client_factory(session)
+    lots_module.create_pms_read_client = factory
+    db_items_module.create_pms_read_client = factory
+    expiry_resolver_module.create_pms_read_client = factory
+    inventory_read_repo_module.create_pms_read_client = factory
+    inventory_explain_repo_module.create_pms_read_client = factory
+
+
 async def ensure_wh_loc_item(
     session: AsyncSession,
     *,
@@ -96,21 +120,40 @@ async def ensure_wh_loc_item(
     item: int,
     code: Optional[str] = None,
     name: Optional[str] = None,
+    expiry_policy: str = "NONE",
 ) -> None:
     _ = loc
-    _ = code
-    _ = name
+
+    _install_projection_pms_client(session)
 
     await session.execute(
         SA("INSERT INTO warehouses (id, name) VALUES (:w, 'WH') ON CONFLICT (id) DO NOTHING"),
         {"w": int(wh)},
     )
 
-    await ensure_item(session, id=int(item), sku=f"SKU-{item}", name=f"ITEM-{item}")
+    await seed_pms_projection_item_with_base_uom(
+        session,
+        item_id=int(item),
+        item_uom_id=int(item),
+        sku_code_id=int(item),
+        sku=str(code or f"SKU-{item}"),
+        name=str(name or f"ITEM-{item}"),
+        expiry_policy=str(expiry_policy).strip().upper(),
+    )
 
 
 async def _load_item_expiry_policy(session: AsyncSession, *, item_id: int) -> str:
-    row = await session.execute(SA("SELECT expiry_policy::text FROM items WHERE id=:i"), {"i": int(item_id)})
+    row = await session.execute(
+        SA(
+            """
+            SELECT expiry_policy
+              FROM wms_pms_item_projection
+             WHERE item_id = :i
+             LIMIT 1
+            """
+        ),
+        {"i": int(item_id)},
+    )
     v = row.scalar_one_or_none()
     if v is None:
         raise ValueError(f"item_not_found: {item_id}")
@@ -147,13 +190,13 @@ async def seed_supplier_lot_slot(
     """
     ✅ 统一 seed 入口（Phase M-5 终态）：
 
+    - PMS current-state：写入 wms_pms_*_projection 测试投影
     - lot 创建：ensure_lot_full（禁止 tests 直接 INSERT INTO lots）
     - 库存写入：adjust_lot_impl（禁止 tests 直接 INSERT/UPDATE stocks_lot）
     - “设置为某个 qty”语义：读当前 qty -> delta -> adjust_lot_impl 写入
-      （等价于旧实现的 ON CONFLICT DO UPDATE SET qty）
 
     关键：日期合同必须认真对待
-    - seed_supplier_lot_slot 的语义就是“造一个 SUPPLIER lot slot”，因此商品必须走 REQUIRED
+    - seed_supplier_lot_slot 的语义就是“造一个 SUPPLIER lot slot”，因此 projection 商品必须走 REQUIRED
     - REQUIRED 且发生入库（delta>0）时，必须提供 production/expiry 事实
     """
     wh = _wh_from_loc(loc)
@@ -161,20 +204,21 @@ async def seed_supplier_lot_slot(
     if not code_raw:
         raise ValueError("code empty")
 
-    # 确保主数据存在（很多测试假设 item/wh 已存在）
+    _install_projection_pms_client(session)
+
     await session.execute(
         SA("INSERT INTO warehouses (id, name) VALUES (:w, 'WH') ON CONFLICT (id) DO NOTHING"),
         {"w": int(wh)},
     )
 
-    # 当前 helper 语义就是“造 batch slot”，因此显式把商品设为 REQUIRED。
-    # 不能用 ensure_item 默认值（expiry_required=False），否则会把上游已设好的 REQUIRED 冲回 NONE。
-    await ensure_item(
+    await seed_pms_projection_item_with_base_uom(
         session,
-        id=int(item),
+        item_id=int(item),
+        item_uom_id=int(item),
+        sku_code_id=int(item),
         sku=f"SKU-{item}",
         name=f"ITEM-{item}",
-        expiry_required=True,
+        expiry_policy="REQUIRED",
     )
 
     expiry_policy = await _load_item_expiry_policy(session, item_id=int(item))
@@ -273,6 +317,18 @@ async def insert_snapshot(
 ) -> None:
     _ = ts
     wh = _wh_from_loc(loc)
+
+    _install_projection_pms_client(session)
+
+    await seed_pms_projection_item_with_base_uom(
+        session,
+        item_id=int(item),
+        item_uom_id=int(item),
+        sku_code_id=int(item),
+        sku=f"SKU-{item}",
+        name=f"ITEM-{item}",
+        expiry_policy="NONE",
+    )
 
     # 快照必须绑定真实 lot_id；这里用 INTERNAL 单例 lot 承载“无指定展示码”的快照场景
     got = await ensure_internal_lot_singleton_svc(

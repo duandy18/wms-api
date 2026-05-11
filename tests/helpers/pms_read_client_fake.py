@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.integrations.pms.contracts import (
     ItemBasic,
     ItemPolicy,
+    PmsExportBarcode,
     PmsExportUom,
 )
 
@@ -32,6 +33,61 @@ class ProjectionBackedFakePmsReadClient:
 
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
+
+    async def list_item_basics(
+        self,
+        *,
+        query=None,
+    ) -> list[ItemBasic]:
+        conditions = []
+        params: dict[str, Any] = {"limit": 500}
+
+        if query is not None:
+            data = query.model_dump(exclude_none=True) if hasattr(query, "model_dump") else {}
+            keyword = (
+                data.get("keyword")
+                or data.get("q")
+                or data.get("search")
+                or data.get("sku")
+                or data.get("name")
+            )
+            if keyword:
+                conditions.append("(sku ILIKE :keyword OR name ILIKE :keyword)")
+                params["keyword"] = f"%{str(keyword).strip()}%"
+
+            if data.get("enabled") is not None:
+                conditions.append("enabled IS :enabled")
+                params["enabled"] = bool(data["enabled"])
+
+            if data.get("limit") is not None:
+                params["limit"] = int(data["limit"])
+
+        where_sql = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+
+        rows = (
+            await self.session.execute(
+                text(
+                    f"""
+                    SELECT
+                        item_id AS id,
+                        sku,
+                        name,
+                        spec,
+                        enabled,
+                        supplier_id,
+                        brand,
+                        category
+                    FROM wms_pms_item_projection
+                    {where_sql}
+                    ORDER BY item_id ASC
+                    LIMIT :limit
+                    """
+                ),
+                params,
+            )
+        ).mappings().all()
+
+        return [ItemBasic.model_validate(dict(row)) for row in rows]
 
     async def get_item_basic(self, *, item_id: int) -> ItemBasic | None:
         rows = await self.get_item_basics(item_ids=[int(item_id)])
@@ -196,6 +252,99 @@ class ProjectionBackedFakePmsReadClient:
 
     async def list_uoms_by_item_id(self, *, item_id: int) -> list[PmsExportUom]:
         return await self.list_uoms(item_ids=[int(item_id)])
+
+    async def get_barcode(self, *, barcode_id: int) -> PmsExportBarcode | None:
+        rows = await self.list_barcodes(item_ids=None, item_uom_ids=None, barcode_id=int(barcode_id))
+        return rows[0] if rows else None
+
+    async def list_barcodes(
+        self,
+        *,
+        item_ids: Sequence[int] | None = None,
+        item_uom_ids: Sequence[int] | None = None,
+        barcode: str | None = None,
+        barcode_id: int | None = None,
+        active: bool | None = None,
+        primary_only: bool = False,
+    ) -> list[PmsExportBarcode]:
+        conditions: list[str] = []
+        params: dict[str, Any] = {}
+
+        item_ids_clean = _clean_ids(item_ids or [])
+        item_uom_ids_clean = _clean_ids(item_uom_ids or [])
+
+        if item_ids_clean:
+            conditions.append("b.item_id = ANY(:item_ids)")
+            params["item_ids"] = item_ids_clean
+
+        if item_uom_ids_clean:
+            conditions.append("b.item_uom_id = ANY(:item_uom_ids)")
+            params["item_uom_ids"] = item_uom_ids_clean
+
+        if barcode_id is not None:
+            conditions.append("b.barcode_id = :barcode_id")
+            params["barcode_id"] = int(barcode_id)
+
+        if barcode is not None:
+            clean_barcode = str(barcode).strip()
+            if clean_barcode:
+                conditions.append("b.barcode = :barcode")
+                params["barcode"] = clean_barcode
+
+        if active is not None:
+            conditions.append("b.active = :active")
+            params["active"] = bool(active)
+
+        if primary_only:
+            conditions.append("b.is_primary IS TRUE")
+
+        if not conditions:
+            return []
+
+        rows = (
+            await self.session.execute(
+                text(
+                    f"""
+                    SELECT
+                        b.barcode_id AS id,
+                        b.item_id,
+                        b.item_uom_id,
+                        b.barcode,
+                        b.symbology,
+                        b.active,
+                        b.is_primary,
+                        u.uom,
+                        u.display_name,
+                        u.uom_name,
+                        u.ratio_to_base
+                    FROM wms_pms_barcode_projection b
+                    JOIN wms_pms_uom_projection u
+                      ON u.item_uom_id = b.item_uom_id
+                    WHERE {" AND ".join(conditions)}
+                    ORDER BY
+                        b.item_id ASC,
+                        b.is_primary DESC,
+                        b.barcode_id ASC
+                    """
+                ),
+                params,
+            )
+        ).mappings().all()
+
+        return [PmsExportBarcode.model_validate(dict(row)) for row in rows]
+
+    async def list_barcodes_by_item_id(
+        self,
+        *,
+        item_id: int,
+        active: bool | None = True,
+        primary_only: bool = False,
+    ) -> list[PmsExportBarcode]:
+        return await self.list_barcodes(
+            item_ids=[int(item_id)],
+            active=active,
+            primary_only=primary_only,
+        )
 
     async def get_purchase_default_or_base_uom(self, *, item_id: int) -> PmsExportUom | None:
         return await self._get_default_or_base_uom(item_id=int(item_id), field="is_purchase_default")
