@@ -11,6 +11,7 @@ from app.wms.inventory_adjustment.count.contracts.count import CountRequest
 from app.wms.inventory_adjustment.count.services.count_service import CountService
 from app.wms.snapshot.services.snapshot_run import run_snapshot
 from app.wms.shared.services.three_books_consistency import verify_commit_three_books
+from tests.helpers.procurement_pms_projection import install_procurement_pms_projection_fake
 from tests.utils.ensure_minimal import set_stock_qty
 
 
@@ -19,14 +20,21 @@ def _date_to_utc_datetime(d: date) -> datetime:
 
 
 async def _pick_item(session: AsyncSession) -> tuple[int, bool]:
+    """
+    PMS 拆库后，测试只读取 WMS PMS projection，不再读取旧 owner items。
+    返回 (item_id, requires_expiry)。
+    """
+    install_procurement_pms_projection_fake(session)
+
     row = (
         await session.execute(
             text(
                 """
-                SELECT id
-                  FROM items
-                 WHERE COALESCE(expiry_policy::text, 'NONE') <> 'REQUIRED'
-                 ORDER BY id ASC
+                SELECT item_id
+                  FROM wms_pms_item_projection
+                 WHERE COALESCE(expiry_policy, 'NONE') <> 'REQUIRED'
+                   AND COALESCE(enabled, true) = true
+                 ORDER BY item_id ASC
                  LIMIT 1
                 """
             )
@@ -35,9 +43,21 @@ async def _pick_item(session: AsyncSession) -> tuple[int, bool]:
     if row:
         return int(row[0]), False
 
-    row2 = (await session.execute(text("SELECT id FROM items ORDER BY id ASC LIMIT 1"))).first()
+    row2 = (
+        await session.execute(
+            text(
+                """
+                SELECT item_id
+                  FROM wms_pms_item_projection
+                 WHERE COALESCE(enabled, true) = true
+                 ORDER BY item_id ASC
+                 LIMIT 1
+                """
+            )
+        )
+    ).first()
     if not row2:
-        raise RuntimeError("测试库没有 items 种子数据，无法运行盘点合同测试")
+        raise RuntimeError("测试库没有 PMS projection item 种子数据，无法运行盘点合同测试")
     return int(row2[0]), True
 
 
@@ -158,6 +178,8 @@ def _build_count_request(
 
 @pytest.mark.asyncio
 async def test_phase3_count_confirm_delta_zero_records_ledger(session: AsyncSession):
+    install_procurement_pms_projection_fake(session)
+
     utc = timezone.utc
     now = datetime.now(utc)
 
@@ -234,6 +256,8 @@ async def test_phase3_count_confirm_delta_zero_records_ledger(session: AsyncSess
 
 @pytest.mark.asyncio
 async def test_phase3_count_adjust_delta_nonzero_updates_stock(session: AsyncSession):
+    install_procurement_pms_projection_fake(session)
+
     utc = timezone.utc
     now = datetime.now(utc)
 
