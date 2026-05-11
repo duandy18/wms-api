@@ -13,20 +13,27 @@ from app.wms.snapshot.services.snapshot_run import run_snapshot
 from app.wms.stock.services.lots import ensure_lot_full
 from app.wms.stock.services.stock_adjust import adjust_lot_impl
 from app.wms.shared.services.three_books_consistency import verify_commit_three_books
+from tests.helpers.procurement_pms_projection import install_procurement_pms_projection_fake
 
 
 UTC = timezone.utc
 
 
 async def _pick_item_for_stock_in(session: AsyncSession) -> tuple[int, bool]:
+    """
+    PMS 拆库后，测试只读取 WMS PMS projection，不再读取旧 items。
+    """
+    install_procurement_pms_projection_fake(session)
+
     row = (
         await session.execute(
             text(
                 """
-                SELECT id
-                  FROM items
-                 WHERE COALESCE(expiry_policy::text, 'NONE') <> 'REQUIRED'
-                 ORDER BY id ASC
+                SELECT item_id
+                  FROM wms_pms_item_projection
+                 WHERE COALESCE(expiry_policy, 'NONE') <> 'REQUIRED'
+                   AND COALESCE(enabled, true) = true
+                 ORDER BY item_id ASC
                  LIMIT 1
                 """
             )
@@ -35,9 +42,21 @@ async def _pick_item_for_stock_in(session: AsyncSession) -> tuple[int, bool]:
     if row:
         return int(row[0]), False
 
-    row2 = (await session.execute(text("SELECT id FROM items ORDER BY id ASC LIMIT 1"))).first()
+    row2 = (
+        await session.execute(
+            text(
+                """
+                SELECT item_id
+                  FROM wms_pms_item_projection
+                 WHERE COALESCE(enabled, true) = true
+                 ORDER BY item_id ASC
+                 LIMIT 1
+                """
+            )
+        )
+    ).first()
     if not row2:
-        raise RuntimeError("测试库没有 items 种子数据，无法运行 Return commit 合同测试")
+        raise RuntimeError("测试库没有 PMS projection item 种子数据，无法运行 Return commit 合同测试")
     return int(row2[0]), True
 
 
@@ -72,6 +91,8 @@ async def test_phase3_return_commit_three_books_strict(session: AsyncSession):
     - return_task_lines.lot_code_snapshot 仅是 lots.lot_code 展示快照；
     - return commit 必须使用同一个 lot_id 回仓，而不是靠 lot_code_snapshot 二次反查。
     """
+    install_procurement_pms_projection_fake(session)
+
     now = datetime.now(UTC)
 
     svc = ReturnTaskServiceImpl()
