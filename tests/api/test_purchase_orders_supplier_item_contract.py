@@ -10,6 +10,12 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tests._problem import as_problem
+from tests.helpers.procurement_pms_projection import (
+    install_procurement_pms_projection_fake,
+    list_purchase_projection_items,
+    pick_purchase_uom_id,
+    seed_purchase_projection_item,
+)
 
 
 async def _login_admin_headers(client: httpx.AsyncClient) -> Dict[str, str]:
@@ -23,51 +29,22 @@ async def _login_admin_headers(client: httpx.AsyncClient) -> Dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
-async def _get_items(client: httpx.AsyncClient, headers: Dict[str, str], qs: str = "") -> List[Dict[str, Any]]:
-    url = f"/items{qs}"
-    r = await client.get(url, headers=headers)
-    assert r.status_code == 200, r.text
-    data = r.json()
-    assert isinstance(data, list)
-    return data
+async def _get_items(
+    session: AsyncSession,
+    *,
+    supplier_id: int | None = None,
+    enabled: bool | None = None,
+) -> List[Dict[str, Any]]:
+    return await list_purchase_projection_items(
+        session,
+        supplier_id=supplier_id,
+        enabled=enabled,
+    )
 
 
 async def _pick_any_uom_id(session: AsyncSession, *, item_id: int) -> int:
-    """
-    unit_governance 二阶段：以 item_uoms 为真相源。
-    终态：PO 创建必须显式给 uom_id + qty_input（不做兼容）。
-    """
-    r1 = await session.execute(
-        text(
-            """
-            SELECT id
-              FROM item_uoms
-             WHERE item_id = :i AND is_base = true
-             ORDER BY id
-             LIMIT 1
-            """
-        ),
-        {"i": int(item_id)},
-    )
-    got = r1.scalar_one_or_none()
-    if got is not None:
-        return int(got)
-
-    r2 = await session.execute(
-        text(
-            """
-            SELECT id
-              FROM item_uoms
-             WHERE item_id = :i
-             ORDER BY id
-             LIMIT 1
-            """
-        ),
-        {"i": int(item_id)},
-    )
-    got2 = r2.scalar_one_or_none()
-    assert got2 is not None, {"msg": "item has no item_uoms", "item_id": int(item_id)}
-    return int(got2)
+    install_procurement_pms_projection_fake(session)
+    return await pick_purchase_uom_id(session, item_id=int(item_id))
 
 
 async def _insert_supplier(
@@ -116,58 +93,14 @@ async def _insert_item_for_supplier(
     supplier_id: int,
     sku_prefix: str,
 ) -> int:
-    sku = f"{sku_prefix}-{uuid4().hex[:10]}".upper()
-    name = f"UT-{sku}"
-
-    row = await session.execute(
-        text(
-            """
-            INSERT INTO items(
-              name, sku, enabled, supplier_id,
-              lot_source_policy, expiry_policy, derivation_allowed, uom_governance_enabled,
-              shelf_life_value, shelf_life_unit
-            )
-            VALUES(
-              :name, :sku, TRUE, :supplier_id,
-              'INTERNAL_ONLY'::lot_source_policy, 'NONE'::expiry_policy, TRUE, TRUE,
-              NULL, NULL
-            )
-            RETURNING id
-            """
-        ),
-        {
-            "name": name,
-            "sku": sku,
-            "supplier_id": int(supplier_id),
-        },
+    seeded = await seed_purchase_projection_item(
+        session,
+        supplier_id=int(supplier_id),
+        sku_prefix=sku_prefix,
+        expiry_policy="NONE",
+        lot_source_policy="INTERNAL_ONLY",
     )
-    item_id = int(row.scalar_one())
-
-    await session.execute(
-        text(
-            """
-            INSERT INTO item_uoms(
-              item_id, uom, ratio_to_base, display_name,
-              is_base, is_purchase_default, is_inbound_default, is_outbound_default
-            )
-            VALUES(
-              :item_id, 'PCS', 1, 'PCS',
-              TRUE, TRUE, TRUE, TRUE
-            )
-            ON CONFLICT ON CONSTRAINT uq_item_uoms_item_uom
-            DO UPDATE SET
-              ratio_to_base = EXCLUDED.ratio_to_base,
-              display_name = EXCLUDED.display_name,
-              is_base = EXCLUDED.is_base,
-              is_purchase_default = EXCLUDED.is_purchase_default,
-              is_inbound_default = EXCLUDED.is_inbound_default,
-              is_outbound_default = EXCLUDED.is_outbound_default
-            """
-        ),
-        {"item_id": int(item_id)},
-    )
-
-    return int(item_id)
+    return int(seeded["item_id"])
 
 
 def _assert_po_head_contract(data: Dict[str, Any]) -> None:
@@ -205,17 +138,18 @@ def _assert_po_line_plan_contract_m5(line: Dict[str, Any]) -> None:
 
 
 @pytest.mark.asyncio
-async def test_items_filter_by_supplier_id_returns_only_supplier_items(client: httpx.AsyncClient) -> None:
+async def test_items_filter_by_supplier_id_returns_only_supplier_items(client: httpx.AsyncClient, session: AsyncSession) -> None:
     """
     合同：/items 支持 supplier_id 过滤，并返回严格子集。
     依赖：tests/fixtures/base_seed.sql 已将 (3001,3002,4002) 绑定 supplier_id=1。
     """
     headers = await _login_admin_headers(client)
+    install_procurement_pms_projection_fake(session)
 
-    all_items = await _get_items(client, headers)
+    all_items = await _get_items(session)
     assert len(all_items) >= 1
 
-    s1_items = await _get_items(client, headers, "?supplier_id=1&enabled=true")
+    s1_items = await _get_items(session, supplier_id=1, enabled=True)
     # ✅ 至少 2 个，避免后续链路测试数据稀缺
     assert len(s1_items) >= 2
 
@@ -226,12 +160,13 @@ async def test_items_filter_by_supplier_id_returns_only_supplier_items(client: h
 
 
 @pytest.mark.asyncio
-async def test_create_po_rejects_nonexistent_item(client: httpx.AsyncClient) -> None:
+async def test_create_po_rejects_nonexistent_item(client: httpx.AsyncClient, session: AsyncSession) -> None:
     """
     合同：创建 PO 时，item_id 不存在 -> 400 且 message 可解释。
     终态：行必须带 uom_id + qty_input（不做兼容）。
     """
     headers = await _login_admin_headers(client)
+    install_procurement_pms_projection_fake(session)
 
     payload = {
         "warehouse_id": 1,
@@ -247,13 +182,14 @@ async def test_create_po_rejects_nonexistent_item(client: httpx.AsyncClient) -> 
 
 
 @pytest.mark.asyncio
-async def test_create_po_rejects_item_supplier_mismatch(client: httpx.AsyncClient) -> None:
+async def test_create_po_rejects_item_supplier_mismatch(client: httpx.AsyncClient, session: AsyncSession) -> None:
     """
     合同：创建 PO 时，item.supplier_id 与 po.supplier_id 不一致 -> 400。
     使用真实样本：item_id=1 的 supplier_id=3。
     终态：行必须带 uom_id + qty_input（不做兼容）。
     """
     headers = await _login_admin_headers(client)
+    install_procurement_pms_projection_fake(session)
 
     payload = {
         "warehouse_id": 1,
@@ -317,8 +253,9 @@ async def test_update_po_rejects_inactive_supplier(
     已存在历史 PO 的读取不受影响；这里仅约束写入。
     """
     headers = await _login_admin_headers(client)
+    install_procurement_pms_projection_fake(session)
 
-    s1_items = await _get_items(client, headers, "?supplier_id=1&enabled=true")
+    s1_items = await _get_items(session, supplier_id=1, enabled=True)
     assert len(s1_items) >= 1
     active_item_id = int(s1_items[0]["id"])
     active_uom_id = await _pick_any_uom_id(session, item_id=active_item_id)
@@ -378,8 +315,9 @@ async def test_create_po_success_with_supplier_items(client: httpx.AsyncClient, 
     终态：行必须带 uom_id + qty_input（不做兼容）。
     """
     headers = await _login_admin_headers(client)
+    install_procurement_pms_projection_fake(session)
 
-    s1_items = await _get_items(client, headers, "?supplier_id=1&enabled=true")
+    s1_items = await _get_items(session, supplier_id=1, enabled=True)
     assert len(s1_items) >= 1
     item_id = int(s1_items[0]["id"])
 
