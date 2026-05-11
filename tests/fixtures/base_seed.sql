@@ -4,22 +4,28 @@
 -- - internal lots are singleton per (warehouse_id,item_id)
 --
 -- Phase M-5 收口约定（工程级）：
--- ✅ base_seed.sql 只负责“主数据种子”（master data）
+-- ✅ base_seed.sql 只负责非 PMS owner 测试基线：
+--    - warehouses
+--    - stores / platform_test_stores
+--    - suppliers
+--    - shipping_providers
+--    - inbound_receipts placeholder
 -- ❌ 禁止在 baseline 中写入任何库存事实：
 --    - lots
 --    - stocks_lot
 --    - stock_ledger
 --    - stock_snapshots
 --
+-- PMS legacy baseline 去 owner 化第四刀说明：
+-- - PMS owner 真相已拆到 pms-api / PMS DB。
+-- - WMS 测试 baseline 不再写旧 PMS owner seed。
+-- - WMS 测试需要 PMS current-state 时，只能使用 tests/fixtures/pms_projection_seed.sql
+--   构造 wms_pms_*_projection。
+--
 -- 库存/lot 事实必须在 tests 中显式通过统一入口构造：
 --   - ensure_lot_full / ensure_internal_lot_singleton
 --   - adjust_lot_impl / lot-only stock write primitives
 --   - tests/helpers/inventory.py: seed_supplier_lot_slot 等
---
--- PMS legacy baseline 去 owner 化第二刀说明：
--- - base_seed.sql 暂时仍保留旧 PMS owner seed，避免一次性冲击全仓测试初始化。
--- - WMS PMS projection baseline 已拆到 tests/fixtures/pms_projection_seed.sql。
--- - 本文件不再负责物化 wms_pms_*_projection。
 
 -- ===== warehouses =====
 INSERT INTO warehouses (id, name, code)
@@ -50,69 +56,7 @@ VALUES ('PDD', 'UT-TEST-STORE-1', 9001, 'DEFAULT')
 ON CONFLICT (platform, code)
 DO UPDATE SET store_code = EXCLUDED.store_code, store_id = EXCLUDED.store_id;
 
--- ===== suppliers (minimal) =====
-
--- ===== pms master data brands / categories =====
-INSERT INTO pms_brands (
-  id,
-  name_cn,
-  code,
-  is_active,
-  is_locked,
-  sort_order,
-  remark,
-  created_at,
-  updated_at
-)
-VALUES
-  (1, 'BRAND-A', 'BRANDA', TRUE, FALSE, 10, 'base seed brand A', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-  (2, 'BRAND-B', 'BRANDB', TRUE, FALSE, 20, 'base seed brand B', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-ON CONFLICT (id) DO UPDATE SET
-  name_cn = EXCLUDED.name_cn,
-  code = EXCLUDED.code,
-  is_active = EXCLUDED.is_active,
-  updated_at = CURRENT_TIMESTAMP;
-
-SELECT setval(
-  pg_get_serial_sequence('pms_brands', 'id'),
-  GREATEST((SELECT COALESCE(MAX(id), 1) FROM pms_brands), 1),
-  TRUE
-);
-
-INSERT INTO pms_business_categories (
-  id,
-  parent_id,
-  level,
-  product_kind,
-  category_name,
-  category_code,
-  path_code,
-  is_leaf,
-  is_active,
-  is_locked,
-  sort_order,
-  remark,
-  created_at,
-  updated_at
-)
-VALUES
-  (1, NULL, 1, 'OTHER', 'CATEGORY-A', 'CATA', 'CATA', TRUE, TRUE, FALSE, 10, 'base seed category A', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-  (2, NULL, 1, 'OTHER', 'CATEGORY-B', 'CATB', 'CATB', TRUE, TRUE, FALSE, 20, 'base seed category B', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-ON CONFLICT (id) DO UPDATE SET
-  category_name = EXCLUDED.category_name,
-  category_code = EXCLUDED.category_code,
-  path_code = EXCLUDED.path_code,
-  product_kind = EXCLUDED.product_kind,
-  is_leaf = EXCLUDED.is_leaf,
-  is_active = EXCLUDED.is_active,
-  updated_at = CURRENT_TIMESTAMP;
-
-SELECT setval(
-  pg_get_serial_sequence('pms_business_categories', 'id'),
-  GREATEST((SELECT COALESCE(MAX(id), 1) FROM pms_business_categories), 1),
-  TRUE
-);
-
+-- ===== suppliers (WMS / procurement side baseline) =====
 INSERT INTO suppliers (id, name, code, active)
 VALUES
   (1, 'UT-SUP-1', 'UT-SUP-1', true),
@@ -125,143 +69,6 @@ VALUES
   (1, 'UT-CARRIER-1', 'UT-CAR-1', true, 100, 'UT-ADDR-1'),
   (2, 'Fake Express', 'FAKE', true, 100, 'UT-ADDR-FAKE')
 ON CONFLICT (id) DO NOTHING;
-
-
--- ===== items =====
-INSERT INTO items (
-  id, sku, name,
-  brand_id, category_id,
-  lot_source_policy, expiry_policy, derivation_allowed, uom_governance_enabled
-)
-VALUES
-  (1,    'SKU-0001', 'UT-ITEM-1',
-   1, 1,
-   'SUPPLIER_ONLY'::lot_source_policy, 'NONE'::expiry_policy, true, true),
-  (3001, 'SKU-3001', 'SOFT-PICK-1',
-   1, 1,
-   'SUPPLIER_ONLY'::lot_source_policy, 'NONE'::expiry_policy, true, true),
-  (3002, 'SKU-3002', 'SOFT-PICK-2',
-   1, 1,
-   'SUPPLIER_ONLY'::lot_source_policy, 'NONE'::expiry_policy, true, true),
-  (3003, 'SKU-3003', 'SOFT-PICK-BASE',
-   1, 1,
-   'SUPPLIER_ONLY'::lot_source_policy, 'NONE'::expiry_policy, true, true),
-  (4001, 'SKU-4001', 'OUTBOUND-MERGE',
-   1, 1,
-   'SUPPLIER_ONLY'::lot_source_policy, 'NONE'::expiry_policy, true, true),
-  (4002, 'SKU-4002', 'PURCHASE-BASE-1',
-   1, 1,
-   'SUPPLIER_ONLY'::lot_source_policy, 'NONE'::expiry_policy, true, true)
-ON CONFLICT (id) DO UPDATE SET
-  sku = EXCLUDED.sku,
-  name = EXCLUDED.name,
-  brand_id = EXCLUDED.brand_id,
-  category_id = EXCLUDED.category_id,
-  lot_source_policy = EXCLUDED.lot_source_policy,
-  expiry_policy = EXCLUDED.expiry_policy,
-  derivation_allowed = EXCLUDED.derivation_allowed,
-  uom_governance_enabled = EXCLUDED.uom_governance_enabled;
-
-
--- ===== item_sku_codes (SKU governance truth) =====
-UPDATE item_sku_codes c
-   SET code_type = 'ALIAS',
-       is_primary = false,
-       is_active = true,
-       effective_to = COALESCE(c.effective_to, CURRENT_TIMESTAMP),
-       updated_at = CURRENT_TIMESTAMP
-  FROM items i
- WHERE c.item_id = i.id
-   AND c.is_primary = true
-   AND c.code <> upper(trim(i.sku));
-
-INSERT INTO item_sku_codes (
-  item_id,
-  code,
-  code_type,
-  is_primary,
-  is_active,
-  effective_from,
-  effective_to,
-  remark,
-  created_at,
-  updated_at
-)
-SELECT
-  i.id,
-  upper(trim(i.sku)),
-  'PRIMARY',
-  true,
-  true,
-  COALESCE(i.created_at, CURRENT_TIMESTAMP),
-  NULL,
-  'base seed primary sku',
-  CURRENT_TIMESTAMP,
-  CURRENT_TIMESTAMP
-FROM items i
-WHERE trim(i.sku) <> ''
-ON CONFLICT (code) DO UPDATE SET
-  code_type = 'PRIMARY',
-  is_primary = true,
-  is_active = true,
-  effective_to = NULL,
-  updated_at = CURRENT_TIMESTAMP
-WHERE item_sku_codes.item_id = EXCLUDED.item_id;
-
--- ===== item_uoms (unit truth source) =====
-INSERT INTO item_uoms (
-  item_id, uom, ratio_to_base, display_name,
-  is_base, is_purchase_default, is_inbound_default, is_outbound_default
-)
-SELECT
-  i.id,
-  'PCS',
-  1,
-  'PCS',
-  true,
-  true,
-  true,
-  true
-FROM items i
-WHERE i.id IN (1, 3001, 3002, 3003, 4001, 4002)
-ON CONFLICT ON CONSTRAINT uq_item_uoms_item_uom
-DO UPDATE SET
-  ratio_to_base = EXCLUDED.ratio_to_base,
-  display_name = EXCLUDED.display_name,
-  is_base = EXCLUDED.is_base,
-  is_purchase_default = EXCLUDED.is_purchase_default,
-  is_inbound_default = EXCLUDED.is_inbound_default,
-  is_outbound_default = EXCLUDED.is_outbound_default;
-
--- ===== item_barcodes (primary; bind to base item_uom) =====
-INSERT INTO item_barcodes (
-  item_id,
-  item_uom_id,
-  barcode,
-  symbology,
-  active,
-  is_primary,
-  created_at,
-  updated_at
-)
-SELECT
-  i.id,
-  u.id,
-  'AUTO-BC-' || i.id::text,
-  'CUSTOM',
-  true,
-  true,
-  NOW(),
-  NOW()
-FROM items i
-JOIN item_uoms u
-  ON u.item_id = i.id
- AND u.is_base = true
-WHERE NOT EXISTS (
-  SELECT 1
-  FROM item_barcodes b
-  WHERE b.item_id = i.id
-);
 
 -- ===== inbound_receipts (compat placeholder) =====
 -- 注意：当前 INTERNAL lot 的终态 identity 不应依赖 inbound_receipts。
@@ -322,32 +129,3 @@ SELECT setval(
   COALESCE((SELECT MAX(id) FROM shipping_providers), 0),
   true
 );
-
-
-
-
-
-SELECT setval(
-  pg_get_serial_sequence('items','id'),
-  COALESCE((SELECT MAX(id) FROM items), 0),
-  true
-);
-
--- ===== supplier bindings / policies =====
-UPDATE items
-SET supplier_id = 1,
-    enabled = true
-WHERE id IN (3001, 3002, 4002);
-
-UPDATE items
-SET expiry_policy = 'REQUIRED'::expiry_policy,
-    shelf_life_value = 30,
-    shelf_life_unit = 'DAY',
-    enabled = true,
-    supplier_id = 1
-WHERE id = 3001;
-
-UPDATE items
-SET supplier_id = 3,
-    enabled = true
-WHERE id = 1;
