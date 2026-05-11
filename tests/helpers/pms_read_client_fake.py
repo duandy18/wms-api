@@ -9,6 +9,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.integrations.pms.contracts import (
+    BarcodeProbeOut,
+    BarcodeProbeStatus,
     ItemBasic,
     ItemPolicy,
     PmsExportBarcode,
@@ -344,6 +346,42 @@ class ProjectionBackedFakePmsReadClient:
             item_ids=[int(item_id)],
             active=active,
             primary_only=primary_only,
+        )
+
+    async def probe_barcode(self, *, barcode: str) -> BarcodeProbeOut:
+        code = str(barcode or "").strip()
+        if not code:
+            return BarcodeProbeOut(
+                ok=True,
+                status=BarcodeProbeStatus.UNBOUND,
+                barcode=code,
+            )
+
+        rows = await self.list_barcodes(
+            barcode=code,
+            active=True,
+        )
+        if not rows:
+            return BarcodeProbeOut(
+                ok=True,
+                status=BarcodeProbeStatus.UNBOUND,
+                barcode=code,
+            )
+
+        row = rows[0]
+        item_basic = await self.get_item_basic(item_id=int(row.item_id))
+
+        return BarcodeProbeOut(
+            ok=True,
+            status=BarcodeProbeStatus.BOUND,
+            barcode=code,
+            item_id=int(row.item_id),
+            item_uom_id=int(row.item_uom_id),
+            ratio_to_base=int(row.ratio_to_base),
+            symbology=str(row.symbology),
+            active=bool(row.active),
+            item_basic=item_basic,
+            errors=[],
         )
 
     async def get_purchase_default_or_base_uom(self, *, item_id: int) -> PmsExportUom | None:

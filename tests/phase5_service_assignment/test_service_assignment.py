@@ -10,7 +10,7 @@ pytestmark = pytest.mark.asyncio
 
 
 async def _pick_any_item_id(session) -> int:
-    row = await session.execute(text("SELECT id FROM items ORDER BY id ASC LIMIT 1"))
+    row = await session.execute(text("SELECT item_id FROM wms_pms_item_projection ORDER BY item_id ASC LIMIT 1"))
     iid = row.scalar_one_or_none()
     if iid is None:
         raise RuntimeError("tests baseline seed 没有 items，无法跑 service_assignment tests")

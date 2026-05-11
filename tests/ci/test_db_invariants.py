@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.wms.stock.services.lots import ensure_lot_full
 from app.wms.stock.services.stock_adjust import adjust_lot_impl
 from tests.utils.ensure_minimal import ensure_item
+from tests.helpers.procurement_pms_projection import install_procurement_pms_projection_fake
 
 pytestmark = pytest.mark.grp_snapshot  # 分组标记，可按需调整
 
@@ -30,6 +31,8 @@ async def _seed_wh_item_lot_stock(
 
     返回 lot_id。
     """
+    install_procurement_pms_projection_fake(session)
+
     await session.execute(
         text(
             """
@@ -175,14 +178,14 @@ async def test_item_sku_codes_primary_invariant(session: AsyncSession):
     missing_or_duplicate_primary = await session.execute(
         text(
             """
-            SELECT i.id, COUNT(c.id) AS primary_count
-              FROM items i
-              LEFT JOIN item_sku_codes c
-                ON c.item_id = i.id
+            SELECT i.item_id, COUNT(c.sku_code_id) AS primary_count
+              FROM wms_pms_item_projection i
+              LEFT JOIN wms_pms_sku_code_projection c
+                ON c.item_id = i.item_id
                AND c.is_primary = TRUE
-             GROUP BY i.id
-            HAVING COUNT(c.id) <> 1
-            ORDER BY i.id
+             GROUP BY i.item_id
+            HAVING COUNT(c.sku_code_id) <> 1
+            ORDER BY i.item_id
             """
         )
     )
@@ -192,15 +195,15 @@ async def test_item_sku_codes_primary_invariant(session: AsyncSession):
     inactive_or_closed_primary = await session.execute(
         text(
             """
-            SELECT id, item_id, code, is_active, effective_to
-              FROM item_sku_codes
+            SELECT sku_code_id AS id, item_id, sku_code AS code, is_active, effective_to
+              FROM wms_pms_sku_code_projection
              WHERE is_primary = TRUE
                AND (
                  is_active IS DISTINCT FROM TRUE
                  OR effective_to IS NOT NULL
                  OR code_type <> 'PRIMARY'
                )
-             ORDER BY item_id, id
+             ORDER BY item_id, sku_code_id
             """
         )
     )
@@ -210,13 +213,13 @@ async def test_item_sku_codes_primary_invariant(session: AsyncSession):
     projection_mismatch = await session.execute(
         text(
             """
-            SELECT i.id, i.sku, c.code
-              FROM items i
-              JOIN item_sku_codes c
-                ON c.item_id = i.id
+            SELECT i.item_id AS id, i.sku, c.sku_code AS code
+              FROM wms_pms_item_projection i
+              JOIN wms_pms_sku_code_projection c
+                ON c.item_id = i.item_id
                AND c.is_primary = TRUE
-             WHERE c.code <> upper(trim(i.sku))
-             ORDER BY i.id
+             WHERE c.sku_code <> upper(trim(i.sku))
+             ORDER BY i.item_id
             """
         )
     )
@@ -226,11 +229,11 @@ async def test_item_sku_codes_primary_invariant(session: AsyncSession):
     case_duplicates = await session.execute(
         text(
             """
-            SELECT lower(code) AS norm_code, COUNT(*) AS cnt
-              FROM item_sku_codes
-             GROUP BY lower(code)
+            SELECT lower(sku_code) AS norm_code, COUNT(*) AS cnt
+              FROM wms_pms_sku_code_projection
+             GROUP BY lower(sku_code)
             HAVING COUNT(*) > 1
-             ORDER BY lower(code)
+             ORDER BY lower(sku_code)
             """
         )
     )

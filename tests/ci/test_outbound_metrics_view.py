@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.wms.stock.services.lots import ensure_internal_lot_singleton, ensure_lot_full
 from app.wms.stock.services.stock_adjust import adjust_lot_impl
+from tests.helpers.procurement_pms_projection import install_procurement_pms_projection_fake
 
 pytestmark = pytest.mark.asyncio
 
@@ -13,8 +14,10 @@ UTC = timezone.utc
 
 
 async def _item_requires_batch(session: AsyncSession, *, item_id: int) -> bool:
+    install_procurement_pms_projection_fake(session)
+
     row = await session.execute(
-        text("SELECT expiry_policy::text FROM items WHERE id=:i LIMIT 1"),
+        text("SELECT expiry_policy FROM wms_pms_item_projection WHERE item_id=:i LIMIT 1"),
         {"i": int(item_id)},
     )
     val = row.scalar_one_or_none()
@@ -24,6 +27,8 @@ async def _item_requires_batch(session: AsyncSession, *, item_id: int) -> bool:
 
 
 async def _pick_one_lot_id_for_item(session: AsyncSession, *, warehouse_id: int, item_id: int) -> int:
+    install_procurement_pms_projection_fake(session)
+
     """
     终态：stock_ledger 必须带 lot_id（lot-world）。
     从 stocks_lot 中挑一个现存槽位的 lot_id（qty 可以为 0）。
