@@ -8,9 +8,18 @@ from typing import Optional
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import app.wms.inventory_adjustment.count.repos.count_doc_repo as count_doc_repo_module
+import app.wms.shared.services.expiry_resolver as expiry_resolver_module
+import app.wms.shared.services.lot_code_contract as lot_code_contract_module
+import app.wms.stock.repos.inventory_explain_repo as inventory_explain_repo_module
+import app.wms.stock.repos.inventory_read_repo as inventory_read_repo_module
+import app.wms.stock.services.lots as lots_module
+import app.wms.stock.services.stock_adjust.db_items as db_items_module
 from app.wms.stock.services.lot_service import ensure_internal_lot_singleton as ensure_internal_lot_singleton_svc
 from app.wms.stock.services.lot_service import ensure_lot_full as ensure_lot_full_svc
 from app.wms.stock.services.stock_adjust import adjust_lot_impl
+from tests.helpers.pms_projection import seed_pms_projection_item_with_base_uom
+from tests.helpers.pms_read_client_fake import projection_backed_pms_read_client_factory
 
 UTC = timezone.utc
 
@@ -36,6 +45,102 @@ def _stable_required_dates_from_code(code_raw: str, *, days: int) -> tuple[date,
     production_date = date(2000, 1, 1) + timedelta(days=offset_days)
     expiry_date = production_date + timedelta(days=int(days))
     return production_date, expiry_date
+
+
+def _install_projection_pms_client(session: AsyncSession) -> None:
+    """
+    Test-only PMS client patch for ensure_minimal helpers.
+
+    Boundary:
+    - tests only;
+    - fake reads WMS PMS projection tables only;
+    - does not alter app.integrations.pms.factory;
+    - does not reintroduce in-process PMS owner reads;
+    - keeps runtime hard HTTP-only.
+    """
+    factory = projection_backed_pms_read_client_factory(session)
+
+    lots_module.create_pms_read_client = factory
+    db_items_module.create_pms_read_client = factory
+    expiry_resolver_module.create_pms_read_client = factory
+    lot_code_contract_module.create_pms_read_client = factory
+    count_doc_repo_module.create_pms_read_client = factory
+    inventory_read_repo_module.create_pms_read_client = factory
+    inventory_explain_repo_module.create_pms_read_client = factory
+
+
+async def _current_projection_expiry_policy(
+    session: AsyncSession,
+    *,
+    item_id: int,
+) -> str | None:
+    row = await session.execute(
+        text(
+            """
+            SELECT expiry_policy
+              FROM wms_pms_item_projection
+             WHERE item_id = :item_id
+             LIMIT 1
+            """
+        ),
+        {"item_id": int(item_id)},
+    )
+    value = row.scalar_one_or_none()
+    return str(value).upper() if value is not None else None
+
+
+async def _projection_uom_id_for_seed(
+    session: AsyncSession,
+    *,
+    item_id: int,
+    uom: str,
+    fallback_id: int,
+) -> int:
+    row = await session.execute(
+        text(
+            """
+            SELECT item_uom_id
+              FROM wms_pms_uom_projection
+             WHERE item_id = :item_id
+               AND uom = :uom
+             ORDER BY is_base DESC, item_uom_id ASC
+             LIMIT 1
+            """
+        ),
+        {
+            "item_id": int(item_id),
+            "uom": str(uom),
+        },
+    )
+    value = row.scalar_one_or_none()
+    return int(value) if value is not None else int(fallback_id)
+
+
+async def _projection_sku_code_id_for_seed(
+    session: AsyncSession,
+    *,
+    item_id: int,
+    sku_code: str,
+    fallback_id: int,
+) -> int:
+    row = await session.execute(
+        text(
+            """
+            SELECT sku_code_id
+              FROM wms_pms_sku_code_projection
+             WHERE item_id = :item_id
+               AND sku_code = :sku_code
+             ORDER BY is_primary DESC, sku_code_id ASC
+             LIMIT 1
+            """
+        ),
+        {
+            "item_id": int(item_id),
+            "sku_code": str(sku_code).strip().upper(),
+        },
+    )
+    value = row.scalar_one_or_none()
+    return int(value) if value is not None else int(fallback_id)
 
 
 # ---------- warehouses ----------
@@ -64,147 +169,69 @@ async def ensure_item(
     expiry_required: bool = False,
 ) -> None:
     """
-    items 表（Phase M-5 终态）：
+    PMS 已拆库后，tests 侧不再写旧 items / item_sku_codes。
 
-    - sku NOT NULL, name NOT NULL
-    - items.uom 已物理删除（单位真相源唯一为 item_uoms）
-    - lot_source_policy / expiry_policy / derivation_allowed / uom_governance_enabled 均 NOT NULL 且无默认
+    当前终态：
+    - PMS owner 真相在 pms-api / pms DB；
+    - WMS 测试造数只写 wms_pms_*_projection；
+    - runtime PMS client 仍保持 HTTP-only；
+    - 单元/服务测试通过 projection-backed fake PMS client 读取 projection。
 
-    使用方式：
-    - 默认（无有效期）：expiry_required=False -> 不得把已有 REQUIRED 商品刷回 NONE
-    - 需要有效期：expiry_required=True  -> 若商品已存在，也要单向提升到 REQUIRED
-
-    参数 uom：历史兼容参数（已不再写入 DB），保留以避免旧测试调用报错。
+    参数 uom：历史兼容参数，保留以避免旧测试调用报错。
     """
-    sku = sku or f"SKU-{id}"
-    name = name or f"ITEM-{id}"
-    _ = uom  # deprecated (items.uom removed)
+    _ = uom
 
-    expiry_policy = "REQUIRED" if expiry_required else "NONE"
-    lot_source_policy = "SUPPLIER_ONLY" if expiry_required else "INTERNAL_ONLY"
+    _install_projection_pms_client(session)
 
-    await session.execute(
-        text(
-            """
-            INSERT INTO items (
-              id, sku, name,
-              brand_id, category_id, lot_source_policy, expiry_policy, derivation_allowed, uom_governance_enabled
-            )
-            VALUES (
-              :id, :sku, :name,
-              1,
-              1,
-              CAST(:lot_source_policy AS lot_source_policy),
-              CAST(:expiry_policy AS expiry_policy),
-              TRUE,
-              TRUE
-            )
-            ON CONFLICT (id) DO UPDATE
-               SET sku = EXCLUDED.sku,
-                   name = EXCLUDED.name,
-                   brand_id = EXCLUDED.brand_id,
-                   category_id = EXCLUDED.category_id,
-                   lot_source_policy = CASE
-                     WHEN EXCLUDED.expiry_policy = 'REQUIRED'::expiry_policy
-                       THEN 'SUPPLIER_ONLY'::lot_source_policy
-                     ELSE items.lot_source_policy
-                   END,
-                   expiry_policy = CASE
-                     WHEN EXCLUDED.expiry_policy = 'REQUIRED'::expiry_policy
-                       THEN 'REQUIRED'::expiry_policy
-                     ELSE items.expiry_policy
-                   END,
-                   derivation_allowed = CASE
-                     WHEN EXCLUDED.expiry_policy = 'REQUIRED'::expiry_policy
-                       THEN TRUE
-                     ELSE items.derivation_allowed
-                   END,
-                   uom_governance_enabled = CASE
-                     WHEN EXCLUDED.expiry_policy = 'REQUIRED'::expiry_policy
-                       THEN TRUE
-                     ELSE items.uom_governance_enabled
-                   END
-            """
-        ),
-        {
-            "id": int(id),
-            "sku": str(sku),
-            "name": str(name),
-            "lot_source_policy": str(lot_source_policy),
-            "expiry_policy": str(expiry_policy),
-        },
+    item_id = int(id)
+    sku_value = str(sku or f"SKU-{item_id}").strip()
+    name_value = str(name or f"ITEM-{item_id}").strip()
+
+    existing_policy = await _current_projection_expiry_policy(session, item_id=item_id)
+    final_expiry_policy = (
+        "REQUIRED"
+        if bool(expiry_required) or existing_policy == "REQUIRED"
+        else "NONE"
+    )
+    final_lot_source_policy = (
+        "SUPPLIER_ONLY" if final_expiry_policy == "REQUIRED" else "INTERNAL_ONLY"
     )
 
-
-    sku_code = str(sku).strip().upper()
-    await session.execute(
-        text(
-            """
-            UPDATE item_sku_codes
-               SET code_type = 'ALIAS',
-                   is_primary = FALSE,
-                   is_active = TRUE,
-                   effective_to = COALESCE(effective_to, CURRENT_TIMESTAMP),
-                   updated_at = CURRENT_TIMESTAMP
-             WHERE item_id = :id
-               AND is_primary = TRUE
-               AND code <> :sku
-            """
-        ),
-        {"id": int(id), "sku": sku_code},
+    item_uom_id = await _projection_uom_id_for_seed(
+        session,
+        item_id=item_id,
+        uom="PCS",
+        fallback_id=item_id,
+    )
+    sku_code_id = await _projection_sku_code_id_for_seed(
+        session,
+        item_id=item_id,
+        sku_code=sku_value,
+        fallback_id=item_id,
     )
 
-    await session.execute(
-        text(
-            """
-            INSERT INTO item_sku_codes (
-              item_id,
-              code,
-              code_type,
-              is_primary,
-              is_active,
-              effective_from,
-              effective_to,
-              remark,
-              created_at,
-              updated_at
-            )
-            VALUES (
-              :id,
-              :sku,
-              'PRIMARY',
-              TRUE,
-              TRUE,
-              CURRENT_TIMESTAMP,
-              NULL,
-              'tests ensure_item primary sku',
-              CURRENT_TIMESTAMP,
-              CURRENT_TIMESTAMP
-            )
-            ON CONFLICT (code) DO UPDATE SET
-              code_type = 'PRIMARY',
-              is_primary = TRUE,
-              is_active = TRUE,
-              effective_to = NULL,
-              updated_at = CURRENT_TIMESTAMP
-            WHERE item_sku_codes.item_id = EXCLUDED.item_id
-            """
-        ),
-        {"id": int(id), "sku": sku_code},
+    await seed_pms_projection_item_with_base_uom(
+        session,
+        item_id=item_id,
+        item_uom_id=item_uom_id,
+        sku_code_id=sku_code_id,
+        sku=sku_value,
+        name=name_value,
+        expiry_policy=final_expiry_policy,
+        lot_source_policy=final_lot_source_policy,
     )
 
 
 def _norm_lot_key(code_raw: str) -> str:
-    # tests baseline normalize: trim + lower (DB unique key is text; service uses upper, but tests just need stable key)
+    # tests baseline normalize: trim + lower
     return str(code_raw).strip().lower()
 
 
 async def _load_item_expiry_policy(session: AsyncSession, *, item_id: int) -> str:
-    r = await session.execute(text("SELECT expiry_policy::text FROM items WHERE id=:i"), {"i": int(item_id)})
-    v = r.scalar_one_or_none()
-    if v is None:
+    value = await _current_projection_expiry_policy(session, item_id=int(item_id))
+    if value is None:
         raise ValueError(f"item_not_found: {item_id}")
-    return str(v)
+    return str(value)
 
 
 # ---------- lots / stocks_lot ----------
@@ -218,17 +245,17 @@ async def ensure_supplier_lot(
     """
     Phase M-5：创建/获取一个最小合法 SUPPLIER lot，并返回 lot_id。
 
-    ✅ 工程收口：禁止 tests 里直接 INSERT INTO lots
-    -> 统一走 app.wms.stock.services.lot_service.ensure_lot_full
-
-    语义收口：
-    - helper 名字就叫 ensure_supplier_lot，因此它必须保证商品策略至少提升到 REQUIRED
-    - REQUIRED lot 身份已切到 (warehouse_id, item_id, production_date)，
-      因此这里必须显式给 production_date
+    ✅ 工程收口：
+    - PMS current-state seed 写 wms_pms_*_projection；
+    - lot 创建仍走 app.wms.stock.services.lot_service.ensure_lot_full；
+    - 禁止 tests 直接 INSERT INTO lots；
+    - 禁止 tests 写旧 PMS owner 表。
     """
     code_raw = str(lot_code).strip()
     if not code_raw:
         raise ValueError("lot_code empty")
+
+    _install_projection_pms_client(session)
 
     await ensure_item(
         session,
@@ -263,6 +290,16 @@ async def ensure_internal_lot_singleton(
     item_id: int,
     warehouse_id: int,
 ) -> int:
+    _install_projection_pms_client(session)
+
+    await ensure_item(
+        session,
+        id=int(item_id),
+        sku=f"SKU-{item_id}",
+        name=f"ITEM-{item_id}",
+        expiry_required=False,
+    )
+
     got = await ensure_internal_lot_singleton_svc(
         session,
         warehouse_id=int(warehouse_id),
@@ -289,30 +326,75 @@ async def _get_stock_qty(session: AsyncSession, *, item_id: int, warehouse_id: i
     return int(v) if v is not None else 0
 
 
-async def ensure_stock_slot(session: AsyncSession, *, item_id: int, warehouse_id: int, lot_code: str | None) -> None:
+async def ensure_stock_slot(
+    session: AsyncSession,
+    *,
+    item_id: int,
+    warehouse_id: int,
+    lot_code: str | None,
+) -> None:
     """
     Phase 4D+：创建 stocks_lot 槽位（测试工具）。
 
     ✅ 工程收口：禁止 tests 里直接 INSERT INTO stocks_lot
     -> 统一走 adjust_lot_impl（writer 自己 ensure 槽位）
     """
-    await set_stock_qty(session, item_id=int(item_id), warehouse_id=int(warehouse_id), lot_code=lot_code, qty=0)
+    await set_stock_qty(
+        session,
+        item_id=int(item_id),
+        warehouse_id=int(warehouse_id),
+        lot_code=lot_code,
+        qty=0,
+    )
 
 
-async def set_stock_qty(session: AsyncSession, *, item_id: int, warehouse_id: int, lot_code: str | None, qty: int) -> None:
+async def set_stock_qty(
+    session: AsyncSession,
+    *,
+    item_id: int,
+    warehouse_id: int,
+    lot_code: str | None,
+    qty: int,
+) -> None:
     """
     Phase 4D+：把 stocks_lot 槽位的 qty 设置为特定值（幂等重置，用于测试）。
 
-    ✅ 工程收口：禁止 tests 里 UPDATE stocks_lot / INSERT stocks_lot
-    -> 做法：读当前 qty -> 计算 delta -> 走 adjust_lot_impl 写入（ledger + balance 一致）
+    ✅ 工程收口：
+    - PMS current-state seed 写 wms_pms_*_projection；
+    - 禁止 tests 里 UPDATE stocks_lot / INSERT stocks_lot；
+    - 读当前 qty -> 计算 delta -> 走 adjust_lot_impl 写入（ledger + balance 一致）。
     """
+    _install_projection_pms_client(session)
+
     if lot_code is None:
         bc_norm: Optional[str] = None
-        lot_id = await ensure_internal_lot_singleton(session, item_id=int(item_id), warehouse_id=int(warehouse_id))
+        await ensure_item(
+            session,
+            id=int(item_id),
+            sku=f"SKU-{item_id}",
+            name=f"ITEM-{item_id}",
+            expiry_required=False,
+        )
+        lot_id = await ensure_internal_lot_singleton(
+            session,
+            item_id=int(item_id),
+            warehouse_id=int(warehouse_id),
+        )
     else:
-        bc_norm = (str(lot_code).strip() or None)
+        bc_norm = str(lot_code).strip() or None
         if bc_norm is None:
-            lot_id = await ensure_internal_lot_singleton(session, item_id=int(item_id), warehouse_id=int(warehouse_id))
+            await ensure_item(
+                session,
+                id=int(item_id),
+                sku=f"SKU-{item_id}",
+                name=f"ITEM-{item_id}",
+                expiry_required=False,
+            )
+            lot_id = await ensure_internal_lot_singleton(
+                session,
+                item_id=int(item_id),
+                warehouse_id=int(warehouse_id),
+            )
         else:
             lot_id = await ensure_supplier_lot(
                 session,
@@ -321,7 +403,12 @@ async def set_stock_qty(session: AsyncSession, *, item_id: int, warehouse_id: in
                 lot_code=bc_norm,
             )
 
-    cur = await _get_stock_qty(session, item_id=int(item_id), warehouse_id=int(warehouse_id), lot_id=int(lot_id))
+    cur = await _get_stock_qty(
+        session,
+        item_id=int(item_id),
+        warehouse_id=int(warehouse_id),
+        lot_id=int(lot_id),
+    )
     target = int(qty)
     delta = target - int(cur)
     if delta == 0:
@@ -375,8 +462,16 @@ async def ensure_supplier_lot_with_stock(
     if not code_raw:
         raise ValueError("lot_code empty")
 
-    await ensure_item(session, id=int(item_id))
+    _install_projection_pms_client(session)
+
     await ensure_warehouse(session, id=int(warehouse_id))
+    await ensure_item(
+        session,
+        id=int(item_id),
+        sku=f"SKU-{item_id}",
+        name=f"ITEM-{item_id}",
+        expiry_required=True,
+    )
     _ = await ensure_supplier_lot(
         session,
         item_id=int(item_id),
@@ -396,3 +491,14 @@ async def ensure_supplier_lot_with_stock(
         lot_code=code_raw,
         qty=int(qty),
     )
+
+
+__all__ = [
+    "ensure_item",
+    "ensure_internal_lot_singleton",
+    "ensure_stock_slot",
+    "ensure_supplier_lot",
+    "ensure_supplier_lot_with_stock",
+    "ensure_warehouse",
+    "set_stock_qty",
+]
