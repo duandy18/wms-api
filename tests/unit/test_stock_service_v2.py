@@ -10,17 +10,27 @@ from app.wms.shared.enums import MovementType
 from app.wms.shared.services.lot_code_contract import validate_lot_code_contract
 from app.wms.stock.services.lots import ensure_internal_lot_singleton, ensure_lot_full
 from app.wms.stock.services.stock_service import StockService
+from tests.helpers.procurement_pms_projection import install_procurement_pms_projection_fake
 
 UTC = timezone.utc
 
 
 async def _requires_batch(session: AsyncSession, item_id: int) -> bool:
     """
-    Phase M 第一阶段：测试也不再读取 has_shelf_life（镜像字段）。
-    批次受控唯一真相源：items.expiry_policy == 'REQUIRED'
+    PMS 拆库后，测试只读取 WMS PMS projection。
+    批次受控唯一真相源：PMS projection expiry_policy == 'REQUIRED'
     """
+    install_procurement_pms_projection_fake(session)
+
     row = await session.execute(
-        text("SELECT expiry_policy FROM items WHERE id=:i LIMIT 1"),
+        text(
+            """
+            SELECT expiry_policy
+              FROM wms_pms_item_projection
+             WHERE item_id = :i
+             LIMIT 1
+            """
+        ),
         {"i": int(item_id)},
     )
     v = row.scalar_one_or_none()
@@ -51,6 +61,8 @@ async def _ensure_supplier_lot(
     当前 REQUIRED lot 身份已经切到 (warehouse_id, item_id, production_date)，
     因此测试种子在 REQUIRED 商品下也必须显式给 production_date + expiry_date。
     """
+    install_procurement_pms_projection_fake(session)
+
     lot_code = str(code).strip()
     if not lot_code:
         raise ValueError("lot_code required")
@@ -77,12 +89,10 @@ async def _ensure_internal_lot_for_test(session: AsyncSession, *, wh: int, item_
     - singleton per (warehouse_id,item_id)
     - lot_code_source='INTERNAL'
     - lot_code IS NULL
-
-    旧实现通过 inbound_receipts + INSERT lots 来满足 provenance/check；
-    终态收口后：INTERNAL lot 不再以 receipt provenance 参与 identity，
-    本测试只需拿到合法 INTERNAL singleton lot_id。
     """
     _ = ref
+    install_procurement_pms_projection_fake(session)
+
     return int(
         await ensure_internal_lot_singleton(
             session,
@@ -122,6 +132,8 @@ async def _ensure_stock_seed(session: AsyncSession, *, item_id: int, wh: int, co
     - code=None 也必须落到 INTERNAL lot_id（lot_code=NULL）
     - code!=None → SUPPLIER lot（lot_code=code）
     """
+    install_procurement_pms_projection_fake(session)
+
     svc = StockService()
     now = datetime.now(UTC)
 
@@ -173,6 +185,8 @@ async def _ensure_stock_seed(session: AsyncSession, *, item_id: int, wh: int, co
 
 @pytest.mark.asyncio
 async def test_adjust_inbound_auto_resolves_dates(session: AsyncSession):
+    install_procurement_pms_projection_fake(session)
+
     svc = StockService()
 
     item_id = 3001
@@ -218,6 +232,8 @@ def test_lot_code_contract_requires_lot_code_for_required_item() -> None:
 
 @pytest.mark.asyncio
 async def test_adjust_idempotent(session: AsyncSession):
+    install_procurement_pms_projection_fake(session)
+
     svc = StockService()
 
     item_id = 3001
@@ -265,6 +281,8 @@ async def test_adjust_outbound_and_insufficient(session: AsyncSession):
     """
     出库正常扣减一次，第二次强制超量扣减应抛 409 Problem(insufficient_stock)。
     """
+    install_procurement_pms_projection_fake(session)
+
     svc = StockService()
     item_id = 3003
     wh = 1
@@ -334,6 +352,8 @@ async def _insert_supplier_lot(session: AsyncSession, *, warehouse_id: int, item
     终态收口后不允许 tests 直接 INSERT INTO lots。
     这里通过 ensure_lot_full 造出一个合法 lot_id，再用于 mismatch 测试。
     """
+    install_procurement_pms_projection_fake(session)
+
     requires_batch = await _requires_batch(session, int(item_id))
     pd, ed = _required_lot_dates(requires_batch)
 
@@ -356,6 +376,8 @@ async def test_adjust_rejects_lot_mismatch(session: AsyncSession):
     - adjust() 不再接受 lot_id（合同入口只接受 batch_code）
     - lot_id 维度的写入/校验走 adjust_lot()（原语入口）
     """
+    install_procurement_pms_projection_fake(session)
+
     svc = StockService()
     wh = 1
     prod, exp = _required_lot_dates(True)
@@ -387,6 +409,8 @@ async def test_adjust_rejects_lot_not_found(session: AsyncSession):
     """
     任务3 终态：lot_id 原语入口用 adjust_lot()，不存在则 ValueError。
     """
+    install_procurement_pms_projection_fake(session)
+
     svc = StockService()
     wh = 1
     prod, exp = _required_lot_dates(True)
