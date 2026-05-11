@@ -7,6 +7,7 @@ from httpx import AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from tests.helpers.procurement_pms_projection import install_procurement_pms_projection_fake
 from tests.services._helpers import ensure_store
 
 pytestmark = pytest.mark.asyncio
@@ -20,13 +21,15 @@ async def _login_admin_headers(client: AsyncClient) -> dict[str, str]:
 
 
 async def _pick_any_item_id(session: AsyncSession) -> int:
+    install_procurement_pms_projection_fake(session)
+
     row = (
         await session.execute(
             text(
                 """
-                SELECT id
-                FROM items
-                ORDER BY id ASC
+                SELECT item_id
+                FROM wms_pms_item_projection
+                ORDER BY item_id ASC
                 LIMIT 1
                 """
             )
@@ -129,6 +132,7 @@ async def test_order_outbound_view_reads_orders_and_order_lines_only(
 ) -> None:
     headers = await _login_admin_headers(client)
     order_id, order_line_id, item_id = await _seed_order(session)
+    install_procurement_pms_projection_fake(session)
 
     resp = await client.get(f"/oms/orders/{order_id}/outbound-view", headers=headers)
     assert resp.status_code == 200, resp.text

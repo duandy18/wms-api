@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.wms.stock.services.lots import ensure_internal_lot_singleton, ensure_lot_full
 from app.wms.stock.services.stock_adjust import adjust_lot_impl
+from tests.helpers.procurement_pms_projection import install_procurement_pms_projection_fake
 
 
 pytestmark = pytest.mark.asyncio
@@ -24,25 +25,27 @@ async def _login_admin_headers(client: AsyncClient) -> dict[str, str]:
 
 
 async def _pick_any_item_and_uom(session: AsyncSession) -> tuple[int, int, str, str | None, bool]:
+    install_procurement_pms_projection_fake(session)
+
     row = (
         await session.execute(
             text(
                 """
                 SELECT
-                  i.id AS item_id,
-                  iu.id AS item_uom_id,
+                  i.item_id AS item_id,
+                  iu.item_uom_id AS item_uom_id,
                   COALESCE(iu.display_name, iu.uom) AS uom_name,
                   i.spec AS item_spec,
-                  i.expiry_policy::text AS expiry_policy
-                FROM items i
-                JOIN item_uoms iu
-                  ON iu.item_id = i.id
+                  i.expiry_policy AS expiry_policy
+                FROM wms_pms_item_projection i
+                JOIN wms_pms_uom_projection iu
+                  ON iu.item_id = i.item_id
                 ORDER BY
-                  CASE WHEN i.expiry_policy::text = 'NONE' THEN 0 ELSE 1 END,
+                  CASE WHEN COALESCE(i.expiry_policy, 'NONE') = 'NONE' THEN 0 ELSE 1 END,
                   iu.is_outbound_default DESC,
                   iu.is_base DESC,
-                  i.id ASC,
-                  iu.id ASC
+                  i.item_id ASC,
+                  iu.item_uom_id ASC
                 LIMIT 1
                 """
             )
@@ -78,6 +81,8 @@ async def _seed_manual_doc_and_stock(
     *,
     requested_qty: int = 2,
 ) -> tuple[int, int, int, int, int]:
+    install_procurement_pms_projection_fake(session)
+
     warehouse_id = await _ensure_warehouse(session, 1)
     item_id, item_uom_id, uom_name, item_spec, requires_expiry = await _pick_any_item_and_uom(session)
     uniq = uuid4().hex[:10]
