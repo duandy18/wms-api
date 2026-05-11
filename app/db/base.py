@@ -120,6 +120,7 @@ def init_models(
         "app.partners.suppliers.models.supplier",
         "app.partners.suppliers.models.supplier_contact",
         "app.db.external_pms_models",
+        "app.integrations.pms.projection_models",
         "app.procurement.models.purchase_order",
         "app.procurement.models.purchase_order_line",
         "app.wms.inventory_adjustment.return_inbound.models.inbound_receipt",
