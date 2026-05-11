@@ -8,6 +8,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from tests.helpers.procurement_pms_projection import install_procurement_pms_projection_fake
 from tests.utils.ensure_minimal import set_stock_qty
 
 
@@ -68,25 +69,27 @@ async def _pick_active_warehouse_id(session: AsyncSession) -> int:
 
 
 async def _pick_enabled_item_with_base_uom(session: AsyncSession) -> dict[str, object]:
+    install_procurement_pms_projection_fake(session)
+
     row = (
         await session.execute(
             text(
                 """
-                SELECT DISTINCT ON (i.id)
-                  i.id AS item_id,
-                  u.id AS item_uom_id
-                FROM items i
-                JOIN item_uoms u
-                  ON u.item_id = i.id
+                SELECT DISTINCT ON (i.item_id)
+                  i.item_id AS item_id,
+                  u.item_uom_id AS item_uom_id
+                FROM wms_pms_item_projection i
+                JOIN wms_pms_uom_projection u
+                  ON u.item_id = i.item_id
                 WHERE COALESCE(i.enabled, true) = true
                 ORDER BY
-                  i.id ASC,
+                  i.item_id ASC,
                   CASE
                     WHEN COALESCE(u.is_inbound_default, false) THEN 0
                     WHEN COALESCE(u.is_base, false) THEN 1
                     ELSE 2
                   END,
-                  u.id ASC
+                  u.item_uom_id ASC
                 LIMIT 1
                 """
             )

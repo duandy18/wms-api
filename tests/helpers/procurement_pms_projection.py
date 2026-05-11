@@ -30,6 +30,7 @@ PMS_CLIENT_MODULE_NAMES = (
     "app.wms.stock.repos.inventory_read_repo",
     "app.wms.stock.repos.inventory_explain_repo",
     "app.wms.inventory_adjustment.count.repos.count_doc_repo",
+    "app.wms.inventory_adjustment.summary.repos.summary_repo",
     "app.wms.inbound.services.inbound_commit_service",
     "app.wms.inbound.repos.barcode_resolve_repo",
     "app.wms.inbound.repos.item_lookup_repo",

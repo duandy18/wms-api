@@ -7,6 +7,8 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from tests.helpers.procurement_pms_projection import install_procurement_pms_projection_fake
+
 
 REQUIRED_ROW_KEYS = {
     "adjustment_type",
@@ -45,6 +47,8 @@ async def _scalar_required(session: AsyncSession, sql: str) -> int:
 
 
 async def _seed_count_summary_row(session: AsyncSession) -> dict[str, int | str]:
+    install_procurement_pms_projection_fake(session)
+
     now = datetime.now(timezone.utc)
     suffix = uuid4().hex[:8].upper()
 
@@ -54,7 +58,7 @@ async def _seed_count_summary_row(session: AsyncSession) -> dict[str, int | str]
     )
     item_id = await _scalar_required(
         session,
-        "SELECT id FROM items ORDER BY id ASC LIMIT 1",
+        "SELECT item_id FROM wms_pms_item_projection ORDER BY item_id ASC LIMIT 1",
     )
 
     lot_id = (
@@ -131,12 +135,12 @@ async def _seed_count_summary_row(session: AsyncSession) -> dict[str, int | str]
             text(
                 """
                 SELECT
-                  id,
+                  item_uom_id AS id,
                   COALESCE(NULLIF(display_name, ''), uom) AS uom_name
-                FROM item_uoms
+                FROM wms_pms_uom_projection
                 WHERE item_id = :item_id
                   AND is_base IS TRUE
-                ORDER BY id ASC
+                ORDER BY item_uom_id ASC
                 LIMIT 1
                 """
             ),
@@ -152,8 +156,8 @@ async def _seed_count_summary_row(session: AsyncSession) -> dict[str, int | str]
                 SELECT
                   name,
                   spec
-                FROM items
-                WHERE id = :item_id
+                FROM wms_pms_item_projection
+                WHERE item_id = :item_id
                 LIMIT 1
                 """
             ),

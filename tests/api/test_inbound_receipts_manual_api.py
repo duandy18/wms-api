@@ -8,6 +8,8 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from tests.helpers.procurement_pms_projection import install_procurement_pms_projection_fake
+
 
 async def _login_admin_headers(client: httpx.AsyncClient) -> dict[str, str]:
     r = await client.post("/users/login", json={"username": "admin", "password": "admin123"})
@@ -34,25 +36,27 @@ async def _pick_active_warehouse_id(session: AsyncSession) -> int:
 
 
 async def _pick_enabled_item_with_uom(session: AsyncSession) -> dict[str, Any]:
+    install_procurement_pms_projection_fake(session)
+
     row = (
         await session.execute(
             text(
                 """
                 SELECT
-                  i.id AS item_id,
+                  i.item_id AS item_id,
                   i.name AS item_name,
                   i.spec AS item_spec,
-                  u.id AS item_uom_id,
+                  u.item_uom_id AS item_uom_id,
                   COALESCE(NULLIF(u.display_name, ''), u.uom) AS uom_name,
                   u.ratio_to_base AS ratio_to_base
-                FROM items i
-                JOIN item_uoms u
-                  ON u.item_id = i.id
+                FROM wms_pms_item_projection i
+                JOIN wms_pms_uom_projection u
+                  ON u.item_id = i.item_id
                 WHERE COALESCE(i.enabled, true) = true
                 ORDER BY
                   CASE WHEN u.is_inbound_default THEN 0 WHEN u.is_base THEN 1 ELSE 2 END,
-                  i.id,
-                  u.id
+                  i.item_id,
+                  u.item_uom_id
                 LIMIT 1
                 """
             )
@@ -70,14 +74,14 @@ async def _pick_mismatched_item_and_uom(session: AsyncSession) -> tuple[int, int
             text(
                 """
                 SELECT
-                  i.id AS item_id,
-                  u.id AS item_uom_id
-                FROM items i
-                JOIN item_uoms u
-                  ON u.item_id = i.id
+                  i.item_id AS item_id,
+                  u.item_uom_id AS item_uom_id
+                FROM wms_pms_item_projection i
+                JOIN wms_pms_uom_projection u
+                  ON u.item_id = i.item_id
                 WHERE COALESCE(i.enabled, true) = true
-                  AND i.id <> :item_id
-                ORDER BY i.id, u.id
+                  AND i.item_id <> :item_id
+                ORDER BY i.item_id, u.item_uom_id
                 LIMIT 1
                 """
             ),
