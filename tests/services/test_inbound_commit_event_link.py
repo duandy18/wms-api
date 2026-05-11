@@ -7,9 +7,12 @@ from sqlalchemy import text
 from app.wms.inbound.contracts.inbound_commit import InboundCommitIn
 from app.wms.inbound.services.inbound_commit_service import commit_inbound
 from app.wms.inbound.services.inbound_event_read_service import get_inbound_event_detail
+from tests.helpers.procurement_pms_projection import install_procurement_pms_projection_fake
 
 
 async def _pick_seed_item_uom(session):
+    install_procurement_pms_projection_fake(session)
+
     wh_row = await session.execute(
         text(
             """
@@ -26,25 +29,26 @@ async def _pick_seed_item_uom(session):
         text(
             """
             SELECT
-              i.id AS item_id,
-              u.id AS uom_id,
-              i.lot_source_policy::text AS lot_source_policy,
-              i.expiry_policy::text AS expiry_policy
-            FROM item_uoms u
-            JOIN items i
-              ON i.id = u.item_id
+              i.item_id AS item_id,
+              u.item_uom_id AS uom_id,
+              i.lot_source_policy AS lot_source_policy,
+              i.expiry_policy AS expiry_policy
+            FROM wms_pms_uom_projection u
+            JOIN wms_pms_item_projection i
+              ON i.item_id = u.item_id
+            WHERE COALESCE(i.enabled, true) = true
             ORDER BY
               CASE
-                WHEN i.lot_source_policy::text IN ('SUPPLIER_ONLY', 'SUPPLIER') THEN 0
+                WHEN i.lot_source_policy IN ('SUPPLIER_ONLY', 'SUPPLIER') THEN 0
                 ELSE 1
               END,
-              u.id ASC
+              u.item_uom_id ASC
             LIMIT 1
             """
         )
     )
     picked = row.mappings().first()
-    assert picked is not None, "expected seeded item_uoms to exist"
+    assert picked is not None, "expected seeded PMS projection item/uom to exist"
 
     return {
         "warehouse_id": int(warehouse_id),
@@ -282,11 +286,33 @@ async def test_inbound_event_detail_reads_line_snapshots_not_pms_current_state(s
     assert snap["actual_uom_name_snapshot"]
 
     await session.execute(
-        text("UPDATE items SET name = 'MUTATED-CURRENT-NAME', sku = 'MUTATED-CURRENT-SKU' WHERE id = :item_id"),
+        text(
+            """
+            UPDATE wms_pms_item_projection
+               SET name = 'MUTATED-CURRENT-NAME',
+                   sku = 'MUTATED-CURRENT-SKU',
+                   pms_updated_at = CURRENT_TIMESTAMP,
+                   source_hash = 'ut-mutated-current-item:' || item_id::text,
+                   sync_version = 'ut-mutated-current-item',
+                   synced_at = CURRENT_TIMESTAMP
+             WHERE item_id = :item_id
+            """
+        ),
         {"item_id": int(item_id)},
     )
     await session.execute(
-        text("UPDATE item_uoms SET display_name = 'MUTATED-CURRENT-UOM' WHERE id = :uom_id"),
+        text(
+            """
+            UPDATE wms_pms_uom_projection
+               SET display_name = 'MUTATED-CURRENT-UOM',
+                   uom_name = 'MUTATED-CURRENT-UOM',
+                   pms_updated_at = CURRENT_TIMESTAMP,
+                   source_hash = 'ut-mutated-current-uom:' || item_uom_id::text,
+                   sync_version = 'ut-mutated-current-uom',
+                   synced_at = CURRENT_TIMESTAMP
+             WHERE item_uom_id = :uom_id
+            """
+        ),
         {"uom_id": int(uom_id)},
     )
     await session.flush()
@@ -310,10 +336,10 @@ async def test_inbound_commit_rejects_uom_that_belongs_to_other_item(session):
         await session.execute(
             text(
                 """
-                SELECT u.id AS uom_id
-                  FROM item_uoms u
+                SELECT u.item_uom_id AS uom_id
+                  FROM wms_pms_uom_projection u
                  WHERE u.item_id <> :item_id
-                 ORDER BY u.id ASC
+                 ORDER BY u.item_uom_id ASC
                  LIMIT 1
                 """
             ),
