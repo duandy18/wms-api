@@ -108,6 +108,11 @@ async def parse_scan(
             if getattr(r, "expiry", None) and not parsed.get("expiry_date"):
                 parsed["expiry_date"] = r.expiry  # type: ignore[assignment]
 
+    if raw and parsed.get("item_id") is None:
+        iid = await resolve_item_id_from_sku(session, raw)
+        if iid:
+            parsed["item_id"] = iid
+
     qty = int(parsed.get("qty") or scan.get("qty") or 1)
     item_id = int(parsed.get("item_id") or 0)
     lot_code = parsed.get("lot_code")
