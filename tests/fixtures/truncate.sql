@@ -59,6 +59,5 @@ TRUNCATE TABLE
   shipping_providers,
 
   -- master data
-  warehouses,
-  items
+  warehouses
 RESTART IDENTITY CASCADE;
