@@ -24,6 +24,7 @@ endif
 # ---- 分模块拆分 ----
 include scripts/make/env.mk
 include scripts/make/db.mk
+include scripts/make/run.mk
 include scripts/make/audit.mk
 include scripts/make/test.mk
 include scripts/make/lint.mk
