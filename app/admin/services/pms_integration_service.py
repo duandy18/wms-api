@@ -29,6 +29,9 @@ class ProjectionResourceConfig:
     id_column: str
     columns: tuple[str, ...]
     searchable_columns: tuple[str, ...]
+    select_expressions: tuple[str, ...] | None = None
+    from_sql: str | None = None
+    order_by_sql: str | None = None
 
 
 RESOURCE_CONFIGS: dict[ProjectionResource, ProjectionResourceConfig] = {
@@ -43,6 +46,8 @@ RESOURCE_CONFIGS: dict[ProjectionResource, ProjectionResourceConfig] = {
             "spec",
             "enabled",
             "supplier_id",
+            "supplier_code",
+            "supplier_name",
             "brand",
             "category",
             "expiry_policy",
@@ -56,7 +61,43 @@ RESOURCE_CONFIGS: dict[ProjectionResource, ProjectionResourceConfig] = {
             "sync_version",
             "synced_at",
         ),
-        searchable_columns=("sku", "name", "spec", "brand", "category"),
+        searchable_columns=(
+            "i.sku",
+            "i.name",
+            "i.spec",
+            "i.brand",
+            "i.category",
+            "s.supplier_code",
+            "s.supplier_name",
+        ),
+        select_expressions=(
+            "i.item_id",
+            "i.sku",
+            "i.name",
+            "i.spec",
+            "i.enabled",
+            "i.supplier_id",
+            "s.supplier_code AS supplier_code",
+            "s.supplier_name AS supplier_name",
+            "i.brand",
+            "i.category",
+            "i.expiry_policy",
+            "i.shelf_life_value",
+            "i.shelf_life_unit",
+            "i.lot_source_policy",
+            "i.derivation_allowed",
+            "i.uom_governance_enabled",
+            "i.pms_updated_at",
+            "i.source_hash",
+            "i.sync_version",
+            "i.synced_at",
+        ),
+        from_sql=(
+            "wms_pms_item_projection AS i "
+            "LEFT JOIN wms_pms_supplier_projection AS s "
+            "ON s.supplier_id = i.supplier_id"
+        ),
+        order_by_sql="i.item_id ASC",
     ),
     "suppliers": ProjectionResourceConfig(
         resource="suppliers",
@@ -202,6 +243,18 @@ class PmsIntegrationAdminService:
             return str(value)
         return value
 
+    @staticmethod
+    def _select_sql(cfg: ProjectionResourceConfig) -> str:
+        return ", ".join(cfg.select_expressions or cfg.columns)
+
+    @staticmethod
+    def _from_sql(cfg: ProjectionResourceConfig) -> str:
+        return cfg.from_sql or cfg.table_name
+
+    @staticmethod
+    def _order_by_sql(cfg: ProjectionResourceConfig) -> str:
+        return cfg.order_by_sql or f"{cfg.id_column} ASC"
+
     def _sync_run_from_row(self, row: Any) -> dict[str, Any]:
         data = dict(row)
         return {
@@ -314,22 +367,22 @@ class PmsIntegrationAdminService:
             where_sql = "WHERE " + " OR ".join(where_parts)
             params["q"] = f"%{query_text}%"
 
+        from_sql = self._from_sql(cfg)
         total = int(
             self.db.execute(
-                text(f"SELECT count(*)::bigint FROM {cfg.table_name} {where_sql}"),
+                text(f"SELECT count(*)::bigint FROM {from_sql} {where_sql}"),
                 params,
             ).scalar_one()
         )
 
-        columns_sql = ", ".join(cfg.columns)
         rows = (
             self.db.execute(
                 text(
                     f"""
-                    SELECT {columns_sql}
-                    FROM {cfg.table_name}
+                    SELECT {self._select_sql(cfg)}
+                    FROM {from_sql}
                     {where_sql}
-                    ORDER BY {cfg.id_column} ASC
+                    ORDER BY {self._order_by_sql(cfg)}
                     LIMIT :limit OFFSET :offset
                     """
                 ),
