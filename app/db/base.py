@@ -20,19 +20,6 @@ class Base(DeclarativeBase):
 _INITIALIZED: bool = False  # 防重复初始化
 
 
-def _load_external_pms_orm_anchors() -> None:
-    """
-    Register minimal external PMS ORM anchors eagerly.
-
-    PMS owner runtime has moved to pms-api. During the shared-database
-    transition, wms-api keeps minimal PMS anchor tables in metadata so Alembic
-    can consistently filter PMS-owned tables while DB physical FKs still exist.
-    """
-    importlib.import_module("app.db.external_pms_models")
-
-
-_load_external_pms_orm_anchors()
-
 # 显式排除清单：
 # 仅用于临时屏蔽“文件仍存在、但不得进入主线 metadata”的模型。
 # 当前旧 batch / 旧 inbound_receipt 模型已物理删除；PMS owner ORM 已迁入 pms-api。
@@ -116,7 +103,6 @@ def init_models(
 
     # ✅ 显式加载链：只放 wms-api owner 模型；PMS owner ORM 不再进入 wms-api metadata。
     explicit_chain = [
-        "app.db.external_pms_models",
         "app.integrations.pms.projection_models",
         "app.procurement.models.purchase_order",
         "app.procurement.models.purchase_order_line",

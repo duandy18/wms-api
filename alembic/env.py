@@ -38,10 +38,6 @@ if config.config_file_name is not None:
 
 # 延迟加载模型（避免导入时机引发的问题）
 from app.db.base import Base, init_models  # noqa: E402
-from app.db.external_pms_models import (  # noqa: E402
-    PMS_EXTERNAL_ANCHOR_TABLES,
-    PMS_OWNED_TABLES,
-)
 
 # ---------------------------------------------------------------------------
 # 范围控制：按 scope 限定参与 compare 的表集合
@@ -66,22 +62,19 @@ PHASE2_TABLES = {
 }
 
 PHASE3_TABLES = {"stocks", "batches", "stock_ledger", "snapshots"}
-PHASE3_DEPS = {"items", "warehouses"}
+PHASE3_DEPS = {"warehouses"}
 
 
 def build_scoped_metadata(scope: str) -> MetaData:
     """
     按 scope 构建一个缩小版的 MetaData，减少 alembic check 的噪音。
 
-    PMS owner tables live in pms-api. wms-api keeps minimal external ORM
-    anchors in Base.metadata during the shared-database transition. Alembic
-    must ignore PMS-owned tables from wms-api.
+    PMS owner tables have been retired from wms-api metadata and WMS DB.
+    WMS only keeps wms_pms_*_projection tables for PMS current-state reads.
     """
     md = MetaData()
     if scope == "all":
         for t in Base.metadata.tables.values():
-            if t.name in PMS_OWNED_TABLES and t.name not in PMS_EXTERNAL_ANCHOR_TABLES:
-                continue
             t.to_metadata(md)
         return md
 
@@ -93,18 +86,10 @@ def build_scoped_metadata(scope: str) -> MetaData:
     else:
         # 未知 scope 时退回全量，宁可多查，不搞黑盒
         for t in Base.metadata.tables.values():
-            if t.name in PMS_OWNED_TABLES and t.name not in PMS_EXTERNAL_ANCHOR_TABLES:
-                continue
             t.to_metadata(md)
         return md
 
     for name, tbl in Base.metadata.tables.items():
-        if name in PMS_EXTERNAL_ANCHOR_TABLES:
-            tbl.to_metadata(md)
-
-    for name, tbl in Base.metadata.tables.items():
-        if name in PMS_OWNED_TABLES:
-            continue
         if name in wanted:
             tbl.to_metadata(md)
 
@@ -143,11 +128,6 @@ def include_object(
     """
     n = name or ""
 
-    # 0) PMS-owned tables are managed by pms-api, not wms-api.
-    #    wms-api may keep minimal ORM anchors in target metadata only to
-    #    resolve transitional cross-domain FKs.
-    if _object_table_name(obj, name, type_) in PMS_OWNED_TABLES:
-        return False
 
     # 1) 忽略备份表/索引/序列
     if type_ in {"table", "index", "sequence"} and _BACKUP_RE.match(n):
