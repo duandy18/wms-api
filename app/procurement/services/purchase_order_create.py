@@ -26,12 +26,12 @@ async def _load_items_map(session: AsyncSession, item_ids: List[int]) -> Dict[in
     return await create_pms_read_client(session=session).get_item_basics(item_ids=item_ids)
 
 
-async def _require_supplier_snapshot_via_partners(
+async def _require_supplier_snapshot_via_projection(
     session: AsyncSession,
     supplier_id: Optional[int],
 ) -> Tuple[int, str]:
     """
-    供应商真相直接来自 Partners export/service。
+    供应商当前事实来自 WMS 本地 PMS supplier projection。
     返回：
     - supplier_id
     - supplier_name（用于 PO 快照）
@@ -110,7 +110,7 @@ async def create_po_v2(
     if not purchaser_text:
         raise ValueError("purchaser 不能为空：采购单必须填写采购人")
 
-    po_supplier_id, po_supplier_name = await _require_supplier_snapshot_via_partners(
+    po_supplier_id, po_supplier_name = await _require_supplier_snapshot_via_projection(
         session,
         supplier_id,
     )
