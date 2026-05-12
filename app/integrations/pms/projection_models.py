@@ -97,6 +97,50 @@ class WmsPmsItemProjection(Base):
     )
 
 
+class WmsPmsSupplierProjection(Base):
+    __tablename__ = "wms_pms_supplier_projection"
+    __table_args__ = (
+        sa.UniqueConstraint(
+            "supplier_code",
+            name="uq_wms_pms_supplier_projection_supplier_code",
+        ),
+        sa.CheckConstraint(
+            "length(trim(supplier_code)) > 0",
+            name="ck_wms_pms_supplier_projection_supplier_code_non_empty",
+        ),
+        sa.CheckConstraint(
+            "length(trim(supplier_name)) > 0",
+            name="ck_wms_pms_supplier_projection_supplier_name_non_empty",
+        ),
+        sa.Index("ix_wms_pms_supplier_projection_active", "active"),
+        sa.Index("ix_wms_pms_supplier_projection_supplier_name", "supplier_name"),
+        sa.Index("ix_wms_pms_supplier_projection_synced_at", "synced_at"),
+        {"info": PROJECTION_TABLE_INFO},
+    )
+
+    supplier_id: Mapped[int] = mapped_column(sa.Integer, primary_key=True, autoincrement=False)
+    supplier_code: Mapped[str] = mapped_column(sa.String(64), nullable=False)
+    supplier_name: Mapped[str] = mapped_column(sa.String(255), nullable=False)
+    active: Mapped[bool] = mapped_column(
+        sa.Boolean(),
+        nullable=False,
+        server_default=sa.text("true"),
+    )
+    website: Mapped[str | None] = mapped_column(sa.String(255), nullable=True)
+
+    pms_updated_at: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True),
+        nullable=True,
+    )
+    source_hash: Mapped[str | None] = mapped_column(sa.String(128), nullable=True)
+    sync_version: Mapped[str | None] = mapped_column(sa.String(64), nullable=True)
+    synced_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True),
+        nullable=False,
+        server_default=sa.text("now()"),
+    )
+
+
 class WmsPmsUomProjection(Base):
     __tablename__ = "wms_pms_uom_projection"
     __table_args__ = (
@@ -271,5 +315,6 @@ __all__ = [
     "WmsPmsBarcodeProjection",
     "WmsPmsItemProjection",
     "WmsPmsSkuCodeProjection",
+    "WmsPmsSupplierProjection",
     "WmsPmsUomProjection",
 ]

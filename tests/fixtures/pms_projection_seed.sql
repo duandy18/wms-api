@@ -13,6 +13,33 @@
 -- - projection baseline 不再从 legacy owner 表 SELECT / JOIN 物化。
 -- - 这里的 *_id 使用稳定测试 ID，避免依赖 legacy owner 表自增序列。
 
+-- ===== WMS PMS supplier projection baseline =====
+INSERT INTO wms_pms_supplier_projection (
+  supplier_id,
+  supplier_code,
+  supplier_name,
+  active,
+  website,
+  pms_updated_at,
+  source_hash,
+  sync_version,
+  synced_at
+)
+VALUES
+  (1, 'SUP-1', 'UT-SUPPLIER-1', TRUE, NULL, CURRENT_TIMESTAMP, 'test-baseline:supplier:1', 'test-baseline', CURRENT_TIMESTAMP),
+  (2, 'SUP-2', 'UT-SUPPLIER-2', TRUE, NULL, CURRENT_TIMESTAMP, 'test-baseline:supplier:2', 'test-baseline', CURRENT_TIMESTAMP),
+  (3, 'SUP-3', 'UT-SUPPLIER-3', TRUE, NULL, CURRENT_TIMESTAMP, 'test-baseline:supplier:3', 'test-baseline', CURRENT_TIMESTAMP),
+  (4, 'SUP-4', 'UT-SUPPLIER-4', TRUE, NULL, CURRENT_TIMESTAMP, 'test-baseline:supplier:4', 'test-baseline', CURRENT_TIMESTAMP)
+ON CONFLICT (supplier_id) DO UPDATE SET
+  supplier_code = EXCLUDED.supplier_code,
+  supplier_name = EXCLUDED.supplier_name,
+  active = EXCLUDED.active,
+  website = EXCLUDED.website,
+  pms_updated_at = EXCLUDED.pms_updated_at,
+  source_hash = EXCLUDED.source_hash,
+  sync_version = EXCLUDED.sync_version,
+  synced_at = CURRENT_TIMESTAMP;
+
 -- ===== WMS PMS item projection baseline =====
 INSERT INTO wms_pms_item_projection (
   item_id,

@@ -26,6 +26,7 @@ IssueType = Literal[
     "UOM_ITEM_MISMATCH",
     "SKU_CODE_MISSING_IN_PROJECTION",
     "SKU_CODE_ITEM_MISMATCH",
+    "SUPPLIER_MISSING_IN_PROJECTION",
 ]
 
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -55,6 +56,13 @@ class SkuCodeReference:
 
 
 @dataclass(frozen=True)
+class SupplierReference:
+    source_table: str
+    source_id_column: str | None
+    supplier_id_column: str
+
+
+@dataclass(frozen=True)
 class PmsProjectionReconciliationIssue:
     issue_type: IssueType
     source_table: str
@@ -63,6 +71,7 @@ class PmsProjectionReconciliationIssue:
     item_id: int | None = None
     item_uom_id: int | None = None
     sku_code_id: int | None = None
+    supplier_id: int | None = None
     projection_item_id: int | None = None
 
 
@@ -133,6 +142,15 @@ DEFAULT_UOM_REFERENCES: tuple[UomReference, ...] = (
 
 DEFAULT_SKU_CODE_REFERENCES: tuple[SkuCodeReference, ...] = (
     SkuCodeReference("oms_fsku_components", "id", "resolved_item_id", "resolved_item_sku_code_id"),
+)
+
+DEFAULT_SUPPLIER_REFERENCES: tuple[SupplierReference, ...] = (
+    SupplierReference("wms_pms_item_projection", "item_id", "supplier_id"),
+    SupplierReference("purchase_orders", "id", "supplier_id"),
+    SupplierReference("inbound_receipts", "id", "supplier_id"),
+    SupplierReference("wms_inbound_operations", "id", "supplier_id"),
+    SupplierReference("purchase_order_line_completion", None, "supplier_id"),
+    SupplierReference("finance_purchase_price_ledger_lines", "id", "supplier_id"),
 )
 
 
@@ -317,12 +335,57 @@ async def _collect_sku_code_issues(
     ]
 
 
+
+async def _collect_supplier_issues(
+    session: AsyncSession,
+    *,
+    ref: SupplierReference,
+    limit: int,
+) -> list[PmsProjectionReconciliationIssue]:
+    source_table_sql = _quote_identifier(ref.source_table, kind="table")
+    source_id_select_sql, source_id_order_sql = _source_id_select_and_order(
+        ref.source_id_column
+    )
+    supplier_id_sql = _quote_identifier(ref.supplier_id_column, kind="column")
+
+    rows = (
+        await session.execute(
+            text(
+                f"""
+                SELECT
+                    {source_id_select_sql} AS source_id,
+                    t.{supplier_id_sql} AS supplier_id
+                FROM {source_table_sql} AS t
+                LEFT JOIN wms_pms_supplier_projection AS s
+                  ON s.supplier_id = t.{supplier_id_sql}
+                WHERE t.{supplier_id_sql} IS NOT NULL
+                  AND s.supplier_id IS NULL
+                ORDER BY {source_id_order_sql}
+                LIMIT :limit
+                """
+            ),
+            {"limit": int(limit)},
+        )
+    ).mappings().all()
+
+    return [
+        PmsProjectionReconciliationIssue(
+            issue_type="SUPPLIER_MISSING_IN_PROJECTION",
+            source_table=ref.source_table,
+            source_column=ref.supplier_id_column,
+            source_id=str(row["source_id"]),
+            supplier_id=int(row["supplier_id"]),
+        )
+        for row in rows
+    ]
+
 async def reconcile_pms_projection_references(
     session: AsyncSession,
     *,
     item_references: tuple[ItemReference, ...] = DEFAULT_ITEM_REFERENCES,
     uom_references: tuple[UomReference, ...] = DEFAULT_UOM_REFERENCES,
     sku_code_references: tuple[SkuCodeReference, ...] = DEFAULT_SKU_CODE_REFERENCES,
+    supplier_references: tuple[SupplierReference, ...] = DEFAULT_SUPPLIER_REFERENCES,
     per_reference_limit: int = 200,
 ) -> PmsProjectionReconciliationResult:
     safe_limit = max(1, min(int(per_reference_limit), 1000))
@@ -337,17 +400,22 @@ async def reconcile_pms_projection_references(
     for ref in sku_code_references:
         issues.extend(await _collect_sku_code_issues(session, ref=ref, limit=safe_limit))
 
+    for ref in supplier_references:
+        issues.extend(await _collect_supplier_issues(session, ref=ref, limit=safe_limit))
+
     return PmsProjectionReconciliationResult(issues=issues)
 
 
 __all__ = [
     "DEFAULT_ITEM_REFERENCES",
     "DEFAULT_SKU_CODE_REFERENCES",
+    "DEFAULT_SUPPLIER_REFERENCES",
     "DEFAULT_UOM_REFERENCES",
     "ItemReference",
     "PmsProjectionReconciliationIssue",
     "PmsProjectionReconciliationResult",
     "SkuCodeReference",
+    "SupplierReference",
     "UomReference",
     "reconcile_pms_projection_references",
 ]

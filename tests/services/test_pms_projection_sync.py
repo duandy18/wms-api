@@ -22,6 +22,7 @@ async def _clear_projection_tables(session: AsyncSession) -> None:
         "wms_pms_sku_code_projection",
         "wms_pms_uom_projection",
         "wms_pms_item_projection",
+        "wms_pms_supplier_projection",
     ):
         await session.execute(text(f"DELETE FROM {table_name}"))
 
@@ -68,6 +69,39 @@ def _transport(calls: list[tuple[str, str]]) -> httpx.MockTransport:
                     "derivation_allowed": False,
                     "uom_governance_enabled": True,
                     "pms_updated_at": "2026-01-02T00:00:00Z",
+                },
+            ]
+            page = rows[offset : offset + limit]
+            has_more = offset + limit < len(rows)
+            return httpx.Response(
+                200,
+                json={
+                    "rows": page,
+                    "limit": limit,
+                    "offset": offset,
+                    "next_offset": offset + limit if has_more else None,
+                    "has_more": has_more,
+                },
+            )
+
+
+        if path == "/pms/read/v1/projection-feed/suppliers":
+            rows = [
+                {
+                    "supplier_id": 7001,
+                    "supplier_code": "SYNC-SUP-1",
+                    "supplier_name": "同步供应商1",
+                    "active": True,
+                    "website": None,
+                    "source_updated_at": "2026-01-02T08:00:00Z",
+                },
+                {
+                    "supplier_id": 7002,
+                    "supplier_code": "SYNC-SUP-2",
+                    "supplier_name": "同步供应商2",
+                    "active": False,
+                    "website": "https://supplier.example",
+                    "source_updated_at": "2026-01-02T09:00:00Z",
                 },
             ]
             page = rows[offset : offset + limit]
@@ -174,10 +208,12 @@ async def test_sync_pms_read_projection_upserts_feed_rows(session: AsyncSession)
     )
     await session.flush()
 
-    assert result.fetched == 5
-    assert result.upserted == 5
+    assert result.fetched == 7
+    assert result.upserted == 7
     assert result.resources["items"].pages == 2
     assert result.resources["items"].fetched == 2
+    assert result.resources["suppliers"].pages == 2
+    assert result.resources["suppliers"].fetched == 2
 
     item = (
         await session.execute(
@@ -208,6 +244,25 @@ async def test_sync_pms_read_projection_upserts_feed_rows(session: AsyncSession)
     assert item["lot_source_policy"] == "SUPPLIER_ONLY"
     assert item["source_hash"]
     assert item["sync_version"] == SYNC_VERSION
+
+
+    supplier = (
+        await session.execute(
+            text(
+                """
+                SELECT supplier_id, supplier_code, supplier_name, active, website, source_hash, sync_version
+                FROM wms_pms_supplier_projection
+                WHERE supplier_id = 7002
+                """
+            )
+        )
+    ).mappings().one()
+    assert supplier["supplier_code"] == "SYNC-SUP-2"
+    assert supplier["supplier_name"] == "同步供应商2"
+    assert supplier["active"] is False
+    assert supplier["website"] == "https://supplier.example"
+    assert supplier["source_hash"]
+    assert supplier["sync_version"] == SYNC_VERSION
 
     uom = (
         await session.execute(
@@ -261,6 +316,8 @@ async def test_sync_pms_read_projection_upserts_feed_rows(session: AsyncSession)
     assert called_paths == [
         "/pms/read/v1/projection-feed/items",
         "/pms/read/v1/projection-feed/items",
+        "/pms/read/v1/projection-feed/suppliers",
+        "/pms/read/v1/projection-feed/suppliers",
         "/pms/read/v1/projection-feed/uoms",
         "/pms/read/v1/projection-feed/sku-codes",
         "/pms/read/v1/projection-feed/barcodes",

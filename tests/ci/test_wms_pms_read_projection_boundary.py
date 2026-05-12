@@ -13,6 +13,17 @@ from app.db.base import Base, init_models
 ROOT = Path(__file__).resolve().parents[2]
 
 PROJECTION_COLUMNS: dict[str, set[str]] = {
+    "wms_pms_supplier_projection": {
+        "supplier_id",
+        "supplier_code",
+        "supplier_name",
+        "active",
+        "website",
+        "pms_updated_at",
+        "source_hash",
+        "sync_version",
+        "synced_at",
+    },
     "wms_pms_item_projection": {
         "item_id",
         "sku",
@@ -166,6 +177,7 @@ async def test_wms_pms_projection_primary_keys_have_no_db_defaults(
             FROM information_schema.columns
             WHERE table_schema = 'public'
               AND (table_name, column_name) IN (
+                ('wms_pms_supplier_projection', 'supplier_id'),
                 ('wms_pms_item_projection', 'item_id'),
                 ('wms_pms_uom_projection', 'item_uom_id'),
                 ('wms_pms_sku_code_projection', 'sku_code_id'),
@@ -184,6 +196,7 @@ async def test_wms_pms_projection_primary_keys_have_no_db_defaults(
     assert got == {
         ("wms_pms_barcode_projection", "barcode_id"): None,
         ("wms_pms_item_projection", "item_id"): None,
+        ("wms_pms_supplier_projection", "supplier_id"): None,
         ("wms_pms_sku_code_projection", "sku_code_id"): None,
         ("wms_pms_uom_projection", "item_uom_id"): None,
     }

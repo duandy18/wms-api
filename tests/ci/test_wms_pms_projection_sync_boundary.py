@@ -17,6 +17,7 @@ def test_pms_projection_sync_uses_read_v1_feed_endpoints_only() -> None:
     text = (ROOT / "app/integrations/pms/projection_sync.py").read_text(encoding="utf-8")
 
     assert "/pms/read/v1/projection-feed/items" in text
+    assert "/pms/read/v1/projection-feed/suppliers" in text
     assert "/pms/read/v1/projection-feed/uoms" in text
     assert "/pms/read/v1/projection-feed/sku-codes" in text
     assert "/pms/read/v1/projection-feed/barcodes" in text
@@ -36,6 +37,7 @@ def test_pms_projection_sync_writes_projection_tables_only() -> None:
     text = (ROOT / "app/integrations/pms/projection_sync.py").read_text(encoding="utf-8")
 
     assert "INSERT INTO wms_pms_item_projection" in text
+    assert "INSERT INTO wms_pms_supplier_projection" in text
     assert "INSERT INTO wms_pms_uom_projection" in text
     assert "INSERT INTO wms_pms_sku_code_projection" in text
     assert "INSERT INTO wms_pms_barcode_projection" in text

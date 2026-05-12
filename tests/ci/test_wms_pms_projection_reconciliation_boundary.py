@@ -21,6 +21,7 @@ def test_pms_projection_reconciliation_reads_projection_not_owner_tables() -> No
     assert "wms_pms_item_projection" in text
     assert "wms_pms_uom_projection" in text
     assert "wms_pms_sku_code_projection" in text
+    assert "wms_pms_supplier_projection" in text
     assert "wms_pms_barcode_projection" not in text
     assert FORBIDDEN_OWNER_SQL_RE.search(text) is None
 

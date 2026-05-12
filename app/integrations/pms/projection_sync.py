@@ -24,7 +24,7 @@ import httpx
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-ProjectionResource = Literal["items", "uoms", "sku-codes", "barcodes"]
+ProjectionResource = Literal["items", "suppliers", "uoms", "sku-codes", "barcodes"]
 
 SYNC_VERSION = "pms-read-v1-projection-feed"
 DEFAULT_LIMIT = 500
@@ -32,6 +32,7 @@ MAX_LIMIT = 500
 
 RESOURCE_ORDER: tuple[ProjectionResource, ...] = (
     "items",
+    "suppliers",
     "uoms",
     "sku-codes",
     "barcodes",
@@ -39,6 +40,7 @@ RESOURCE_ORDER: tuple[ProjectionResource, ...] = (
 
 RESOURCE_PATHS: dict[ProjectionResource, str] = {
     "items": "/pms/read/v1/projection-feed/items",
+    "suppliers": "/pms/read/v1/projection-feed/suppliers",
     "uoms": "/pms/read/v1/projection-feed/uoms",
     "sku-codes": "/pms/read/v1/projection-feed/sku-codes",
     "barcodes": "/pms/read/v1/projection-feed/barcodes",
@@ -188,6 +190,20 @@ def _item_params(row: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _supplier_params(row: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "supplier_id": _required_int(row, "supplier_id"),
+        "supplier_code": _required_str(row, "supplier_code"),
+        "supplier_name": _required_str(row, "supplier_name"),
+        "active": _required_bool(row, "active"),
+        "website": _optional_str(row, "website"),
+        "pms_updated_at": _optional_datetime(row, "source_updated_at"),
+        "source_hash": _source_hash(row),
+        "sync_version": SYNC_VERSION,
+    }
+
+
+
 def _uom_params(row: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "item_uom_id": _required_int(row, "item_uom_id"),
@@ -294,6 +310,39 @@ UPSERT_SQL: dict[ProjectionResource, str] = {
             lot_source_policy = EXCLUDED.lot_source_policy,
             derivation_allowed = EXCLUDED.derivation_allowed,
             uom_governance_enabled = EXCLUDED.uom_governance_enabled,
+            pms_updated_at = EXCLUDED.pms_updated_at,
+            source_hash = EXCLUDED.source_hash,
+            sync_version = EXCLUDED.sync_version,
+            synced_at = now()
+    """,
+    "suppliers": """
+        INSERT INTO wms_pms_supplier_projection (
+            supplier_id,
+            supplier_code,
+            supplier_name,
+            active,
+            website,
+            pms_updated_at,
+            source_hash,
+            sync_version,
+            synced_at
+        )
+        VALUES (
+            :supplier_id,
+            :supplier_code,
+            :supplier_name,
+            :active,
+            :website,
+            :pms_updated_at,
+            :source_hash,
+            :sync_version,
+            now()
+        )
+        ON CONFLICT (supplier_id) DO UPDATE SET
+            supplier_code = EXCLUDED.supplier_code,
+            supplier_name = EXCLUDED.supplier_name,
+            active = EXCLUDED.active,
+            website = EXCLUDED.website,
             pms_updated_at = EXCLUDED.pms_updated_at,
             source_hash = EXCLUDED.source_hash,
             sync_version = EXCLUDED.sync_version,
@@ -440,6 +489,8 @@ def _params_for_resource(
 ) -> dict[str, Any]:
     if resource == "items":
         return _item_params(row)
+    if resource == "suppliers":
+        return _supplier_params(row)
     if resource == "uoms":
         return _uom_params(row)
     if resource == "sku-codes":

@@ -6,6 +6,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 REQUIRED_PROJECTION_TABLES = (
+    "wms_pms_supplier_projection",
     "wms_pms_item_projection",
     "wms_pms_uom_projection",
     "wms_pms_sku_code_projection",
