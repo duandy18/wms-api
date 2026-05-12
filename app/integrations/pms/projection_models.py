@@ -311,9 +311,94 @@ class WmsPmsBarcodeProjection(Base):
     )
 
 
+class WmsPmsProjectionSyncRun(Base):
+    __tablename__ = "wms_pms_projection_sync_runs"
+    __table_args__ = (
+        sa.CheckConstraint(
+            "resource IN ('items', 'suppliers', 'uoms', 'sku-codes', 'barcodes', 'all')",
+            name="ck_wms_pms_projection_sync_runs_resource",
+        ),
+        sa.CheckConstraint(
+            "status IN ('RUNNING', 'SUCCESS', 'FAILED')",
+            name="ck_wms_pms_projection_sync_runs_status",
+        ),
+        sa.CheckConstraint(
+            "fetched >= 0",
+            name="ck_wms_pms_projection_sync_runs_fetched_non_negative",
+        ),
+        sa.CheckConstraint(
+            "upserted >= 0",
+            name="ck_wms_pms_projection_sync_runs_upserted_non_negative",
+        ),
+        sa.CheckConstraint(
+            "pages >= 0",
+            name="ck_wms_pms_projection_sync_runs_pages_non_negative",
+        ),
+        sa.CheckConstraint(
+            "duration_ms IS NULL OR duration_ms >= 0",
+            name="ck_wms_pms_projection_sync_runs_duration_non_negative",
+        ),
+        sa.Index(
+            "ix_wms_pms_projection_sync_runs_resource_started_at",
+            "resource",
+            "started_at",
+        ),
+        sa.Index("ix_wms_pms_projection_sync_runs_status", "status"),
+        {"info": {"owner": "wms-api", "projection_sync_log": True}},
+    )
+
+    id: Mapped[int] = mapped_column(sa.BigInteger, primary_key=True, autoincrement=True)
+    resource: Mapped[str] = mapped_column(sa.String(32), nullable=False)
+    status: Mapped[str] = mapped_column(sa.String(16), nullable=False)
+
+    fetched: Mapped[int] = mapped_column(
+        sa.Integer,
+        nullable=False,
+        server_default=sa.text("0"),
+    )
+    upserted: Mapped[int] = mapped_column(
+        sa.Integer,
+        nullable=False,
+        server_default=sa.text("0"),
+    )
+    pages: Mapped[int] = mapped_column(
+        sa.Integer,
+        nullable=False,
+        server_default=sa.text("0"),
+    )
+
+    started_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True),
+        nullable=False,
+        server_default=sa.text("now()"),
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True),
+        nullable=True,
+    )
+    duration_ms: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+
+    triggered_by_user_id: Mapped[int | None] = mapped_column(
+        sa.Integer,
+        sa.ForeignKey(
+            "users.id",
+            name="fk_wms_pms_projection_sync_runs_triggered_by_user_id_users",
+            ondelete="SET NULL",
+        ),
+        nullable=True,
+    )
+    pms_api_base_url_snapshot: Mapped[str | None] = mapped_column(
+        sa.String(512),
+        nullable=True,
+    )
+    sync_version: Mapped[str | None] = mapped_column(sa.String(64), nullable=True)
+
+
 __all__ = [
     "WmsPmsBarcodeProjection",
     "WmsPmsItemProjection",
+    "WmsPmsProjectionSyncRun",
     "WmsPmsSkuCodeProjection",
     "WmsPmsSupplierProjection",
     "WmsPmsUomProjection",

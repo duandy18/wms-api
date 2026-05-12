@@ -312,7 +312,6 @@ async def test_my_navigation_admin_contains_new_wms_tree_and_filters_legacy_shel
     assert "wms.masterdata.warehouses" not in nodes
 
 
-
 @pytest.mark.asyncio
 async def test_my_navigation_retired_partners_supplier_owner_is_absent(client: AsyncClient) -> None:
     headers = await _login_admin_headers(client)
@@ -330,8 +329,11 @@ async def test_my_navigation_retired_partners_supplier_owner_is_absent(client: A
     assert "/partners/suppliers" not in route_map
     assert "/suppliers" not in route_map
 
+
 @pytest.mark.asyncio
-async def test_my_navigation_item_barcodes_page_is_under_pms(client: AsyncClient) -> None:
+async def test_my_navigation_pms_projection_sync_admin_tree_replaces_old_pms_owner_tree(
+    client: AsyncClient,
+) -> None:
     headers = await _login_admin_headers(client)
 
     r = await client.get("/users/me/navigation", headers=headers)
@@ -339,15 +341,84 @@ async def test_my_navigation_item_barcodes_page_is_under_pms(client: AsyncClient
 
     data = r.json()
     nodes = _walk_pages(data["pages"])
+    route_map = _index_route_prefixes(data["route_prefixes"])
 
-    item_barcodes = nodes.get("pms.item_barcodes")
-    assert item_barcodes is not None, "pms.item_barcodes should exist"
+    old_pms_page_codes = [
+        "pms",
+        "pms.items",
+        "pms.brands",
+        "pms.categories",
+        "pms.item_attributes",
+        "pms.sku_coding",
+        "pms.item_barcodes",
+        "pms.item_uoms",
+    ]
+    for code in old_pms_page_codes:
+        assert code not in nodes
 
-    assert item_barcodes["parent_code"] == "pms"
-    assert item_barcodes["domain_code"] == "pms"
-    assert item_barcodes["effective_read_permission"] == "page.pms.read"
-    assert item_barcodes["effective_write_permission"] == "page.pms.write"
+    old_pms_route_prefixes = [
+        "/items",
+        "/item-barcodes",
+        "/item-uoms",
+        "/items/sku-coding",
+        "/pms/brands",
+        "/pms/categories",
+        "/pms/item-attribute-defs",
+    ]
+    for route_prefix in old_pms_route_prefixes:
+        assert route_prefix not in route_map
 
+    admin = nodes["admin"]
+    assert "admin.users" in _child_codes(admin)
+    assert "admin.pms_integration" in _child_codes(admin)
+
+    pms_integration = nodes["admin.pms_integration"]
+    assert pms_integration["name"] == "PMS 接入管理"
+    assert pms_integration["parent_code"] == "admin"
+    assert pms_integration["domain_code"] == "admin"
+    assert pms_integration["effective_read_permission"] == "page.admin.read"
+    assert pms_integration["effective_write_permission"] == "page.admin.write"
+
+    assert _child_codes(pms_integration) == [
+        "admin.pms_integration.items",
+        "admin.pms_integration.suppliers",
+        "admin.pms_integration.uoms",
+        "admin.pms_integration.sku_codes",
+        "admin.pms_integration.barcodes",
+    ]
+
+    expected_names = {
+        "admin.pms_integration.items": "商品投影",
+        "admin.pms_integration.suppliers": "供应商投影",
+        "admin.pms_integration.uoms": "包装单位投影",
+        "admin.pms_integration.sku_codes": "SKU 编码投影",
+        "admin.pms_integration.barcodes": "条码投影",
+    }
+    for code, name in expected_names.items():
+        node = nodes[code]
+        assert node["name"] == name
+        assert node["parent_code"] == "admin.pms_integration"
+        assert node["domain_code"] == "admin"
+        assert node["effective_read_permission"] == "page.admin.read"
+        assert node["effective_write_permission"] == "page.admin.write"
+
+    expected_route_map = {
+        "/admin/pms-integration": "admin.pms_integration",
+        "/admin/pms-integration/items": "admin.pms_integration.items",
+        "/admin/pms-integration/suppliers": "admin.pms_integration.suppliers",
+        "/admin/pms-integration/uoms": "admin.pms_integration.uoms",
+        "/admin/pms-integration/sku-codes": "admin.pms_integration.sku_codes",
+        "/admin/pms-integration/barcodes": "admin.pms_integration.barcodes",
+    }
+    for route_prefix, page_code in expected_route_map.items():
+        route = route_map.get(route_prefix)
+        assert route is not None, f"{route_prefix} should exist in route_prefixes"
+        assert route["page_code"] == page_code
+        assert route["effective_read_permission"] == "page.admin.read"
+        assert route["effective_write_permission"] == "page.admin.write"
+
+    assert "/admin/pms-integration/connection" not in route_map
+    assert "admin.pms_integration.connection" not in nodes
 
 
 @pytest.mark.asyncio
@@ -363,28 +434,38 @@ async def test_my_navigation_route_prefix_mapping_and_effective_permissions(clie
 
     shipping_handoffs_page = nodes["shipping_assist.handoffs"]
     shipping_records_page = nodes["shipping_assist.records"]
-    items_page = nodes["pms.items"]
+    pms_integration_page = nodes["admin.pms_integration"]
+    pms_items_projection_page = nodes["admin.pms_integration.items"]
 
     assert shipping_handoffs_page["effective_read_permission"]
     assert shipping_handoffs_page["effective_write_permission"]
     assert shipping_records_page["effective_read_permission"]
     assert shipping_records_page["effective_write_permission"]
-    assert items_page["effective_read_permission"]
-    assert items_page["effective_write_permission"]
+    assert pms_integration_page["effective_read_permission"] == "page.admin.read"
+    assert pms_integration_page["effective_write_permission"] == "page.admin.write"
+    assert pms_items_projection_page["effective_read_permission"] == "page.admin.read"
+    assert pms_items_projection_page["effective_write_permission"] == "page.admin.write"
 
     assert "/shipping-assist/handoffs" in route_map
     assert "/shipping-assist/records" in route_map
-    assert "/items" in route_map
+    assert "/admin/pms-integration" in route_map
+    assert "/admin/pms-integration/items" in route_map
 
     assert route_map["/shipping-assist/handoffs"]["page_code"] == "shipping_assist.handoffs"
     assert route_map["/shipping-assist/records"]["page_code"] == "shipping_assist.records"
-    assert route_map["/items"]["page_code"] == "pms.items"
+    assert route_map["/admin/pms-integration"]["page_code"] == "admin.pms_integration"
+    assert route_map["/admin/pms-integration/items"]["page_code"] == "admin.pms_integration.items"
 
+    assert "/items" not in route_map
+    assert "/item-barcodes" not in route_map
     assert "/partners/suppliers" not in route_map
+    assert "pms.items" not in nodes
+    assert "pms.item_barcodes" not in nodes
     assert "partners.suppliers" not in nodes
 
+
 @pytest.mark.asyncio
-async def test_my_navigation_item_barcodes_route_prefix_mapping_and_permissions(
+async def test_my_navigation_pms_barcode_projection_route_prefix_mapping_and_permissions(
     client: AsyncClient,
 ) -> None:
     headers = await _login_admin_headers(client)
@@ -395,12 +476,14 @@ async def test_my_navigation_item_barcodes_route_prefix_mapping_and_permissions(
     data = r.json()
     route_map = _index_route_prefixes(data["route_prefixes"])
 
-    item_barcodes_route = route_map.get("/item-barcodes")
-    assert item_barcodes_route is not None, "/item-barcodes should exist in route_prefixes"
+    barcode_projection_route = route_map.get("/admin/pms-integration/barcodes")
+    assert barcode_projection_route is not None
 
-    assert item_barcodes_route["page_code"] == "pms.item_barcodes"
-    assert item_barcodes_route["effective_read_permission"] == "page.pms.read"
-    assert item_barcodes_route["effective_write_permission"] == "page.pms.write"
+    assert barcode_projection_route["page_code"] == "admin.pms_integration.barcodes"
+    assert barcode_projection_route["effective_read_permission"] == "page.admin.read"
+    assert barcode_projection_route["effective_write_permission"] == "page.admin.write"
+
+    assert "/item-barcodes" not in route_map
 
 
 @pytest.mark.asyncio
@@ -438,6 +521,7 @@ async def test_my_navigation_filters_to_only_directly_visible_parent_tree(
     assert "shipping_assist.shipping" not in nodes
     assert "shipping_assist.pricing" not in nodes
     assert "shipping_assist.billing" not in nodes
+    assert "admin.pms_integration" not in nodes
 
     assert all(item["page_code"].startswith("shipping_assist.") for item in route_prefixes)
     assert [item["route_prefix"] for item in route_prefixes] == [
