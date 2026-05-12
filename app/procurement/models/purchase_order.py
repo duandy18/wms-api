@@ -50,18 +50,17 @@ class PurchaseOrder(Base):
         comment="采购业务单号（如 PO-123）",
     )
 
-    # ✅ 供应商：只保留主数据 ID + 下单快照（废除 supplier 自由文本）
+    # ✅ 供应商：只保留 PMS supplier_id 标量引用 + 下单快照
     supplier_id: Mapped[int] = mapped_column(
         sa.Integer,
-        sa.ForeignKey("suppliers.id", ondelete="RESTRICT"),
         nullable=False,
         index=True,
-        comment="FK → suppliers.id（必填）",
+        comment="PMS supplier_id 标量引用（由 wms_pms_supplier_projection 校验，不再是 WMS 本地 FK）",
     )
     supplier_name: Mapped[str] = mapped_column(
         sa.String(255),
         nullable=False,
-        comment="下单时的供应商名称快照（必填，通常来自 suppliers.name）",
+        comment="下单时的供应商名称快照（来自 PMS supplier projection）",
     )
 
     # 仓库

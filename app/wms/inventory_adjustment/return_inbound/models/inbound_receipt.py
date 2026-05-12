@@ -44,7 +44,6 @@ class InboundReceipt(Base):
 
     supplier_id: Mapped[Optional[int]] = mapped_column(
         Integer,
-        ForeignKey("suppliers.id", name="fk_inbound_receipts_supplier", ondelete="RESTRICT"),
         nullable=True,
     )
     counterparty_name_snapshot: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
