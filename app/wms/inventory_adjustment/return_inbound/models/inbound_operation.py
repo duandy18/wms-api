@@ -30,7 +30,6 @@ class WmsInboundOperation(Base):
 
     supplier_id: Mapped[Optional[int]] = mapped_column(
         Integer,
-        ForeignKey("suppliers.id", name="fk_wms_inbound_operations_supplier", ondelete="RESTRICT"),
         nullable=True,
     )
     supplier_name_snapshot: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
