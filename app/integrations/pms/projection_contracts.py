@@ -50,6 +50,19 @@ class WmsPmsItemProjectionRow(_Base):
     synced_at: datetime
 
 
+class WmsPmsSupplierProjectionRow(_Base):
+    supplier_id: int = Field(gt=0)
+    supplier_code: str = Field(min_length=1, max_length=64)
+    supplier_name: str = Field(min_length=1, max_length=255)
+    active: bool = True
+    website: str | None = Field(default=None, max_length=255)
+
+    pms_updated_at: datetime | None = None
+    source_hash: str | None = Field(default=None, max_length=128)
+    sync_version: str | None = Field(default=None, max_length=64)
+    synced_at: datetime
+
+
 class WmsPmsUomProjectionRow(_Base):
     item_uom_id: int = Field(gt=0)
     item_id: int = Field(gt=0)
@@ -114,5 +127,6 @@ __all__ = [
     "WmsPmsBarcodeProjectionRow",
     "WmsPmsItemProjectionRow",
     "WmsPmsSkuCodeProjectionRow",
+    "WmsPmsSupplierProjectionRow",
     "WmsPmsUomProjectionRow",
 ]

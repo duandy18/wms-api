@@ -12,6 +12,7 @@ SEED_SCRIPT_PATH = ROOT / "scripts" / "seed_test_baseline.py"
 CONFTEST_PATH = ROOT / "tests" / "conftest.py"
 
 REQUIRED_PROJECTION_TABLES = (
+    "wms_pms_supplier_projection",
     "wms_pms_item_projection",
     "wms_pms_uom_projection",
     "wms_pms_sku_code_projection",

@@ -297,6 +297,7 @@ async def test_pms_projection_reconciliation_reports_missing_and_mismatch(
                 "sku_code_id",
             ),
         ),
+        supplier_references=(),
     )
 
     assert result.ok is False
@@ -366,6 +367,7 @@ async def test_pms_projection_reconciliation_returns_ok_for_clean_refs(
                 "sku_code_id",
             ),
         ),
+        supplier_references=(),
     )
 
     assert result.ok is True
@@ -402,6 +404,7 @@ async def test_pms_projection_reconciliation_supports_reference_table_without_id
         ),
         uom_references=(),
         sku_code_references=(),
+        supplier_references=(),
     )
 
     assert result.ok is False

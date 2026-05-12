@@ -26,6 +26,7 @@ TRUNCATE TABLE
   wms_pms_barcode_projection,
   wms_pms_sku_code_projection,
   wms_pms_uom_projection,
+  wms_pms_supplier_projection,
   wms_pms_item_projection,
 
   -- platform order ingestion jobs
