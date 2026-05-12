@@ -64,9 +64,103 @@ async def test_admin_pms_integration_can_list_projection_rows(
     assert data["limit"] == 5
     assert data["offset"] == 0
     assert data["total"] >= 0
+
     assert "item_id" in data["columns"]
     assert "sku" in data["columns"]
+    assert "supplier_id" in data["columns"]
+    assert "supplier_code" in data["columns"]
+    assert "supplier_name" in data["columns"]
     assert isinstance(data["rows"], list)
+
+    if data["rows"]:
+        first_row = data["rows"][0]
+        assert "supplier_id" in first_row
+        assert "supplier_code" in first_row
+        assert "supplier_name" in first_row
+
+
+@pytest.mark.asyncio
+async def test_admin_pms_integration_item_projection_can_search_supplier_display_fields(
+    client: AsyncClient,
+    session: AsyncSession,
+) -> None:
+    await session.execute(
+        text(
+            """
+            INSERT INTO wms_pms_supplier_projection (
+                supplier_id,
+                supplier_code,
+                supplier_name,
+                active,
+                synced_at
+            )
+            VALUES (
+                990001,
+                'SUP-ADMIN-SEARCH',
+                '投影搜索供应商',
+                true,
+                now()
+            )
+            ON CONFLICT (supplier_id) DO UPDATE
+            SET supplier_code = EXCLUDED.supplier_code,
+                supplier_name = EXCLUDED.supplier_name,
+                active = EXCLUDED.active,
+                synced_at = EXCLUDED.synced_at
+            """
+        )
+    )
+    await session.execute(
+        text(
+            """
+            INSERT INTO wms_pms_item_projection (
+                item_id,
+                sku,
+                name,
+                enabled,
+                supplier_id,
+                synced_at
+            )
+            VALUES (
+                990002,
+                'SKU-ADMIN-SUPPLIER-SEARCH',
+                '供应商搜索商品',
+                true,
+                990001,
+                now()
+            )
+            ON CONFLICT (item_id) DO UPDATE
+            SET sku = EXCLUDED.sku,
+                name = EXCLUDED.name,
+                enabled = EXCLUDED.enabled,
+                supplier_id = EXCLUDED.supplier_id,
+                synced_at = EXCLUDED.synced_at
+            """
+        )
+    )
+    await session.commit()
+
+    headers = await _login_admin_headers(client)
+
+    r = await client.get(
+        "/admin/pms-integration/projections/items?limit=10&offset=0&q=SUP-ADMIN-SEARCH",
+        headers=headers,
+    )
+    assert r.status_code == 200, r.text
+
+    data = r.json()
+    assert data["resource"] == "items"
+    assert data["total"] >= 1
+    assert "supplier_code" in data["columns"]
+    assert "supplier_name" in data["columns"]
+
+    matched = [
+        row
+        for row in data["rows"]
+        if row.get("item_id") == 990002
+    ]
+    assert matched
+    assert matched[0]["supplier_code"] == "SUP-ADMIN-SEARCH"
+    assert matched[0]["supplier_name"] == "投影搜索供应商"
 
 
 @pytest.mark.asyncio
