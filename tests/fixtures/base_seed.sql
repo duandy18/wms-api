@@ -7,7 +7,6 @@
 -- ✅ base_seed.sql 只负责非 PMS owner 测试基线：
 --    - warehouses
 --    - stores / platform_test_stores
---    - suppliers
 --    - shipping_providers
 --    - inbound_receipts placeholder
 -- ❌ 禁止在 baseline 中写入任何库存事实：
@@ -56,12 +55,6 @@ VALUES ('PDD', 'UT-TEST-STORE-1', 9001, 'DEFAULT')
 ON CONFLICT (platform, code)
 DO UPDATE SET store_code = EXCLUDED.store_code, store_id = EXCLUDED.store_id;
 
--- ===== suppliers (WMS / procurement side baseline) =====
-INSERT INTO suppliers (id, name, code, active)
-VALUES
-  (1, 'UT-SUP-1', 'UT-SUP-1', true),
-  (3, 'UT-SUP-3', 'UT-SUP-3', true)
-ON CONFLICT (id) DO NOTHING;
 
 -- ===== shipping_providers (minimal) =====
 INSERT INTO shipping_providers (id, name, shipping_provider_code, active, priority, address)
