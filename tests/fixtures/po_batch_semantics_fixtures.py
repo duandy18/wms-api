@@ -18,7 +18,17 @@ def _is_required_expiry_policy(expiry_policy: str) -> bool:
 
 
 async def _get_any_supplier(session: AsyncSession) -> tuple[int, str]:
-    row = await session.execute(text("SELECT id, name FROM suppliers ORDER BY id ASC LIMIT 1"))
+    row = await session.execute(
+        text(
+            """
+            SELECT supplier_id AS id, supplier_name AS name
+            FROM wms_pms_supplier_projection
+            WHERE active IS TRUE
+            ORDER BY supplier_id ASC
+            LIMIT 1
+            """
+        )
+    )
     r = row.first()
     if r is None or r[0] is None:
         raise RuntimeError("tests require at least one supplier seeded in test database.")

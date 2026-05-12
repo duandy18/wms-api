@@ -3,26 +3,22 @@ from __future__ import annotations
 
 from typing import Optional
 
-from sqlalchemy import or_, select
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from app.partners.suppliers.models.supplier import Supplier
 from app.partners.export.suppliers.contracts.supplier_basic import SupplierBasic
-from app.partners.suppliers.repos.supplier_repo import (
-    list_suppliers_basic as repo_list_suppliers_basic,
-)
 
 
 class SupplierReadService:
     """
-    Partners export supplier read service。
+    Partners export supplier read service.
 
-    定位：
-    - 供其他模块读取 Partners 供应商最小事实
-    - 不承载 contacts 聚合
-    - 不承载写入语义
-    - 同时支持 sync Session 与 AsyncSession
+    Boundary:
+    - Read WMS local PMS supplier projection only.
+    - Do not read legacy suppliers owner table.
+    - Do not carry supplier_contacts / owner write semantics.
+    - Sync and async APIs are both kept because routers use Session and procurement uses AsyncSession.
     """
 
     def __init__(self, db: Session | AsyncSession) -> None:
@@ -40,6 +36,58 @@ class SupplierReadService:
             raise TypeError("SupplierReadService async API requires AsyncSession")
         return self.db
 
+    @staticmethod
+    def _query_sql(*, active: Optional[bool], q: Optional[str]) -> tuple[str, dict[str, object]]:
+        where: list[str] = []
+        params: dict[str, object] = {}
+
+        if active is not None:
+            where.append("active = :active")
+            params["active"] = bool(active)
+
+        qv = (q or "").strip()
+        if qv:
+            where.append("(supplier_name ILIKE :q_like OR supplier_code ILIKE :q_like)")
+            params["q_like"] = f"%{qv}%"
+
+        where_sql = f"WHERE {' AND '.join(where)}" if where else ""
+
+        return (
+            f"""
+            SELECT
+              supplier_id AS id,
+              supplier_name AS name,
+              supplier_code AS code,
+              active
+            FROM wms_pms_supplier_projection
+            {where_sql}
+            ORDER BY supplier_id ASC
+            """,
+            params,
+        )
+
+    @staticmethod
+    def _get_sql() -> str:
+        return """
+        SELECT
+          supplier_id AS id,
+          supplier_name AS name,
+          supplier_code AS code,
+          active
+        FROM wms_pms_supplier_projection
+        WHERE supplier_id = :supplier_id
+        LIMIT 1
+        """
+
+    @staticmethod
+    def _to_basic(row) -> SupplierBasic:
+        return SupplierBasic(
+            id=int(row["id"]),
+            name=str(row["name"]),
+            code=str(row["code"]) if row["code"] is not None else None,
+            active=bool(row["active"]),
+        )
+
     def list_basic(
         self,
         *,
@@ -47,8 +95,9 @@ class SupplierReadService:
         q: Optional[str] = None,
     ) -> list[SupplierBasic]:
         db = self._require_sync_db()
-        rows = repo_list_suppliers_basic(db, active=active, q=q)
-        return [self._to_basic(x) for x in rows]
+        sql, params = self._query_sql(active=active, q=q)
+        rows = db.execute(text(sql), params).mappings().all()
+        return [self._to_basic(row) for row in rows]
 
     async def alist_basic(
         self,
@@ -57,45 +106,19 @@ class SupplierReadService:
         q: Optional[str] = None,
     ) -> list[SupplierBasic]:
         db = self._require_async_db()
-
-        stmt = select(Supplier)
-
-        if active is not None:
-            stmt = stmt.where(Supplier.active.is_(bool(active)))
-
-        qv = (q or "").strip()
-        if qv:
-            like = f"%{qv}%"
-            stmt = stmt.where(
-                or_(
-                    Supplier.name.ilike(like),
-                    Supplier.code.ilike(like),
-                )
-            )
-
-        stmt = stmt.order_by(Supplier.id.asc())
-
-        rows = (await db.execute(stmt)).scalars().all()
-        return [self._to_basic(x) for x in rows]
+        sql, params = self._query_sql(active=active, q=q)
+        rows = (await db.execute(text(sql), params)).mappings().all()
+        return [self._to_basic(row) for row in rows]
 
     async def aget_basic_by_id(self, *, supplier_id: int) -> SupplierBasic | None:
         db = self._require_async_db()
+        row = (
+            await db.execute(
+                text(self._get_sql()),
+                {"supplier_id": int(supplier_id)},
+            )
+        ).mappings().first()
 
-        stmt = (
-            select(Supplier)
-            .where(Supplier.id == int(supplier_id))
-            .limit(1)
-        )
-        obj = (await db.execute(stmt)).scalars().first()
-        if obj is None:
+        if row is None:
             return None
-        return self._to_basic(obj)
-
-    @staticmethod
-    def _to_basic(supplier: Supplier) -> SupplierBasic:
-        return SupplierBasic(
-            id=int(supplier.id),
-            name=str(supplier.name),
-            code=supplier.code,
-            active=bool(supplier.active),
-        )
+        return self._to_basic(row)

@@ -35,10 +35,20 @@ async def get_any_warehouse_id(session: AsyncSession) -> int:
 async def get_any_supplier(session: AsyncSession) -> tuple[int, str]:
     """
     purchase_orders.supplier_id / supplier_name 都是 NOT NULL：
-    - supplier_id 从 suppliers 表拿一条 seed
+    - supplier_id 从 wms_pms_supplier_projection 拿一条 seed
     - supplier_name 兜底成非空字符串
     """
-    row = await session.execute(text("SELECT id, name FROM suppliers ORDER BY id ASC LIMIT 1"))
+    row = await session.execute(
+        text(
+            """
+            SELECT supplier_id AS id, supplier_name AS name
+            FROM wms_pms_supplier_projection
+            WHERE active IS TRUE
+            ORDER BY supplier_id ASC
+            LIMIT 1
+            """
+        )
+    )
     r = row.first()
     if r is None or r[0] is None:
         raise RuntimeError("tests require at least one supplier seeded in test database.")

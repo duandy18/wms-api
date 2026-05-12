@@ -114,7 +114,7 @@ async def _load_supplier_name_snapshot(
 ) -> str:
     row = (
         await session.execute(
-            text("SELECT name FROM suppliers WHERE id = :supplier_id LIMIT 1"),
+            text("SELECT supplier_name FROM wms_pms_supplier_projection WHERE supplier_id = :supplier_id LIMIT 1"),
             {"supplier_id": int(supplier_id)},
         )
     ).scalar_one_or_none()

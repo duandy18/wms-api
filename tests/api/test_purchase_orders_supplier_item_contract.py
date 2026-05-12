@@ -57,34 +57,64 @@ async def _insert_supplier(
     code = f"{name_prefix}-{suffix}".upper()
     name = f"{name_prefix}-{suffix}"
 
-    await session.execute(
-        text(
-            """
-            SELECT setval(
-              pg_get_serial_sequence('suppliers', 'id'),
-              COALESCE((SELECT MAX(id) FROM suppliers), 0) + 1,
-              false
-            )
-            """
-        )
-    )
-
     row = await session.execute(
         text(
             """
-            INSERT INTO suppliers(name, code, active)
-            VALUES (:name, :code, :active)
-            RETURNING id, name
+            SELECT GREATEST(
+              COALESCE((SELECT MAX(supplier_id) FROM wms_pms_supplier_projection), 0),
+              900000
+            ) + 1
+            """
+        )
+    )
+    supplier_id = int(row.scalar_one())
+
+    await session.execute(
+        text(
+            """
+            INSERT INTO wms_pms_supplier_projection (
+              supplier_id,
+              supplier_code,
+              supplier_name,
+              active,
+              website,
+              pms_updated_at,
+              source_hash,
+              sync_version,
+              synced_at
+            )
+            VALUES (
+              :supplier_id,
+              :supplier_code,
+              :supplier_name,
+              :active,
+              NULL,
+              now(),
+              :source_hash,
+              'ut-supplier-projection',
+              now()
+            )
+            ON CONFLICT (supplier_id) DO UPDATE SET
+              supplier_code = EXCLUDED.supplier_code,
+              supplier_name = EXCLUDED.supplier_name,
+              active = EXCLUDED.active,
+              website = EXCLUDED.website,
+              pms_updated_at = EXCLUDED.pms_updated_at,
+              source_hash = EXCLUDED.source_hash,
+              sync_version = EXCLUDED.sync_version,
+              synced_at = now()
             """
         ),
         {
-            "name": name,
-            "code": code,
+            "supplier_id": supplier_id,
+            "supplier_code": code,
+            "supplier_name": name,
             "active": bool(active),
+            "source_hash": f"ut-supplier-projection:{supplier_id}:{code}",
         },
     )
-    got = row.mappings().one()
-    return int(got["id"]), str(got["name"])
+
+    return supplier_id, name
 
 
 async def _insert_item_for_supplier(
