@@ -48,8 +48,6 @@ def mount_routers(app: FastAPI) -> None:
     from app.wms.stock.routers.inventory import router as stock_inventory_router
     from app.wms.snapshot.routers.snapshot_v3 import router as snapshot_v3_router
     from app.wms.ledger.routers.stock_ledger import router as stock_ledger_router
-    from app.partners.suppliers.routers.supplier_contacts import router as supplier_contacts_router
-    from app.partners.suppliers.routers.suppliers import router as suppliers_router
     from app.user.routers.user import router as user_router
     from app.wms.warehouses.routers.warehouses import router as warehouses_router
 
@@ -115,10 +113,8 @@ def mount_routers(app: FastAPI) -> None:
     # - PMS export 读面先挂，避免与 owner /items/{id} 类路由冲突
     # - /pms/export/items/barcode-probe 先于 /items/{id}
     # - /items/aggregate 先于 /items/{id}
-    # - /pms/export/items、/pms/export/uoms、/pms/export/sku-codes、/pms/export/barcodes、/partners/export/suppliers 独立前缀，不与 owner 冲突
+    # - /partners/export/suppliers 仅保留跨模块只读出口；/partners/suppliers owner 写入口已退役
     app.include_router(partners_export_suppliers_read_router)
-    app.include_router(suppliers_router)
-    app.include_router(supplier_contacts_router)
 
 
 
