@@ -122,7 +122,6 @@ def init_models(
         "app.oms.orders.models.order_logistics",
         "app.oms.orders.models.order_fulfillment",
         "app.oms.stores.models.store",
-        "app.oms.order_facts.models.platform_order_mirror",
         "app.wms.warehouses.models.warehouse",
     ]
     for mod in [m for m in explicit_chain if m and m not in ex]:
@@ -137,9 +136,6 @@ def init_models(
         "app.wms.inbound.models",
         "app.wms.outbound.models",
         "app.shipping_assist.records.models",
-        "app.oms.fsku.models",
-        "app.oms.fsku.models",
-        "app.oms.order_facts.models",
         "app.shipping_assist.providers.models",
         "app.oms.orders.models",
         "app.wms.warehouses.models",
