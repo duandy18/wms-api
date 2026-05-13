@@ -40,45 +40,26 @@ def test_admin_pms_integration_does_not_reintroduce_pms_owner_routes_or_connecti
     assert "/connection" not in text
 
 
-def test_admin_pms_integration_migration_retires_old_pms_pages_and_route_prefixes() -> None:
-    text = (
-        ROOT / "alembic/versions/8a4f2d6c9b31_add_wms_pms_projection_sync_admin_ops.py"
-    ).read_text(encoding="utf-8")
+def test_pms_projection_pages_are_rehomed_to_product_management_navigation() -> None:
+    migration_text = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in (ROOT / "alembic/versions").glob("*rehome_projection_pages.py")
+    )
 
-    assert "wms_pms_projection_sync_runs" in text
+    assert "pms.projections" in migration_text
+    assert "pms.projections.items" in migration_text
+    assert "pms.projections.suppliers" in migration_text
+    assert "pms.projections.uoms" in migration_text
+    assert "pms.projections.sku_codes" in migration_text
+    assert "pms.projections.barcodes" in migration_text
 
-    for old_page_code in [
-        "pms",
-        "pms.items",
-        "pms.brands",
-        "pms.categories",
-        "pms.item_attributes",
-        "pms.sku_coding",
-        "pms.item_barcodes",
-        "pms.item_uoms",
-    ]:
-        assert old_page_code in text
+    assert "/pms/projections/items" in migration_text
+    assert "/pms/projections/suppliers" in migration_text
+    assert "/pms/projections/uoms" in migration_text
+    assert "/pms/projections/sku-codes" in migration_text
+    assert "/pms/projections/barcodes" in migration_text
 
-    for old_route_prefix in [
-        "/items",
-        "/item-barcodes",
-        "/item-uoms",
-        "/items/sku-coding",
-        "/pms/brands",
-        "/pms/categories",
-        "/pms/item-attribute-defs",
-    ]:
-        assert old_route_prefix in text
-
-    for new_page_code in [
-        "admin.pms_integration",
-        "admin.pms_integration.items",
-        "admin.pms_integration.suppliers",
-        "admin.pms_integration.uoms",
-        "admin.pms_integration.sku_codes",
-        "admin.pms_integration.barcodes",
-    ]:
-        assert new_page_code in text
-
-    assert "admin.pms_integration.connection" not in text
-    assert "/admin/pms-integration/connection" not in text
+    assert "admin.pms_integration.items" in migration_text
+    assert "/admin/pms-integration/items" in migration_text
+    assert "page.pms.read" in migration_text
+    assert "page.pms.write" in migration_text
