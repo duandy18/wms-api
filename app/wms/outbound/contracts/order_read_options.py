@@ -1,19 +1,20 @@
-# app/oms/orders/contracts/order_outbound_options.py
+# app/wms/outbound/contracts/order_read_options.py
 from __future__ import annotations
 
 from datetime import datetime
-from typing import List, Optional
+from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
 
 class OrderOutboundOptionOut(BaseModel):
     """
-    订单出库页专用：订单选择器列表项（来源真相 = orders）
+    WMS 订单出库页专用：订单选择器列表项。
 
-    说明：
-    - 只返回“选单”需要的最小头字段
-    - 不掺执行仓 / 履约阶段 / 平台 ledger 明细
+    Boundary:
+    - 路由归属 WMS outbound。
+    - 来源仍是 WMS 本地执行订单 facts：orders / order_lines。
+    - 不读取 OMS owner 表，不挂在 /oms/orders。
     """
 
     model_config = ConfigDict(extra="ignore")
@@ -30,12 +31,12 @@ class OrderOutboundOptionOut(BaseModel):
 
 class OrderOutboundOptionsOut(BaseModel):
     """
-    订单出库页专用：订单选择器列表响应
+    WMS 订单出库页专用：订单选择器列表响应。
     """
 
     model_config = ConfigDict(extra="ignore")
 
-    items: List[OrderOutboundOptionOut] = Field(default_factory=list)
+    items: list[OrderOutboundOptionOut] = Field(default_factory=list)
     total: int
     limit: int
     offset: int

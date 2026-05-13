@@ -308,7 +308,7 @@ async def test_order_outbound_submit_writes_event_and_ledger(
     assert int(qty_now) == 8
 
     opts = await client.get(
-        "/oms/orders/outbound-options",
+        "/wms/outbound/orders/options",
         headers=headers,
         params={"q": str(order_id)},
     )

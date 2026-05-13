@@ -1,4 +1,4 @@
-# app/oms/orders/repos/order_outbound_view_repo.py
+# app/wms/outbound/repos/order_read_view_repo.py
 from __future__ import annotations
 
 from typing import Any, Dict, List, Mapping
@@ -27,12 +27,14 @@ async def load_order_outbound_head(
     order_id: int,
 ) -> Mapping[str, Any]:
     """
-    订单出库页：读取订单头（来源真相 = orders）
+    WMS 订单出库页：读取订单头。
 
-    说明：
-    - 这里只查真实 orders 表
-    - 不掺 order_fulfillment / platform mirror / facts 聚合
+    Boundary:
+    - 只查 WMS 本地执行订单 facts：orders。
+    - 不读取 OMS owner 表。
+    - 不挂载到 /oms/orders。
     """
+
     row = (
         (
             await session.execute(
@@ -72,14 +74,14 @@ async def load_order_outbound_lines(
     order_id: int,
 ) -> List[Dict[str, Any]]:
     """
-    订单出库页：读取订单行（来源真相 = order_lines + PMS integration display）
+    WMS 订单出库页：读取订单行。
 
-    说明：
-    - 核心真相是 order_lines；
-    - 商品展示字段 sku / name / spec 通过 PMS integration client 读取；
-    - base_uom 展示通过 PMS integration client 读取；
-    - 不直接 JOIN PMS 内部 items / item_uoms 表。
+    Boundary:
+    - 核心来源是 WMS 本地 order_lines。
+    - 商品展示字段通过 PMS read client / WMS PMS projection 获取。
+    - 不直接 JOIN PMS owner 表。
     """
+
     line_rows = (
         (
             await session.execute(

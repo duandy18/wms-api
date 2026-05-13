@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Mapping
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.oms.orders.repos.order_outbound_view_repo import (
+from app.wms.outbound.repos.order_read_view_repo import (
     load_order_outbound_head,
     load_order_outbound_lines,
 )
