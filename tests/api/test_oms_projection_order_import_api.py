@@ -408,3 +408,41 @@ async def test_list_oms_projection_import_candidates_marks_import_status(
     assert after_item["import_status"] == "IMPORTED"
     assert int(after_item["imported_order_id"]) == order_id
     assert after_item["can_import"] is False
+
+
+async def test_imported_oms_projection_order_view_uses_import_snapshots_without_pms_config(
+    client: AsyncClient,
+    session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("PMS_API_BASE_URL", raising=False)
+
+    headers = await _login_admin_headers(client)
+    ready_order_id = await _seed_projection_order(session)
+
+    imported = await client.post(
+        "/wms/outbound/orders/import-from-oms-projection",
+        headers=headers,
+        json={"ready_order_ids": [ready_order_id], "dry_run": False},
+    )
+    assert imported.status_code == 200, imported.text
+    order_id = int(imported.json()["results"][0]["order_id"])
+
+    view = await client.get(
+        f"/wms/outbound/orders/{order_id}/view",
+        headers=headers,
+    )
+    assert view.status_code == 200, view.text
+
+    data = view.json()
+    assert data["ok"] is True
+    assert data["order"]["id"] == order_id
+    assert len(data["lines"]) == 2
+
+    sku_values = {line["item_sku"] for line in data["lines"]}
+    name_values = {line["item_name"] for line in data["lines"]}
+    uom_values = {line["base_uom_name"] for line in data["lines"]}
+
+    assert sku_values == {"UT-SKU-1", "UT-SKU-2"}
+    assert name_values == {"UT Import Item 1", "UT Import Item 2"}
+    assert uom_values == {"件"}
