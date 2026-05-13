@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from decimal import Decimal, InvalidOperation
 from uuid import uuid4
 
 from fastapi import HTTPException
 from sqlalchemy import text
+
+from app.integrations.procurement.factory import create_procurement_read_client
+from app.integrations.procurement.http_client import ProcurementReadClientError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.integrations.pms.factory import create_pms_read_client
@@ -156,48 +160,48 @@ async def _load_manual_line_snapshot(
     }
 
 
+
+def _to_positive_int_exact(value: object, *, label: str) -> int:
+    try:
+        decimal_value = Decimal(str(value))
+    except (InvalidOperation, ValueError) as exc:
+        raise HTTPException(status_code=409, detail=f"{label}_must_be_numeric:{value}") from exc
+
+    if decimal_value != decimal_value.to_integral_value():
+        raise HTTPException(status_code=409, detail=f"{label}_must_be_integer:{value}")
+
+    number = int(decimal_value)
+    if number <= 0:
+        raise HTTPException(status_code=409, detail=f"{label}_must_be_positive:{value}")
+
+    return number
+
+
 async def create_inbound_receipt_from_purchase_repo(
     session: AsyncSession,
     *,
     payload: InboundReceiptCreateFromPurchaseIn,
     created_by: int | None,
 ) -> InboundReceiptCreateFromPurchaseOut:
-    po = (
-        await session.execute(
-            text(
-                """
-                SELECT
-                  id,
-                  po_no,
-                  warehouse_id,
-                  supplier_id,
-                  supplier_name,
-                  remark,
-                  status
-                FROM purchase_orders
-                WHERE id = :po_id
-                LIMIT 1
-                """
-            ),
-            {"po_id": int(payload.source_doc_id)},
-        )
-    ).mappings().first()
+    procurement_client = create_procurement_read_client()
 
-    if po is None:
-        raise HTTPException(status_code=404, detail="purchase_order_not_found")
+    try:
+        po = await procurement_client.get_purchase_order(int(payload.source_doc_id))
+    except ProcurementReadClientError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
-    if str(po["status"]) != "CREATED":
+    if po.status != "CREATED":
         raise HTTPException(
             status_code=409,
-            detail=f"purchase_order_not_creatable:{po['status']}",
+            detail=f"purchase_order_not_creatable:{po.status}",
         )
 
-    if int(po["warehouse_id"]) != int(payload.warehouse_id):
+    if int(po.target_warehouse_id) != int(payload.warehouse_id):
         raise HTTPException(
             status_code=409,
             detail=(
                 f"purchase_order_warehouse_mismatch:"
-                f"po={po['warehouse_id']},payload={payload.warehouse_id}"
+                f"po={po.target_warehouse_id},payload={payload.warehouse_id}"
             ),
         )
 
@@ -214,7 +218,7 @@ async def create_inbound_receipt_from_purchase_repo(
                 LIMIT 1
                 """
             ),
-            {"po_id": int(payload.source_doc_id)},
+            {"po_id": int(po.id)},
         )
     ).mappings().first()
 
@@ -224,34 +228,10 @@ async def create_inbound_receipt_from_purchase_repo(
             detail=f"inbound_receipt_already_exists:{existing['receipt_no']}",
         )
 
-    po_lines = (
-        await session.execute(
-            text(
-                """
-                SELECT
-                  id,
-                  line_no,
-                  item_id,
-                  item_name,
-                  spec_text,
-                  purchase_uom_id_snapshot,
-                  purchase_ratio_to_base_snapshot,
-                  qty_ordered_input,
-                  purchase_uom_name_snapshot,
-                  remark
-                FROM purchase_order_lines
-                WHERE po_id = :po_id
-                ORDER BY line_no ASC
-                """
-            ),
-            {"po_id": int(payload.source_doc_id)},
-        )
-    ).mappings().all()
-
-    if not po_lines:
+    if not po.lines:
         raise HTTPException(status_code=409, detail="purchase_order_has_no_lines")
 
-    receipt_no = _new_receipt_no(int(po["id"]))
+    receipt_no = _new_receipt_no(int(po.id))
     warehouse_name_snapshot = await _load_warehouse_name_snapshot(
         session,
         warehouse_id=int(payload.warehouse_id),
@@ -294,13 +274,13 @@ async def create_inbound_receipt_from_purchase_repo(
             ),
             {
                 "receipt_no": receipt_no,
-                "source_doc_id": int(po["id"]),
-                "source_doc_no_snapshot": po["po_no"],
+                "source_doc_id": int(po.id),
+                "source_doc_no_snapshot": po.po_no,
                 "warehouse_id": int(payload.warehouse_id),
                 "warehouse_name_snapshot": warehouse_name_snapshot,
-                "supplier_id": po["supplier_id"],
-                "counterparty_name_snapshot": po["supplier_name"],
-                "remark": payload.remark if payload.remark is not None else po["remark"],
+                "supplier_id": int(po.supplier_id),
+                "counterparty_name_snapshot": po.supplier_name_snapshot,
+                "remark": payload.remark if payload.remark is not None else po.remark,
                 "created_by": created_by,
             },
         )
@@ -308,7 +288,12 @@ async def create_inbound_receipt_from_purchase_repo(
 
     receipt_id = int(header["id"])
 
-    for row in po_lines:
+    for line in sorted(po.lines, key=lambda row: (int(row.line_no), int(row.id))):
+        planned_qty = _to_positive_int_exact(
+            line.qty_ordered_input,
+            label=f"purchase_order_line_qty_ordered_input:{int(line.id)}",
+        )
+
         await session.execute(
             text(
                 """
@@ -342,16 +327,16 @@ async def create_inbound_receipt_from_purchase_repo(
             ),
             {
                 "inbound_receipt_id": receipt_id,
-                "line_no": int(row["line_no"]),
-                "source_line_id": int(row["id"]),
-                "item_id": int(row["item_id"]),
-                "item_uom_id": int(row["purchase_uom_id_snapshot"]),
-                "planned_qty": row["qty_ordered_input"],
-                "item_name_snapshot": row["item_name"],
-                "item_spec_snapshot": row["spec_text"],
-                "uom_name_snapshot": row["purchase_uom_name_snapshot"],
-                "ratio_to_base_snapshot": row["purchase_ratio_to_base_snapshot"],
-                "remark": row["remark"],
+                "line_no": int(line.line_no),
+                "source_line_id": int(line.id),
+                "item_id": int(line.item_id),
+                "item_uom_id": int(line.purchase_uom_id_snapshot),
+                "planned_qty": planned_qty,
+                "item_name_snapshot": line.item_name_snapshot,
+                "item_spec_snapshot": line.spec_text_snapshot,
+                "uom_name_snapshot": line.purchase_uom_name_snapshot,
+                "ratio_to_base_snapshot": int(line.purchase_ratio_to_base_snapshot),
+                "remark": line.remark,
             },
         )
 
