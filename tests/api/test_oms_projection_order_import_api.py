@@ -364,3 +364,47 @@ async def test_import_oms_projection_order_creates_wms_execution_order(
     assert duplicate_data["imported"] == 0
     assert duplicate_data["already_imported"] == 1
     assert duplicate_data["results"][0]["order_id"] == order_id
+
+
+async def test_list_oms_projection_import_candidates_marks_import_status(
+    client: AsyncClient,
+    session: AsyncSession,
+) -> None:
+    headers = await _login_admin_headers(client)
+    ready_order_id = await _seed_projection_order(session)
+
+    before = await client.get(
+        "/wms/outbound/orders/oms-projection-candidates",
+        headers=headers,
+        params={"q": ready_order_id, "limit": 20, "offset": 0},
+    )
+    assert before.status_code == 200, before.text
+    before_data = before.json()
+    assert before_data["total"] == 1
+    before_item = before_data["items"][0]
+    assert before_item["ready_order_id"] == ready_order_id
+    assert before_item["import_status"] == "NOT_IMPORTED"
+    assert before_item["imported_order_id"] is None
+    assert before_item["can_import"] is True
+
+    imported = await client.post(
+        "/wms/outbound/orders/import-from-oms-projection",
+        headers=headers,
+        json={"ready_order_ids": [ready_order_id], "dry_run": False},
+    )
+    assert imported.status_code == 200, imported.text
+    order_id = int(imported.json()["results"][0]["order_id"])
+
+    after = await client.get(
+        "/wms/outbound/orders/oms-projection-candidates",
+        headers=headers,
+        params={"q": ready_order_id, "limit": 20, "offset": 0},
+    )
+    assert after.status_code == 200, after.text
+    after_data = after.json()
+    assert after_data["total"] == 1
+    after_item = after_data["items"][0]
+    assert after_item["ready_order_id"] == ready_order_id
+    assert after_item["import_status"] == "IMPORTED"
+    assert int(after_item["imported_order_id"]) == order_id
+    assert after_item["can_import"] is False
