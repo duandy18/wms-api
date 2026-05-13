@@ -134,7 +134,7 @@ async def test_order_outbound_view_reads_orders_and_order_lines_only(
     order_id, order_line_id, item_id = await _seed_order(session)
     install_procurement_pms_projection_fake(session)
 
-    resp = await client.get(f"/oms/orders/{order_id}/outbound-view", headers=headers)
+    resp = await client.get(f"/wms/outbound/orders/{order_id}/view", headers=headers)
     assert resp.status_code == 200, resp.text
     data = resp.json()
 

@@ -1,4 +1,4 @@
-# app/oms/orders/repos/order_outbound_options_repo.py
+# app/wms/outbound/repos/order_read_options_repo.py
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
@@ -22,12 +22,12 @@ async def list_order_outbound_options(
     offset: int,
 ) -> Dict[str, Any]:
     """
-    订单出库页：读取订单选择器列表（来源真相 = orders）
+    WMS 订单出库页：读取订单选择器列表。
 
-    说明：
-    - 只查真实 orders 表
-    - 不混平台 ledger / fulfillment / wms 执行事实
-    - 仅返回“选单”需要的最小字段
+    Boundary:
+    - 只查 WMS 本地执行订单 facts：orders / order_lines / outbound_event_lines。
+    - 不读取 OMS owner 表。
+    - 不挂载到 /oms/orders。
     """
 
     q_norm = _normalize_text(q)
@@ -104,7 +104,6 @@ async def list_order_outbound_options(
     )
 
     total = (await session.execute(total_stmt, params)).scalar_one()
-
     rows = (await session.execute(rows_stmt, params)).mappings().all()
 
     return {

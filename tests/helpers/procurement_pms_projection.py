@@ -21,10 +21,7 @@ PMS_CLIENT_MODULE_NAMES = (
     "app.procurement.repos.receive_po_line_repo",
     "app.procurement.helpers.purchase_reports",
     "app.procurement.routers.purchase_reports_routes_items",
-    "app.oms.orders.repos.order_outbound_view_repo",
-    "app.oms.services.platform_order_resolve_loaders",
-    "app.oms.services.platform_order_resolve_service",
-    "app.oms.services.platform_order_ingest_flow",
+    "app.wms.outbound.repos.order_read_view_repo",
 
     # WMS inbound / lot / stock paths reached by /wms/inbound/commit
     "app.wms.shared.services.expiry_resolver",

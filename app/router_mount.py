@@ -31,6 +31,7 @@ def mount_routers(app: FastAPI) -> None:
     from app.wms.inventory_adjustment.inbound_reversal.routers.inbound_reversal import (
         router as inbound_reversal_router,
     )
+    from app.wms.outbound.routers.order_read import router as outbound_order_read_router
     from app.wms.outbound.routers.order_submit import router as order_submit_router
     from app.wms.outbound.routers.manual_docs import router as manual_docs_router
     from app.wms.outbound.routers.manual_submit import router as manual_submit_router
@@ -88,6 +89,7 @@ def mount_routers(app: FastAPI) -> None:
     app.include_router(orders_fulfillment_v2_router)
     app.include_router(orders_fulfillment_debug_router)
 
+    app.include_router(outbound_order_read_router)
     app.include_router(order_submit_router)
     app.include_router(manual_docs_router)
     app.include_router(manual_submit_router)
