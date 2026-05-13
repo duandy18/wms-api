@@ -238,7 +238,7 @@ test-pricing-smoke: dev-reset-test-db audit-all
 # ---------------------------------
 .PHONY: pms-http-smoke
 pms-http-smoke: venv
-	@PMS_CLIENT_MODE=http PMS_API_BASE_URL="$${PMS_API_BASE_URL:-http://127.0.0.1:8002}" PYTHONPATH=. $(PY) scripts/pms/http_smoke.py
+	@$(DEV_ENV) PMS_CLIENT_MODE=http $(PY) scripts/pms/http_smoke.py
 
 
 # ---------------------------------
@@ -249,7 +249,7 @@ pms-http-smoke: venv
 # ---------------------------------
 .PHONY: pms-http-business-smoke
 pms-http-business-smoke: venv
-	@PMS_CLIENT_MODE=http PMS_API_BASE_URL="$${PMS_API_BASE_URL:-http://127.0.0.1:8002}" PYTHONPATH=. $(PY) scripts/pms/http_business_smoke.py
+	@$(DEV_ENV) PMS_CLIENT_MODE=http $(PY) scripts/pms/http_business_smoke.py
 
 # ---------------------------------
 # PMS projection sync
@@ -258,7 +258,7 @@ pms-http-business-smoke: venv
 # ---------------------------------
 .PHONY: pms-projection-sync
 pms-projection-sync: venv
-	@PMS_API_BASE_URL="$${PMS_API_BASE_URL:-http://127.0.0.1:8002}" PYTHONPATH=. $(PY) scripts/pms/sync_projection.py --limit "$${PMS_PROJECTION_SYNC_LIMIT:-500}"
+	@$(DEV_ENV) $(PY) scripts/pms/sync_projection.py --limit "$${PMS_PROJECTION_SYNC_LIMIT:-500}"
 
 # ---------------------------------
 # PMS projection reconciliation
