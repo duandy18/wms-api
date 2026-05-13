@@ -183,7 +183,7 @@ test-all: venv audit-all upgrade-dev-test-db
 test-svc-core: venv audit-all upgrade-dev-test-db
 	@echo "[pytest] Core Service CRUD/UoW"
 	@PYTHONPATH=. WMS_ENV=test WMS_DATABASE_URL="$(DEV_TEST_DB_DSN)" WMS_TEST_DATABASE_URL="$(DEV_TEST_DB_DSN)" $(PYTEST) -q \
-		tests/services/test_store_service.py \
+		tests/ci/test_wms_oms_legacy_runtime_retired.py \
 		tests/services/test_user_service.py \
 		tests/services/test_uow.py
 
@@ -215,7 +215,7 @@ test-diagnostics-core: venv
 test-backend-smoke: dev-reset-test-db audit-all
 	@echo "[smoke] Running quick backend smoke tests on DEV_TEST_DB_DSN ($(DEV_TEST_DB_DSN))..."
 	@PYTHONPATH=. WMS_ENV=test WMS_DATABASE_URL="$(DEV_TEST_DB_DSN)" WMS_TEST_DATABASE_URL="$(DEV_TEST_DB_DSN)" \
-	$(PYTEST) -q tests/services/test_store_service.py
+	$(PYTEST) -q tests/ci/test_wms_oms_legacy_runtime_retired.py
 
 # =================================
 # Pricing smoke tests（scheme binding + constraints）
