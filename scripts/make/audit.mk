@@ -2,8 +2,17 @@
 # audit.mk - 审计 / 守门员规则
 # =================================
 
+.PHONY: audit-require-rg
+audit-require-rg:
+	@bash -c 'set -euo pipefail; \
+	  if ! command -v rg >/dev/null 2>&1; then \
+	    echo "[audit-require-rg] FAIL: ripgrep (rg) is required for audit targets" >&2; \
+	    echo "  Install ripgrep locally, or ensure CI installs it before make audit-all." >&2; \
+	    exit 127; \
+	  fi'
+
 .PHONY: audit-no-legacy-stock-sql
-audit-no-legacy-stock-sql:
+audit-no-legacy-stock-sql: audit-require-rg
 	@bash -c 'set -euo pipefail; \
 	  echo "[audit-no-legacy-stock-sql] forbid SQL access to legacy stocks/batches in app/..."; \
 	  hits="$$(rg -n --hidden \
@@ -30,7 +39,7 @@ audit-no-legacy-stock-sql:
 #   dest_adjustments 这类退役口径重新混入运行/测试代码
 # =================================
 .PHONY: audit-no-legacy-pricing-terms
-audit-no-legacy-pricing-terms:
+audit-no-legacy-pricing-terms: audit-require-rg
 	@bash -c 'set -euo pipefail; \
 	  echo "[audit-no-legacy-pricing-terms] forbid retired pricing terms in app/tests ..."; \
 	  hits="$$(rg -n --hidden \
@@ -53,7 +62,7 @@ audit-no-legacy-pricing-terms:
 # - 白名单仅允许：manual-assign service（devconsole 写入已被禁止）
 # =================================
 .PHONY: audit-no-implicit-warehouse-id
-audit-no-implicit-warehouse-id:
+audit-no-implicit-warehouse-id: audit-require-rg
 	@bash -c 'set -euo pipefail; \
 	  echo "[audit-no-implicit-warehouse-id] forbid implicit writes to orders.warehouse_id ..."; \
 	  hits="$$(rg -n "UPDATE orders\\s+SET\\s+warehouse_id|SET\\s+warehouse_id\\s*=" app -S || true)"; \
