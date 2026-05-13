@@ -10,6 +10,7 @@ from app.oms.routers.platform_orders_resolve_preview import router as platform_o
 from app.oms.routers.stores import router as stores_router
 from app.oms.orders.routers.order_outbound_options import router as order_outbound_options_router
 from app.oms.orders.routers.order_outbound_view import router as order_outbound_view_router
+from app.oms.fulfillment_projection.routers.fulfillment_projection import router as fulfillment_projection_router
 
 router = APIRouter(prefix="/oms", tags=["OMS"])
 router.include_router(order_facts_router)
@@ -23,3 +24,4 @@ router.include_router(stores_router)
 router.include_router(fsku_router)
 router.include_router(order_outbound_options_router)
 router.include_router(order_outbound_view_router)
+router.include_router(fulfillment_projection_router)
