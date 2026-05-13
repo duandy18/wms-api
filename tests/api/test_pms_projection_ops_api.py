@@ -1,4 +1,4 @@
-# tests/api/test_admin_pms_integration_api.py
+# tests/api/test_pms_projection_ops_api.py
 from __future__ import annotations
 
 import pytest
@@ -20,7 +20,7 @@ async def test_admin_pms_integration_status_lists_projection_resources(
 ) -> None:
     headers = await _login_admin_headers(client)
 
-    r = await client.get("/admin/pms-integration/status", headers=headers)
+    r = await client.get("/pms/projections/status", headers=headers)
     assert r.status_code == 200, r.text
 
     data = r.json()
@@ -53,7 +53,7 @@ async def test_admin_pms_integration_can_list_projection_rows(
     headers = await _login_admin_headers(client)
 
     r = await client.get(
-        "/admin/pms-integration/projections/items?limit=5&offset=0",
+        "/pms/projections/items?limit=5&offset=0",
         headers=headers,
     )
     assert r.status_code == 200, r.text
@@ -142,7 +142,7 @@ async def test_admin_pms_integration_item_projection_can_search_supplier_display
     headers = await _login_admin_headers(client)
 
     r = await client.get(
-        "/admin/pms-integration/projections/items?limit=10&offset=0&q=SUP-ADMIN-SEARCH",
+        "/pms/projections/items?limit=10&offset=0&q=SUP-ADMIN-SEARCH",
         headers=headers,
     )
     assert r.status_code == 200, r.text
@@ -170,7 +170,7 @@ async def test_admin_pms_integration_can_check_barcode_projection(
     headers = await _login_admin_headers(client)
 
     r = await client.post(
-        "/admin/pms-integration/projections/barcodes/check",
+        "/pms/projections/barcodes/check",
         headers=headers,
     )
     assert r.status_code == 200, r.text
@@ -192,7 +192,7 @@ async def test_admin_pms_integration_sync_without_pms_base_url_returns_400_and_l
     headers = await _login_admin_headers(client)
 
     r = await client.post(
-        "/admin/pms-integration/projections/items/sync",
+        "/pms/projections/items/sync",
         headers=headers,
     )
     assert r.status_code == 400, r.text
@@ -254,7 +254,7 @@ async def test_admin_pms_integration_sync_runs_can_be_listed(
 
     headers = await _login_admin_headers(client)
     r = await client.get(
-        "/admin/pms-integration/sync-runs?resource=suppliers&limit=5",
+        "/pms/projections/sync-runs?resource=suppliers&limit=5",
         headers=headers,
     )
     assert r.status_code == 200, r.text
