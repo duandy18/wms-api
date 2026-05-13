@@ -1,4 +1,4 @@
-# app/admin/services/pms_integration_service.py
+# app/pms/projections/services/pms_projection_service.py
 from __future__ import annotations
 
 import os
@@ -11,7 +11,7 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.admin.contracts.pms_integration import ProjectionResource
+from app.pms.projections.contracts.pms_projection import ProjectionResource
 from app.db.session import AsyncSessionLocal
 from app.integrations.pms.projection_sync import (
     SYNC_VERSION,
@@ -189,9 +189,9 @@ RESOURCE_ORDER: tuple[ProjectionResource, ...] = (
 )
 
 
-class PmsIntegrationAdminService:
+class PmsProjectionService:
     """
-    WMS admin operations for PMS projection sync.
+    WMS business-domain operations for PMS projection sync.
 
     Boundary:
     - Reads WMS projection tables and WMS sync-run logs only.
@@ -786,7 +786,7 @@ class PmsIntegrationAdminService:
 
 
 __all__ = [
-    "PmsIntegrationAdminService",
+    "PmsProjectionService",
     "RESOURCE_CONFIGS",
     "RESOURCE_ORDER",
 ]

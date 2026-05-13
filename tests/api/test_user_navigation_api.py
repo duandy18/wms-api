@@ -351,6 +351,12 @@ async def test_my_navigation_pms_projection_tree_lives_under_product_management(
         "pms.sku_coding",
         "pms.item_barcodes",
         "pms.item_uoms",
+        "pms.projections",
+        "pms.projections.items",
+        "pms.projections.suppliers",
+        "pms.projections.uoms",
+        "pms.projections.sku_codes",
+        "pms.projections.barcodes",
     ]
     for code in old_pms_owner_page_codes:
         assert code not in nodes
@@ -365,7 +371,7 @@ async def test_my_navigation_pms_projection_tree_lives_under_product_management(
     ]:
         assert code not in nodes
 
-    old_pms_route_prefixes = [
+    old_route_prefixes = [
         "/items",
         "/item-barcodes",
         "/item-uoms",
@@ -373,6 +379,12 @@ async def test_my_navigation_pms_projection_tree_lives_under_product_management(
         "/pms/brands",
         "/pms/categories",
         "/pms/item-attribute-defs",
+        "/pms/projections",
+        "/pms/projections/items",
+        "/pms/projections/suppliers",
+        "/pms/projections/uoms",
+        "/pms/projections/sku-codes",
+        "/pms/projections/barcodes",
         "/admin/pms-integration",
         "/admin/pms-integration/items",
         "/admin/pms-integration/suppliers",
@@ -380,7 +392,7 @@ async def test_my_navigation_pms_projection_tree_lives_under_product_management(
         "/admin/pms-integration/sku-codes",
         "/admin/pms-integration/barcodes",
     ]
-    for route_prefix in old_pms_route_prefixes:
+    for route_prefix in old_route_prefixes:
         assert route_prefix not in route_map
 
     pms = nodes["pms"]
@@ -390,43 +402,36 @@ async def test_my_navigation_pms_projection_tree_lives_under_product_management(
     assert pms["effective_read_permission"] == "page.pms.read"
     assert pms["effective_write_permission"] == "page.pms.write"
 
-    assert _child_codes(pms) == ["pms.projections"]
-
-    pms_projections = nodes["pms.projections"]
-    assert pms_projections["name"] == "PMS 商品投影"
-    assert pms_projections["parent_code"] == "pms"
-    assert pms_projections["domain_code"] == "pms"
-
-    assert _child_codes(pms_projections) == [
-        "pms.projections.items",
-        "pms.projections.suppliers",
-        "pms.projections.uoms",
-        "pms.projections.sku_codes",
-        "pms.projections.barcodes",
+    assert _child_codes(pms) == [
+        "pms.item_projection",
+        "pms.supplier_projection",
+        "pms.uom_projection",
+        "pms.sku_code_projection",
+        "pms.barcode_projection",
     ]
 
     expected_names = {
-        "pms.projections.items": "商品投影",
-        "pms.projections.suppliers": "供应商投影",
-        "pms.projections.uoms": "包装单位投影",
-        "pms.projections.sku_codes": "SKU 编码投影",
-        "pms.projections.barcodes": "条码投影",
+        "pms.item_projection": "商品投影",
+        "pms.supplier_projection": "供应商投影",
+        "pms.uom_projection": "包装单位投影",
+        "pms.sku_code_projection": "SKU 编码投影",
+        "pms.barcode_projection": "条码投影",
     }
     for code, name in expected_names.items():
         node = nodes[code]
         assert node["name"] == name
-        assert node["parent_code"] == "pms.projections"
+        assert node["parent_code"] == "pms"
         assert node["domain_code"] == "pms"
+        assert node["level"] == 2
         assert node["effective_read_permission"] == "page.pms.read"
         assert node["effective_write_permission"] == "page.pms.write"
 
     expected_route_map = {
-        "/pms/projections": "pms.projections",
-        "/pms/projections/items": "pms.projections.items",
-        "/pms/projections/suppliers": "pms.projections.suppliers",
-        "/pms/projections/uoms": "pms.projections.uoms",
-        "/pms/projections/sku-codes": "pms.projections.sku_codes",
-        "/pms/projections/barcodes": "pms.projections.barcodes",
+        "/pms/item-projection": "pms.item_projection",
+        "/pms/supplier-projection": "pms.supplier_projection",
+        "/pms/uom-projection": "pms.uom_projection",
+        "/pms/sku-code-projection": "pms.sku_code_projection",
+        "/pms/barcode-projection": "pms.barcode_projection",
     }
     for route_prefix, page_code in expected_route_map.items():
         route = route_map.get(route_prefix)
@@ -452,27 +457,22 @@ async def test_my_navigation_route_prefix_mapping_and_effective_permissions(clie
 
     shipping_handoffs_page = nodes["shipping_assist.handoffs"]
     shipping_records_page = nodes["shipping_assist.records"]
-    pms_projection_page = nodes["pms.projections"]
-    pms_items_projection_page = nodes["pms.projections.items"]
+    pms_items_projection_page = nodes["pms.item_projection"]
 
     assert shipping_handoffs_page["effective_read_permission"]
     assert shipping_handoffs_page["effective_write_permission"]
     assert shipping_records_page["effective_read_permission"]
     assert shipping_records_page["effective_write_permission"]
-    assert pms_projection_page["effective_read_permission"] == "page.pms.read"
-    assert pms_projection_page["effective_write_permission"] == "page.pms.write"
     assert pms_items_projection_page["effective_read_permission"] == "page.pms.read"
     assert pms_items_projection_page["effective_write_permission"] == "page.pms.write"
 
     assert "/shipping-assist/handoffs" in route_map
     assert "/shipping-assist/records" in route_map
-    assert "/pms/projections" in route_map
-    assert "/pms/projections/items" in route_map
+    assert "/pms/item-projection" in route_map
 
     assert route_map["/shipping-assist/handoffs"]["page_code"] == "shipping_assist.handoffs"
     assert route_map["/shipping-assist/records"]["page_code"] == "shipping_assist.records"
-    assert route_map["/pms/projections"]["page_code"] == "pms.projections"
-    assert route_map["/pms/projections/items"]["page_code"] == "pms.projections.items"
+    assert route_map["/pms/item-projection"]["page_code"] == "pms.item_projection"
 
     assert "/items" not in route_map
     assert "/item-barcodes" not in route_map
@@ -497,10 +497,10 @@ async def test_my_navigation_pms_barcode_projection_route_prefix_mapping_and_per
     data = r.json()
     route_map = _index_route_prefixes(data["route_prefixes"])
 
-    barcode_projection_route = route_map.get("/pms/projections/barcodes")
+    barcode_projection_route = route_map.get("/pms/barcode-projection")
     assert barcode_projection_route is not None
 
-    assert barcode_projection_route["page_code"] == "pms.projections.barcodes"
+    assert barcode_projection_route["page_code"] == "pms.barcode_projection"
     assert barcode_projection_route["effective_read_permission"] == "page.pms.read"
     assert barcode_projection_route["effective_write_permission"] == "page.pms.write"
 
@@ -641,3 +641,94 @@ async def test_my_navigation_contains_shipping_assist_two_level_tree(client: Asy
     assert "shipping_assist.settings.waybill" not in nodes
     assert "shipping_assist.pricing" not in nodes
     assert "shipping_assist.billing" not in nodes
+
+
+@pytest.mark.asyncio
+async def test_my_navigation_oms_keeps_only_projection_level_two_pages(
+    client: AsyncClient,
+) -> None:
+    headers = await _login_admin_headers(client)
+
+    r = await client.get("/users/me/navigation", headers=headers)
+    assert r.status_code == 200, r.text
+
+    data = r.json()
+    nodes = _walk_pages(data["pages"])
+    route_map = _index_route_prefixes(data["route_prefixes"])
+
+    oms = nodes["oms"]
+    assert oms["name"] == "订单管理"
+    assert oms["parent_code"] is None
+    assert oms["domain_code"] == "oms"
+    assert oms["effective_read_permission"] == "page.oms.read"
+    assert oms["effective_write_permission"] == "page.oms.write"
+
+    assert _child_codes(oms) == [
+        "oms.order_projection",
+        "oms.line_projection",
+        "oms.component_projection",
+    ]
+
+    expected_names = {
+        "oms.order_projection": "订单投影",
+        "oms.line_projection": "订单行投影",
+        "oms.component_projection": "履约组件投影",
+    }
+    for code, name in expected_names.items():
+        node = nodes[code]
+        assert node["name"] == name
+        assert node["parent_code"] == "oms"
+        assert node["level"] == 2
+        assert node["domain_code"] == "oms"
+        assert node["effective_read_permission"] == "page.oms.read"
+        assert node["effective_write_permission"] == "page.oms.write"
+
+    expected_route_map = {
+        "/oms/order-projection": "oms.order_projection",
+        "/oms/line-projection": "oms.line_projection",
+        "/oms/component-projection": "oms.component_projection",
+    }
+    for route_prefix, page_code in expected_route_map.items():
+        route = route_map.get(route_prefix)
+        assert route is not None, f"{route_prefix} should exist in route_prefixes"
+        assert route["page_code"] == page_code
+        assert route["effective_read_permission"] == "page.oms.read"
+        assert route["effective_write_permission"] == "page.oms.write"
+
+    retired_codes = [
+        "oms.fsku_rules",
+        "oms.pdd",
+        "oms.pdd.platform_order_mirror",
+        "oms.pdd.fsku_mapping",
+        "oms.taobao",
+        "oms.taobao.platform_order_mirror",
+        "oms.taobao.fsku_mapping",
+        "oms.jd",
+        "oms.jd.platform_order_mirror",
+        "oms.jd.fsku_mapping",
+        "oms.fulfillment_projection",
+        "oms.fulfillment_projection.orders",
+        "oms.fulfillment_projection.lines",
+        "oms.fulfillment_projection.components",
+    ]
+    for code in retired_codes:
+        assert code not in nodes
+
+    retired_routes = [
+        "/oms/fskus",
+        "/oms/pdd",
+        "/oms/pdd/platform-order-mirror",
+        "/oms/pdd/fsku-mapping",
+        "/oms/taobao",
+        "/oms/taobao/platform-order-mirror",
+        "/oms/taobao/fsku-mapping",
+        "/oms/jd",
+        "/oms/jd/platform-order-mirror",
+        "/oms/jd/fsku-mapping",
+        "/oms/fulfillment-projection",
+        "/oms/fulfillment-projection/orders",
+        "/oms/fulfillment-projection/lines",
+        "/oms/fulfillment-projection/components",
+    ]
+    for route_prefix in retired_routes:
+        assert route_prefix not in route_map

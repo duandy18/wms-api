@@ -1,37 +1,37 @@
-# app/admin/routers/pms_integration.py
+# app/pms/projections/routers/pms_projection.py
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from app.admin.contracts.pms_integration import (
+from app.pms.projections.contracts.pms_projection import (
     PmsProjectionCheckOut,
-    PmsProjectionIntegrationStatusOut,
+    PmsProjectionStatusOut,
     PmsProjectionListOut,
     PmsProjectionSyncOut,
     PmsProjectionSyncRunsOut,
     ProjectionResource,
 )
-from app.admin.services.pms_integration_service import PmsIntegrationAdminService
+from app.pms.projections.services.pms_projection_service import PmsProjectionService
 from app.db.session import get_db
 from app.integrations.pms.projection_sync import PmsProjectionSyncError
 from app.user.deps.auth import get_current_user
 from app.user.services.user_service import UserService
 
-router = APIRouter(prefix="/pms-integration", tags=["admin-pms-integration"])
+router = APIRouter(prefix="/projections", tags=["pms-projections"])
 
 
-def _service(db: Session) -> PmsIntegrationAdminService:
-    return PmsIntegrationAdminService(db)
+def _service(db: Session) -> PmsProjectionService:
+    return PmsProjectionService(db)
 
 
-@router.get("/status", response_model=PmsProjectionIntegrationStatusOut)
+@router.get("/status", response_model=PmsProjectionStatusOut)
 def get_pms_projection_sync_status(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
     svc = UserService(db)
-    svc.check_permission(current_user, ["page.admin.read"])
+    svc.check_permission(current_user, ["page.pms.read"])
     return _service(db).get_status()
 
 
@@ -43,11 +43,11 @@ def list_pms_projection_sync_runs(
     current_user=Depends(get_current_user),
 ):
     svc = UserService(db)
-    svc.check_permission(current_user, ["page.admin.read"])
+    svc.check_permission(current_user, ["page.pms.read"])
     return _service(db).list_sync_runs(resource=resource, limit=limit)
 
 
-@router.get("/projections/{resource}", response_model=PmsProjectionListOut)
+@router.get("/{resource}", response_model=PmsProjectionListOut)
 def list_pms_projection_rows(
     resource: ProjectionResource,
     limit: int = Query(default=50, ge=1, le=500),
@@ -57,7 +57,7 @@ def list_pms_projection_rows(
     current_user=Depends(get_current_user),
 ):
     svc = UserService(db)
-    svc.check_permission(current_user, ["page.admin.read"])
+    svc.check_permission(current_user, ["page.pms.read"])
     return _service(db).list_projection(
         resource=resource,
         limit=limit,
@@ -66,14 +66,14 @@ def list_pms_projection_rows(
     )
 
 
-@router.post("/projections/{resource}/sync", response_model=PmsProjectionSyncOut)
+@router.post("/{resource}/sync", response_model=PmsProjectionSyncOut)
 async def sync_pms_projection_resource(
     resource: ProjectionResource,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
     svc = UserService(db)
-    svc.check_permission(current_user, ["page.admin.write"])
+    svc.check_permission(current_user, ["page.pms.write"])
 
     try:
         run = await _service(db).sync_resource(
@@ -88,7 +88,7 @@ async def sync_pms_projection_resource(
     return {"run": run}
 
 
-@router.post("/projections/{resource}/check", response_model=PmsProjectionCheckOut)
+@router.post("/{resource}/check", response_model=PmsProjectionCheckOut)
 def check_pms_projection_resource(
     resource: ProjectionResource,
     limit: int = Query(default=200, ge=1, le=1000),
@@ -96,7 +96,7 @@ def check_pms_projection_resource(
     current_user=Depends(get_current_user),
 ):
     svc = UserService(db)
-    svc.check_permission(current_user, ["page.admin.read"])
+    svc.check_permission(current_user, ["page.pms.read"])
     return _service(db).check_projection(resource=resource, limit=limit)
 
 

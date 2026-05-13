@@ -1,4 +1,4 @@
-# app/admin/contracts/pms_integration.py
+# app/pms/projections/contracts/pms_projection.py
 from __future__ import annotations
 
 from datetime import datetime
@@ -34,7 +34,7 @@ class PmsProjectionResourceStatusOut(BaseModel):
     last_sync_run: PmsProjectionSyncRunOut | None = None
 
 
-class PmsProjectionIntegrationStatusOut(BaseModel):
+class PmsProjectionStatusOut(BaseModel):
     pms_api_base_url_configured: bool
     resources: list[PmsProjectionResourceStatusOut] = Field(default_factory=list)
 
@@ -80,7 +80,7 @@ class PmsProjectionSyncRunsOut(BaseModel):
 __all__ = [
     "PmsProjectionCheckIssueOut",
     "PmsProjectionCheckOut",
-    "PmsProjectionIntegrationStatusOut",
+    "PmsProjectionStatusOut",
     "PmsProjectionListOut",
     "PmsProjectionResourceStatusOut",
     "PmsProjectionSyncOut",
