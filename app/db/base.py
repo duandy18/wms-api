@@ -104,6 +104,7 @@ def init_models(
     # ✅ 显式加载链：只放 wms-api owner 模型；PMS owner ORM 不再进入 wms-api metadata。
     explicit_chain = [
         "app.integrations.pms.projection_models",
+        "app.integrations.oms.projection_models",
         "app.procurement.models.purchase_order",
         "app.procurement.models.purchase_order_line",
         "app.wms.inventory_adjustment.return_inbound.models.inbound_receipt",
