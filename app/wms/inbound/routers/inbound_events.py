@@ -11,12 +11,64 @@ from app.wms.inbound.contracts.inbound_event_read import (
     InboundEventDetailOut,
     InboundEventListOut,
 )
+from app.wms.inbound.contracts.procurement_receiving_result import (
+    ProcurementReceivingResultDetailOut,
+    ProcurementReceivingResultsOut,
+)
 from app.wms.inbound.services.inbound_event_read_service import (
     get_inbound_event_detail,
     list_inbound_events,
 )
+from app.wms.inbound.services.procurement_receiving_result_service import (
+    get_procurement_receiving_result_detail,
+    list_procurement_receiving_results,
+)
 
 router = APIRouter(prefix="/wms/inbound", tags=["wms-inbound-events"])
+
+
+@router.get(
+    "/procurement-receiving-results",
+    response_model=ProcurementReceivingResultsOut,
+)
+async def list_procurement_receiving_results_endpoint(
+    after_event_id: int = Query(default=0, ge=0, description="只返回 event_id 大于该值的收货结果"),
+    limit: int = Query(default=50, ge=1, le=200, description="最多读取多少个 WMS event"),
+    procurement_po_id: int | None = Query(default=None, ge=1, description="采购系统采购单 ID"),
+    receipt_no: str | None = Query(default=None, description="WMS 入库单号"),
+    session: AsyncSession = Depends(get_session),
+) -> ProcurementReceivingResultsOut:
+    try:
+        return await list_procurement_receiving_results(
+            session,
+            after_event_id=after_event_id,
+            limit=limit,
+            procurement_po_id=procurement_po_id,
+            receipt_no=receipt_no,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+@router.get(
+    "/procurement-receiving-results/{event_id}",
+    response_model=ProcurementReceivingResultDetailOut,
+)
+async def get_procurement_receiving_result_detail_endpoint(
+    event_id: int,
+    session: AsyncSession = Depends(get_session),
+) -> ProcurementReceivingResultDetailOut:
+    try:
+        return await get_procurement_receiving_result_detail(
+            session,
+            event_id=int(event_id),
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @router.get("/events", response_model=InboundEventListOut)
