@@ -1,23 +1,24 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_session
+from app.integrations.procurement.http_client import ProcurementReadClientError
+from app.wms.inventory_adjustment.return_inbound.contracts.purchase_source_options import (
+    InboundReceiptPurchaseSourceOptionsOut,
+)
 from app.wms.inventory_adjustment.return_inbound.contracts.receipt_create_from_purchase import (
     InboundReceiptCreateFromPurchaseIn,
     InboundReceiptCreateFromPurchaseOut,
-)
-from app.wms.inventory_adjustment.return_inbound.contracts.receipt_create_manual import (
-    InboundReceiptCreateManualIn,
-    InboundReceiptCreateManualOut,
 )
 from app.wms.inventory_adjustment.return_inbound.contracts.receipt_create_from_return_order import (
     InboundReceiptCreateFromReturnOrderIn,
     InboundReceiptCreateFromReturnOrderOut,
 )
-from app.wms.inventory_adjustment.return_inbound.contracts.receipt_return_source import (
-    InboundReceiptReturnSourceOut,
+from app.wms.inventory_adjustment.return_inbound.contracts.receipt_create_manual import (
+    InboundReceiptCreateManualIn,
+    InboundReceiptCreateManualOut,
 )
 from app.wms.inventory_adjustment.return_inbound.contracts.receipt_read import (
     InboundReceiptListOut,
@@ -27,17 +28,20 @@ from app.wms.inventory_adjustment.return_inbound.contracts.receipt_read import (
 from app.wms.inventory_adjustment.return_inbound.contracts.receipt_release import (
     InboundReceiptReleaseOut,
 )
+from app.wms.inventory_adjustment.return_inbound.contracts.receipt_return_source import (
+    InboundReceiptReturnSourceOut,
+)
 from app.wms.inventory_adjustment.return_inbound.services.create_from_purchase_service import (
     create_inbound_receipt_from_purchase,
-)
-from app.wms.inventory_adjustment.return_inbound.services.create_manual_service import (
-    create_inbound_receipt_manual,
 )
 from app.wms.inventory_adjustment.return_inbound.services.create_from_return_order_service import (
     create_inbound_receipt_from_return_order,
 )
-from app.wms.inventory_adjustment.return_inbound.services.return_source_service import (
-    get_inbound_return_source,
+from app.wms.inventory_adjustment.return_inbound.services.create_manual_service import (
+    create_inbound_receipt_manual,
+)
+from app.wms.inventory_adjustment.return_inbound.services.purchase_source_options_service import (
+    list_inbound_receipt_purchase_source_options,
 )
 from app.wms.inventory_adjustment.return_inbound.services.read_service import (
     get_inbound_receipt,
@@ -45,8 +49,31 @@ from app.wms.inventory_adjustment.return_inbound.services.read_service import (
     list_inbound_receipts,
     release_inbound_receipt,
 )
+from app.wms.inventory_adjustment.return_inbound.services.return_source_service import (
+    get_inbound_return_source,
+)
 
 router = APIRouter(prefix="/inbound-receipts", tags=["inbound-receipts"])
+
+
+@router.get("/purchase-source-options", response_model=InboundReceiptPurchaseSourceOptionsOut)
+async def list_inbound_receipt_purchase_source_options_endpoint(
+    target_warehouse_id: int | None = Query(None, gt=0),
+    q: str | None = Query(None),
+    limit: int = Query(200, ge=1, le=500),
+) -> InboundReceiptPurchaseSourceOptionsOut:
+    try:
+        return await list_inbound_receipt_purchase_source_options(
+            target_warehouse_id=target_warehouse_id,
+            q=q,
+            limit=limit,
+        )
+    except ProcurementReadClientError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @router.post("/from-purchase", response_model=InboundReceiptCreateFromPurchaseOut)
