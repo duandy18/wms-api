@@ -17,7 +17,7 @@ class FinanceOrderSalesLine(Base):
     - 一行 = 一个 order_items.id 销售订单行；
     - 主源来自 orders + order_items + stores + order_address；
     - 不读取 order_lines 作为销售金额主源；
-    - 不读取 platform_order_lines 作为财务金额主源；
+    - 不读取 legacy platform-order fact lines 作为财务金额主源；
     - order_ref 用于后续与物流成本事实表按订单维度闭环。
     """
 

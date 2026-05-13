@@ -115,13 +115,11 @@ DEFAULT_ITEM_REFERENCES: tuple[ItemReference, ...] = (
     ItemReference("purchase_order_line_completion", None, "item_id"),
     ItemReference("order_items", "id", "item_id"),
     ItemReference("order_lines", "id", "item_id"),
-    ItemReference("oms_fsku_components", "id", "resolved_item_id"),
     ItemReference("manual_outbound_lines", "id", "item_id"),
     ItemReference("outbound_commits", "id", "item_id"),
     ItemReference("outbound_event_lines", "id", "item_id"),
     ItemReference("outbound_ship_ops", "id", "item_id"),
     ItemReference("pick_task_lines", "id", "item_id"),
-    ItemReference("platform_order_manual_decisions", "id", "item_id"),
     ItemReference("receive_task_scan_events", "id", "item_id"),
     ItemReference("return_task_lines", "id", "item_id"),
     ItemReference("store_items", "id", "item_id"),
@@ -136,12 +134,10 @@ DEFAULT_UOM_REFERENCES: tuple[UomReference, ...] = (
     UomReference("count_doc_lines", "id", "item_id", "counted_item_uom_id"),
     UomReference("purchase_order_lines", "id", "item_id", "purchase_uom_id_snapshot"),
     UomReference("purchase_order_line_completion", None, "item_id", "purchase_uom_id_snapshot"),
-    UomReference("oms_fsku_components", "id", "resolved_item_id", "resolved_item_uom_id"),
     UomReference("manual_outbound_lines", "id", "item_id", "item_uom_id"),
 )
 
 DEFAULT_SKU_CODE_REFERENCES: tuple[SkuCodeReference, ...] = (
-    SkuCodeReference("oms_fsku_components", "id", "resolved_item_id", "resolved_item_sku_code_id"),
 )
 
 DEFAULT_SUPPLIER_REFERENCES: tuple[SupplierReference, ...] = (
