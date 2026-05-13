@@ -31,7 +31,7 @@ class InboundCommitLineIn(_Base):
     设计原则：
     - 输入只接用户事实：商品/条码、包装单位、输入数量、批号/日期
     - 不接 qty_base，qty_base 由后端根据 PMS item_uoms.ratio_to_base 计算
-    - 采购来源时允许显式带 po_line_id；其他来源不需要 source_line_ref 这种泛字段
+    - 采购来源时允许显式带 source_line_id；其他来源不需要来源行引用
     """
 
     item_id: Annotated[int | None, Field(default=None, ge=1, description="商品 ID")]
@@ -44,7 +44,7 @@ class InboundCommitLineIn(_Base):
     production_date: date | None = Field(default=None, description="生产日期")
     expiry_date: date | None = Field(default=None, description="到期日期")
 
-    po_line_id: Annotated[int | None, Field(default=None, ge=1, description="采购来源时的采购单行 ID")]
+    source_line_id: Annotated[int | None, Field(default=None, ge=1, description="采购来源时的外部来源行 ID")]
     remark: Annotated[str | None, Field(default=None, max_length=255, description="行备注")]
 
     @model_validator(mode="after")
@@ -85,6 +85,17 @@ class InboundCommitIn(_Base):
 
     lines: Annotated[list[InboundCommitLineIn], Field(min_length=1, description="提交行")]
 
+    @model_validator(mode="after")
+    def _validate_purchase_source_lines_require_source_line_id(self) -> "InboundCommitIn":
+        if self.source_type != "PURCHASE_ORDER":
+            return self
+
+        for index, line in enumerate(self.lines, start=1):
+            if line.source_line_id is None:
+                raise ValueError(f"采购入库第 {index} 行必须提供 source_line_id")
+
+        return self
+
 
 class InboundCommitResultRow(_Base):
     """
@@ -106,7 +117,7 @@ class InboundCommitResultRow(_Base):
     lot_id: Annotated[int | None, Field(default=None, ge=1, description="实际落账 lot_id")]
     lot_code: Annotated[str | None, Field(default=None, max_length=128, description="实际落账 lot_code")]
 
-    po_line_id: Annotated[int | None, Field(default=None, ge=1, description="采购来源时的采购单行 ID")]
+    source_line_id: Annotated[int | None, Field(default=None, ge=1, description="采购来源时的外部来源行 ID")]
     remark: Annotated[str | None, Field(default=None, max_length=255, description="行备注")]
 
 

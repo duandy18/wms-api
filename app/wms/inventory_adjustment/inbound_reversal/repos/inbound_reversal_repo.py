@@ -257,7 +257,7 @@ async def list_inbound_event_lines_for_reversal(
                   production_date,
                   expiry_date,
                   lot_id,
-                  po_line_id,
+                  source_line_id,
                   remark
                 FROM inbound_event_lines
                 WHERE event_id = :event_id

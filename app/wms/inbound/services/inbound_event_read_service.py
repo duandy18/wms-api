@@ -201,7 +201,7 @@ async def get_inbound_event_detail(
             lo.lot_code,
             iel.production_date,
             iel.expiry_date,
-            iel.po_line_id,
+            iel.source_line_id,
             iel.remark
           FROM inbound_event_lines AS iel
           LEFT JOIN lots AS lo

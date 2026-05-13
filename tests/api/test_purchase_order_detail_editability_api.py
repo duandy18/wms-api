@@ -83,7 +83,7 @@ async def _commit_purchase_inbound(
                 "item_id": int(line["item_id"]),
                 "uom_id": int(uom_id),
                 "qty_input": 1,
-                "po_line_id": int(line["id"]),
+                "source_line_id": int(line["id"]),
             },
         ],
     }

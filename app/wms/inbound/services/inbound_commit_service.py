@@ -44,7 +44,7 @@ class ResolvedCommitLine:
     production_date: date | None
     expiry_date: date | None
     lot_id: int | None
-    po_line_id: int | None
+    source_line_id: int | None
     remark: str | None
 
 
@@ -116,10 +116,10 @@ def _validate_source(payload: InboundCommitIn) -> None:
         if not _norm_text(payload.source_ref):
             raise HTTPException(status_code=400, detail="采购入库必须提供 source_ref")
         for idx, line in enumerate(payload.lines, start=1):
-            if line.po_line_id is None:
+            if line.source_line_id is None:
                 raise HTTPException(
                     status_code=400,
-                    detail=f"采购入库第 {idx} 行必须提供 po_line_id",
+                    detail=f"采购入库第 {idx} 行必须提供 source_line_id",
                 )
 
 
@@ -138,7 +138,7 @@ async def _resolve_line(
     lot_code_input = _norm_lot_code(getattr(line, "lot_code_input", None))
     production_date_in = getattr(line, "production_date", None)
     expiry_date_in = getattr(line, "expiry_date", None)
-    po_line_id = getattr(line, "po_line_id", None)
+    source_line_id = getattr(line, "source_line_id", None)
     remark = _norm_text(getattr(line, "remark", None))
 
     if qty_input <= 0:
@@ -242,7 +242,7 @@ async def _resolve_line(
     )
 
     if source_type != "PURCHASE_ORDER":
-        po_line_id = None
+        source_line_id = None
 
     return ResolvedCommitLine(
         line_no=int(line_no),
@@ -259,7 +259,7 @@ async def _resolve_line(
         production_date=resolved_production_date,
         expiry_date=resolved_expiry_date,
         lot_id=int(lot_id) if lot_id is not None else None,
-        po_line_id=int(po_line_id) if po_line_id is not None else None,
+        source_line_id=int(source_line_id) if source_line_id is not None else None,
         remark=remark,
     )
 
@@ -330,7 +330,7 @@ async def commit_inbound(
             production_date=line.production_date,
             expiry_date=line.expiry_date,
             lot_id=int(line.lot_id) if line.lot_id is not None else None,
-            po_line_id=int(line.po_line_id) if line.po_line_id is not None else None,
+            source_line_id=int(line.source_line_id) if line.source_line_id is not None else None,
             remark=line.remark,
         )
         session.add(event_line)
@@ -366,7 +366,7 @@ async def commit_inbound(
                 qty_base=int(line.qty_base),
                 lot_id=int(line.lot_id) if line.lot_id is not None else None,
                 lot_code=line.lot_code_input,
-                po_line_id=int(line.po_line_id) if line.po_line_id is not None else None,
+                source_line_id=int(line.source_line_id) if line.source_line_id is not None else None,
                 remark=line.remark,
             )
         )

@@ -467,7 +467,7 @@ async def submit_inbound_operation_repo(
             ).mappings().first()
 
             event_line_no += 1
-            po_line_id = (
+            source_line_id = (
                 int(task_line["source_line_id"])
                 if str(task["source_type"]) == "PURCHASE_ORDER" and task_line["source_line_id"] is not None
                 else None
@@ -492,7 +492,7 @@ async def submit_inbound_operation_repo(
                       production_date,
                       expiry_date,
                       lot_id,
-                      po_line_id,
+                      source_line_id,
                       remark
                     )
                     VALUES (
@@ -511,7 +511,7 @@ async def submit_inbound_operation_repo(
                       :production_date,
                       :expiry_date,
                       :lot_id,
-                      :po_line_id,
+                      :source_line_id,
                       :remark
                     )
                     """
@@ -532,7 +532,7 @@ async def submit_inbound_operation_repo(
                     "production_date": entry.production_date,
                     "expiry_date": entry.expiry_date,
                     "lot_id": int(lot_id) if lot_id is not None else None,
-                    "po_line_id": po_line_id,
+                    "source_line_id": source_line_id,
                     "remark": entry.remark,
                 },
             )

@@ -67,7 +67,7 @@ async def has_po_committed_inbound_facts(
             SELECT 1
               FROM purchase_order_lines pol
               JOIN inbound_event_lines iel
-                ON iel.po_line_id = pol.id
+                ON iel.source_line_id = pol.id
               JOIN wms_events we
                 ON we.id = iel.event_id
              WHERE pol.po_id = :po_id

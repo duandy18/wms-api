@@ -214,10 +214,10 @@ class InboundEventLine(Base):
         nullable=True,
     )
 
-    po_line_id: Mapped[Optional[int]] = mapped_column(
+    source_line_id: Mapped[Optional[int]] = mapped_column(
         Integer,
-        ForeignKey("purchase_order_lines.id", name="fk_inbound_event_lines_po_line", ondelete="SET NULL"),
         nullable=True,
+        comment="外部来源行 ID；采购来源时对应 procurement purchase_order_lines.id，不声明本地 FK",
     )
 
     remark: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)

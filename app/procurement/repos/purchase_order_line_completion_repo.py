@@ -148,18 +148,18 @@ async def apply_completion_delta_for_event(
 
     要求：
     - 调用方应保证 event / inbound_event_lines 已 flush
-    - 仅采购来源 event line 才会带 po_line_id
+    - 仅采购来源 event line 才会带 source_line_id；本地 completion 仍映射为 po_line_id
     """
     sql = text(
         """
         WITH delta AS (
           SELECT
-            iel.po_line_id AS po_line_id,
+            iel.source_line_id AS po_line_id,
             SUM(iel.qty_base)::int AS add_qty
           FROM inbound_event_lines iel
           WHERE iel.event_id = :event_id
-            AND iel.po_line_id IS NOT NULL
-          GROUP BY iel.po_line_id
+            AND iel.source_line_id IS NOT NULL
+          GROUP BY iel.source_line_id
         )
         UPDATE purchase_order_line_completion plc
         SET

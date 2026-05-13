@@ -165,7 +165,7 @@ async def load_po_completion_events(
           we.source_ref AS source_ref,
           we.occurred_at AS occurred_at,
 
-          iel.po_line_id AS po_line_id,
+          iel.source_line_id AS po_line_id,
           pol.line_no AS line_no,
           iel.item_id AS item_id,
 
@@ -177,7 +177,7 @@ async def load_po_completion_events(
         JOIN wms_events we
           ON we.id = iel.event_id
         JOIN purchase_order_lines pol
-          ON pol.id = iel.po_line_id
+          ON pol.id = iel.source_line_id
         WHERE pol.po_id = :po_id
           AND we.event_type = 'INBOUND'
           AND we.source_type = 'PURCHASE_ORDER'
