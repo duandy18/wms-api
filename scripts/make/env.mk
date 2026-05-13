@@ -7,7 +7,7 @@ help:
 	@echo ""
 	@echo "WMS-DU Makefile 帮助："
 	@echo "  make env                     - 打印当前本地开发环境变量"
-	@echo "  make env-check               - 检查 WMS 本地环境与 PMS projection feed"
+	@echo "  make env-check               - 检查 WMS 本地环境、PMS projection feed 与 OMS OpenAPI"
 	@echo "  make venv                    - 创建虚拟环境"
 	@echo "  make deps                    - 安装依赖"
 	@echo "  make clean-pyc               - 清缓存"
@@ -50,6 +50,7 @@ env-dev:
 	@printf '%s\n' 'export WMS_TEST_DATABASE_URL="$(WMS_TEST_DATABASE_URL)"'
 	@printf '%s\n' 'export WMS_DATABASE_URL="$(WMS_DATABASE_URL)"'
 	@printf '%s\n' 'export PMS_API_BASE_URL="$(PMS_API_BASE_URL)"'
+	@printf '%s\n' 'export OMS_API_BASE_URL="$(OMS_API_BASE_URL)"'
 	@printf '%s\n' 'export PYTHONPATH=.'
 
 env-test:
@@ -57,6 +58,7 @@ env-test:
 	@printf '%s\n' 'export WMS_TEST_DATABASE_URL="$(DEV_TEST_DB_DSN)"'
 	@printf '%s\n' 'export WMS_DATABASE_URL="$(DEV_TEST_DB_DSN)"'
 	@printf '%s\n' 'export PMS_API_BASE_URL="$(PMS_API_BASE_URL)"'
+	@printf '%s\n' 'export OMS_API_BASE_URL="$(OMS_API_BASE_URL)"'
 	@printf '%s\n' 'export PYTHONPATH=.'
 
 env-check:
@@ -68,12 +70,16 @@ env-check:
 	@echo "WMS_TEST_DATABASE_URL=$(WMS_TEST_DATABASE_URL)"
 	@echo "WMS_DATABASE_URL=$(WMS_DATABASE_URL)"
 	@echo "PMS_API_BASE_URL=$(PMS_API_BASE_URL)"
+	@echo "OMS_API_BASE_URL=$(OMS_API_BASE_URL)"
 	@echo
 	@echo "===== WMS app import check ====="
 	@$(DEV_ENV) $(PY) -c "from app.main import app; print('WMS app import OK:', len(app.routes), 'routes')"
 	@echo
 	@echo "===== PMS projection feed check ====="
 	@curl --max-time 3 -fsS "$(PMS_API_BASE_URL)/pms/read/v1/projection-feed/suppliers?limit=1&offset=0" >/dev/null && echo "PMS projection feed OK: $(PMS_API_BASE_URL)" || (echo "PMS projection feed FAILED: $(PMS_API_BASE_URL)" >&2; exit 2)
+	@echo
+	@echo "===== OMS OpenAPI check ====="
+	@curl --max-time 3 -fsS "$(OMS_API_BASE_URL)/openapi.json" >/dev/null && echo "OMS API OK: $(OMS_API_BASE_URL)" || (echo "OMS API FAILED: $(OMS_API_BASE_URL)" >&2; exit 2)
 
 .PHONY: venv
 venv:
