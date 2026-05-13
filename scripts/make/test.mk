@@ -261,6 +261,22 @@ pms-projection-sync: venv
 	@$(DEV_ENV) $(PY) scripts/pms/sync_projection.py --limit "$${PMS_PROJECTION_SYNC_LIMIT:-500}"
 
 # ---------------------------------
+# OMS fulfillment projection sync
+# Requires oms-api running locally on OMS_API_BASE_URL and OMS_API_TOKEN with oms.fulfillment.read scope.
+# This target is intentionally local/manual and is not part of default CI.
+# ---------------------------------
+.PHONY: oms-fulfillment-projection-sync
+oms-fulfillment-projection-sync: venv
+	@extra_args=""; \
+	 if [ -n "$${OMS_FULFILLMENT_PROJECTION_PLATFORM:-}" ]; then \
+	   extra_args="$$extra_args --platform $${OMS_FULFILLMENT_PROJECTION_PLATFORM}"; \
+	 fi; \
+	 if [ -n "$${OMS_FULFILLMENT_PROJECTION_STORE_CODE:-}" ]; then \
+	   extra_args="$$extra_args --store-code $${OMS_FULFILLMENT_PROJECTION_STORE_CODE}"; \
+	 fi; \
+	 $(DEV_ENV) $(PY) scripts/oms/sync_fulfillment_projection.py --limit "$${OMS_FULFILLMENT_PROJECTION_SYNC_LIMIT:-200}" $$extra_args
+
+# ---------------------------------
 # PMS projection reconciliation
 # Verifies WMS scalar PMS references against WMS local projection tables.
 # This target is local/manual and may fail when projection is stale.
