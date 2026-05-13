@@ -839,3 +839,120 @@ async def import_orders_from_oms_projection(
         failed=failed,
         results=results,
     )
+
+
+async def list_oms_projection_import_candidates(
+    session: AsyncSession,
+    *,
+    q: str | None,
+    limit: int,
+    offset: int,
+) -> dict[str, Any]:
+    query_text = str(q or "").strip()
+
+    where_sql = ""
+    params: dict[str, Any] = {
+        "limit": int(limit),
+        "offset": int(offset),
+    }
+
+    if query_text:
+        where_sql = """
+        WHERE (
+          p.ready_order_id ILIKE :q
+          OR p.platform ILIKE :q
+          OR p.store_code ILIKE :q
+          OR p.store_name ILIKE :q
+          OR p.platform_order_no ILIKE :q
+          OR p.receiver_name ILIKE :q
+          OR p.receiver_phone ILIKE :q
+        )
+        """
+        params["q"] = f"%{query_text}%"
+
+    total = int(
+        (
+            await session.execute(
+                text(
+                    f"""
+                    SELECT count(*)::bigint
+                    FROM wms_oms_fulfillment_order_projection AS p
+                    {where_sql}
+                    """
+                ),
+                params,
+            )
+        ).scalar_one()
+    )
+
+    rows = (
+        await session.execute(
+            text(
+                f"""
+                SELECT
+                  p.ready_order_id,
+                  p.platform,
+                  p.store_code,
+                  p.store_name,
+                  p.platform_order_no,
+                  p.platform_status,
+                  p.receiver_name,
+                  p.receiver_phone,
+                  p.ready_status,
+                  p.ready_at,
+                  p.synced_at,
+                  p.line_count,
+                  p.component_count,
+                  p.total_required_qty,
+                  i.order_id AS imported_order_id,
+                  i.import_status,
+                  i.imported_at
+                FROM wms_oms_fulfillment_order_projection AS p
+                LEFT JOIN wms_oms_fulfillment_order_imports AS i
+                  ON i.ready_order_id = p.ready_order_id
+                {where_sql}
+                ORDER BY
+                  CASE WHEN i.ready_order_id IS NULL THEN 0 ELSE 1 END ASC,
+                  p.source_updated_at DESC,
+                  p.ready_order_id ASC
+                LIMIT :limit
+                OFFSET :offset
+                """
+            ),
+            params,
+        )
+    ).mappings().all()
+
+    items: list[dict[str, Any]] = []
+    for row in rows:
+        imported_order_id = row.get("imported_order_id")
+        imported = imported_order_id is not None
+        items.append(
+            {
+                "ready_order_id": str(row["ready_order_id"]),
+                "platform": _platform_to_wms(row["platform"]),
+                "store_code": str(row["store_code"]),
+                "store_name": row.get("store_name"),
+                "platform_order_no": str(row["platform_order_no"]),
+                "platform_status": row.get("platform_status"),
+                "receiver_name": row.get("receiver_name"),
+                "receiver_phone": row.get("receiver_phone"),
+                "ready_status": str(row["ready_status"]),
+                "ready_at": str(row["ready_at"]) if row.get("ready_at") is not None else None,
+                "synced_at": str(row["synced_at"]) if row.get("synced_at") is not None else None,
+                "line_count": int(row.get("line_count") or 0),
+                "component_count": int(row.get("component_count") or 0),
+                "total_required_qty": str(row["total_required_qty"]) if row.get("total_required_qty") is not None else None,
+                "import_status": str(row.get("import_status") or "NOT_IMPORTED"),
+                "imported_order_id": int(imported_order_id) if imported_order_id is not None else None,
+                "imported_at": str(row["imported_at"]) if row.get("imported_at") is not None else None,
+                "can_import": not imported,
+            }
+        )
+
+    return {
+        "items": items,
+        "total": total,
+        "limit": int(limit),
+        "offset": int(offset),
+    }

@@ -16,6 +16,7 @@ def test_oms_projection_import_route_lives_under_wms_outbound() -> None:
     paths = _runtime_paths()
 
     assert "/wms/outbound/orders/import-from-oms-projection" in paths
+    assert "/wms/outbound/orders/oms-projection-candidates" in paths
     assert all(not path.startswith("/oms/orders") for path in paths)
 
 
@@ -41,3 +42,13 @@ def test_oms_projection_import_audit_tables_are_registered_in_orm_metadata() -> 
 
     assert "wms_oms_fulfillment_order_imports" in Base.metadata.tables
     assert "wms_oms_fulfillment_component_imports" in Base.metadata.tables
+
+
+def test_oms_projection_import_candidate_service_uses_import_audit_left_join() -> None:
+    text = (
+        ROOT / "app/wms/outbound/services/oms_projection_order_import_service.py"
+    ).read_text(encoding="utf-8")
+
+    assert "LEFT JOIN wms_oms_fulfillment_order_imports" in text
+    assert "NOT_IMPORTED" in text
+    assert "imported_order_id" in text
