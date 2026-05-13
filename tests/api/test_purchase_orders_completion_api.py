@@ -127,7 +127,7 @@ def _rows_for_po(rows: List[Dict[str, Any]], *, po_id: int) -> List[Dict[str, An
 
 
 @pytest.mark.asyncio
-async def test_purchase_orders_completion_list_returns_line_level_completion(
+async def test_purchase_orders_completion_list_is_not_updated_by_wms_inbound_commit(
     client: httpx.AsyncClient,
     session: AsyncSession,
 ) -> None:
@@ -158,22 +158,22 @@ async def test_purchase_orders_completion_list_returns_line_level_completion(
     assert str(line1["po_no"]) == po_no
     assert int(line1["item_id"]) == int(item_a)
     assert int(line1["qty_ordered_base"]) == 2
-    assert int(line1["qty_received_base"]) == 2
-    assert int(line1["qty_remaining_base"]) == 0
-    assert str(line1["line_completion_status"]) == "RECEIVED"
+    assert int(line1["qty_received_base"]) == 0
+    assert int(line1["qty_remaining_base"]) == 2
+    assert str(line1["line_completion_status"]) == "NOT_RECEIVED"
 
     line2 = rows_by_line_no[2]
     assert int(line2["po_id"]) == po_id
     assert str(line2["po_no"]) == po_no
     assert int(line2["item_id"]) == int(item_b)
     assert int(line2["qty_ordered_base"]) == 3
-    assert int(line2["qty_received_base"]) == 3
-    assert int(line2["qty_remaining_base"]) == 0
-    assert str(line2["line_completion_status"]) == "RECEIVED"
+    assert int(line2["qty_received_base"]) == 0
+    assert int(line2["qty_remaining_base"]) == 3
+    assert str(line2["line_completion_status"]) == "NOT_RECEIVED"
 
 
 @pytest.mark.asyncio
-async def test_purchase_orders_completion_detail_returns_summary_lines_and_events(
+async def test_purchase_orders_completion_detail_keeps_local_completion_static_after_wms_commit(
     client: httpx.AsyncClient,
     session: AsyncSession,
 ) -> None:
@@ -200,9 +200,9 @@ async def test_purchase_orders_completion_detail_returns_summary_lines_and_event
     assert int(summary["po_id"]) == po_id
     assert str(summary["po_no"]) == po_no
     assert int(summary["total_ordered_base"]) == 5
-    assert int(summary["total_received_base"]) == 5
-    assert int(summary["total_remaining_base"]) == 0
-    assert str(summary["completion_status"]) == "RECEIVED"
+    assert int(summary["total_received_base"]) == 0
+    assert int(summary["total_remaining_base"]) == 5
+    assert str(summary["completion_status"]) == "NOT_RECEIVED"
 
     lines = data.get("lines")
     assert isinstance(lines, list) and len(lines) == 2, data
@@ -211,16 +211,16 @@ async def test_purchase_orders_completion_detail_returns_summary_lines_and_event
     line1 = lines_by_line_no[1]
     assert int(line1["item_id"]) == int(item_a)
     assert int(line1["qty_ordered_base"]) == 2
-    assert int(line1["qty_received_base"]) == 2
-    assert int(line1["qty_remaining_base"]) == 0
-    assert str(line1["line_completion_status"]) == "RECEIVED"
+    assert int(line1["qty_received_base"]) == 0
+    assert int(line1["qty_remaining_base"]) == 2
+    assert str(line1["line_completion_status"]) == "NOT_RECEIVED"
 
     line2 = lines_by_line_no[2]
     assert int(line2["item_id"]) == int(item_b)
     assert int(line2["qty_ordered_base"]) == 3
-    assert int(line2["qty_received_base"]) == 3
-    assert int(line2["qty_remaining_base"]) == 0
-    assert str(line2["line_completion_status"]) == "RECEIVED"
+    assert int(line2["qty_received_base"]) == 0
+    assert int(line2["qty_remaining_base"]) == 3
+    assert str(line2["line_completion_status"]) == "NOT_RECEIVED"
 
     receipt_events = data.get("receipt_events")
     assert isinstance(receipt_events, list) and len(receipt_events) == 3, data

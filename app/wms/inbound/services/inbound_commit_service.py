@@ -9,9 +9,6 @@ from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.integrations.pms.factory import create_pms_read_client
-from app.procurement.services.purchase_order_completion_sync import (
-    sync_purchase_completion_for_inbound_event,
-)
 from app.wms.inbound.contracts.inbound_commit import (
     InboundCommitIn,
     InboundCommitOut,
@@ -372,13 +369,6 @@ async def commit_inbound(
         )
 
     await session.flush()
-
-    if str(payload.source_type) == "PURCHASE_ORDER":
-        await sync_purchase_completion_for_inbound_event(
-            session,
-            event_id=int(event.id),
-            occurred_at=payload.occurred_at,
-        )
 
     return InboundCommitOut(
         ok=True,
