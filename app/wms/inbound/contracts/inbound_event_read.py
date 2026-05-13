@@ -54,7 +54,7 @@ class InboundEventLineOut(_Base):
     production_date: date | None = Field(default=None, description="生产日期")
     expiry_date: date | None = Field(default=None, description="到期日期")
 
-    po_line_id: Annotated[int | None, Field(default=None, ge=1, description="采购来源时的采购单行 ID")]
+    source_line_id: Annotated[int | None, Field(default=None, ge=1, description="采购来源时的外部来源行 ID")]
     remark: Annotated[str | None, Field(default=None, max_length=255, description="行备注")]
 
 

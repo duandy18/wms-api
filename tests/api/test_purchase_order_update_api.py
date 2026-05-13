@@ -90,13 +90,13 @@ async def _commit_purchase_inbound(
                 "item_id": int(by_line_no[1]["item_id"]),
                 "uom_id": int(uom_map[1]),
                 "qty_input": 1,
-                "po_line_id": int(by_line_no[1]["id"]),
+                "source_line_id": int(by_line_no[1]["id"]),
             },
             {
                 "item_id": int(by_line_no[2]["item_id"]),
                 "uom_id": int(uom_map[2]),
                 "qty_input": 3,
-                "po_line_id": int(by_line_no[2]["id"]),
+                "source_line_id": int(by_line_no[2]["id"]),
             },
         ],
     }

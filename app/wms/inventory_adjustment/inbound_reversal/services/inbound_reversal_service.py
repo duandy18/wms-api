@@ -268,7 +268,7 @@ async def reverse_inbound_event(
             production_date=src["production_date"],
             expiry_date=src["expiry_date"],
             lot_id=int(lot_id),
-            po_line_id=(int(src["po_line_id"]) if src["po_line_id"] is not None else None),
+            source_line_id=(int(src["source_line_id"]) if src["source_line_id"] is not None else None),
             remark=_norm_text(src["remark"]),
         )
         session.add(event_line)
