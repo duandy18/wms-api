@@ -270,6 +270,157 @@ class WmsOmsFulfillmentComponentProjection(Base):
     )
 
 
+class WmsOmsFulfillmentOrderImport(Base):
+    __tablename__ = "wms_oms_fulfillment_order_imports"
+    __table_args__ = (
+        sa.UniqueConstraint(
+            "order_id",
+            name="uq_wms_oms_fulfill_order_import_order_id",
+        ),
+        sa.UniqueConstraint(
+            "platform",
+            "store_code",
+            "platform_order_no",
+            name="uq_wms_oms_fulfill_order_import_platform_store_no",
+        ),
+        sa.CheckConstraint(
+            "import_status IN ('IMPORTED')",
+            name="ck_wms_oms_fulfill_order_import_status",
+        ),
+        sa.CheckConstraint(
+            "order_line_count >= 0",
+            name="ck_wms_oms_fulfill_order_import_line_count_ge0",
+        ),
+        sa.CheckConstraint(
+            "component_count >= 0",
+            name="ck_wms_oms_fulfill_order_import_component_count_ge0",
+        ),
+        sa.Index(
+            "ix_wms_oms_fulfill_order_import_imported_at",
+            "imported_at",
+        ),
+        {"info": {"owner": "wms-api", "projection_import_audit": True}},
+    )
+
+    ready_order_id: Mapped[str] = mapped_column(sa.String(192), primary_key=True)
+    order_id: Mapped[int] = mapped_column(
+        sa.BigInteger,
+        sa.ForeignKey(
+            "orders.id",
+            name="fk_wms_oms_fulfill_order_import_order",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
+
+    platform: Mapped[str] = mapped_column(sa.String(16), nullable=False)
+    store_code: Mapped[str] = mapped_column(sa.String(128), nullable=False)
+    platform_order_no: Mapped[str] = mapped_column(sa.String(128), nullable=False)
+
+    source_order_id: Mapped[int] = mapped_column(sa.BigInteger, nullable=False)
+    source_hash: Mapped[str | None] = mapped_column(sa.String(128), nullable=True)
+
+    import_status: Mapped[str] = mapped_column(
+        sa.String(32),
+        nullable=False,
+        server_default=sa.text("'IMPORTED'"),
+    )
+    order_line_count: Mapped[int] = mapped_column(
+        sa.Integer,
+        nullable=False,
+        server_default=sa.text("0"),
+    )
+    component_count: Mapped[int] = mapped_column(
+        sa.Integer,
+        nullable=False,
+        server_default=sa.text("0"),
+    )
+
+    imported_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True),
+        nullable=False,
+        server_default=sa.text("now()"),
+    )
+    imported_by_user_id: Mapped[int | None] = mapped_column(
+        sa.Integer,
+        sa.ForeignKey(
+            "users.id",
+            name="fk_wms_oms_fulfill_order_import_user",
+            ondelete="SET NULL",
+        ),
+        nullable=True,
+    )
+    error_message: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+
+
+class WmsOmsFulfillmentComponentImport(Base):
+    __tablename__ = "wms_oms_fulfillment_component_imports"
+    __table_args__ = (
+        sa.UniqueConstraint(
+            "order_line_id",
+            name="uq_wms_oms_fulfill_component_import_order_line",
+        ),
+        sa.CheckConstraint(
+            "required_qty > 0",
+            name="ck_wms_oms_fulfill_component_import_required_qty_pos",
+        ),
+        sa.Index(
+            "ix_wms_oms_fulfill_component_import_ready_order",
+            "ready_order_id",
+        ),
+        {"info": {"owner": "wms-api", "projection_import_audit": True}},
+    )
+
+    ready_component_id: Mapped[str] = mapped_column(sa.String(256), primary_key=True)
+    ready_order_id: Mapped[str] = mapped_column(
+        sa.String(192),
+        sa.ForeignKey(
+            "wms_oms_fulfillment_order_imports.ready_order_id",
+            name="fk_wms_oms_fulfill_component_import_order_import",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+    ready_line_id: Mapped[str] = mapped_column(sa.String(192), nullable=False)
+
+    order_id: Mapped[int] = mapped_column(
+        sa.BigInteger,
+        sa.ForeignKey(
+            "orders.id",
+            name="fk_wms_oms_fulfill_component_import_order",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
+    order_line_id: Mapped[int] = mapped_column(
+        sa.BigInteger,
+        sa.ForeignKey(
+            "order_lines.id",
+            name="fk_wms_oms_fulfill_component_import_order_line",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
+
+    resolved_item_id: Mapped[int] = mapped_column(sa.BigInteger, nullable=False)
+    resolved_item_sku_code_id: Mapped[int] = mapped_column(sa.BigInteger, nullable=False)
+    resolved_item_uom_id: Mapped[int] = mapped_column(sa.BigInteger, nullable=False)
+
+    component_sku_code: Mapped[str] = mapped_column(sa.String(128), nullable=False)
+    sku_code_snapshot: Mapped[str] = mapped_column(sa.String(128), nullable=False)
+    item_name_snapshot: Mapped[str] = mapped_column(sa.String(255), nullable=False)
+    uom_snapshot: Mapped[str] = mapped_column(sa.String(64), nullable=False)
+
+    required_qty: Mapped[Decimal] = mapped_column(sa.Numeric(18, 6), nullable=False)
+    source_hash: Mapped[str | None] = mapped_column(sa.String(128), nullable=True)
+
+    imported_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True),
+        nullable=False,
+        server_default=sa.text("now()"),
+    )
+
+
 class WmsOmsFulfillmentProjectionSyncRun(Base):
     __tablename__ = "wms_oms_fulfillment_projection_sync_runs"
     __table_args__ = (
@@ -363,5 +514,7 @@ __all__ = [
     "WmsOmsFulfillmentComponentProjection",
     "WmsOmsFulfillmentLineProjection",
     "WmsOmsFulfillmentOrderProjection",
+    "WmsOmsFulfillmentOrderImport",
+    "WmsOmsFulfillmentComponentImport",
     "WmsOmsFulfillmentProjectionSyncRun",
 ]
