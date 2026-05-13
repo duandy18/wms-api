@@ -29,6 +29,7 @@ help:
 	@echo "  make audit-three-books       - 三账一致性自检（TEST DB 上运行 snapshot + compare）"
 	@echo ""
 	@echo "  make pms-projection-sync     - 从 PMS 同步 WMS 本地 projection"
+	@echo "  make oms-fulfillment-projection-sync - 从 OMS 同步 WMS 履约 projection"
 	@echo "  make test                    - pytest（默认跑 wms_test；pytest 后自动补账 + 三账体检）"
 	@echo "  make test-core               - 只跑 grp_core"
 	@echo "  make test-flow               - 只跑 grp_flow"
@@ -51,6 +52,7 @@ env-dev:
 	@printf '%s\n' 'export WMS_DATABASE_URL="$(WMS_DATABASE_URL)"'
 	@printf '%s\n' 'export PMS_API_BASE_URL="$(PMS_API_BASE_URL)"'
 	@printf '%s\n' 'export OMS_API_BASE_URL="$(OMS_API_BASE_URL)"'
+	@printf '%s\n' '# OMS_API_TOKEN is loaded from .env.local for make targets and is intentionally not printed by make env'
 	@printf '%s\n' 'export PYTHONPATH=.'
 
 env-test:
@@ -71,6 +73,7 @@ env-check:
 	@echo "WMS_DATABASE_URL=$(WMS_DATABASE_URL)"
 	@echo "PMS_API_BASE_URL=$(PMS_API_BASE_URL)"
 	@echo "OMS_API_BASE_URL=$(OMS_API_BASE_URL)"
+	@if [ -n "$(OMS_API_TOKEN)" ]; then echo "OMS_API_TOKEN_CONFIGURED=true"; else echo "OMS_API_TOKEN_CONFIGURED=false"; fi
 	@echo
 	@echo "===== WMS app import check ====="
 	@$(DEV_ENV) $(PY) -c "from app.main import app; print('WMS app import OK:', len(app.routes), 'routes')"
