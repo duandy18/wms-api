@@ -64,8 +64,8 @@ async def test_list_purchase_order_source_options_calls_procurement_read_api() -
     )
 
     assert captured["url"] == (
-        "http://procurement.test/procurement/read/v1/purchase-orders/"
-        "source-options?limit=20&target_warehouse_id=2&q=SUP"
+        "http://procurement.test/procurement/read/v1/wms/"
+        "receiving-sources?limit=20&target_warehouse_id=2&q=SUP"
     )
     assert captured["params"] == {
         "limit": "20",
@@ -138,7 +138,7 @@ async def test_get_purchase_order_calls_procurement_read_api_and_parses_lines() 
 
     result = await client.get_purchase_order(7)
 
-    assert captured["url"] == "http://procurement.test/procurement/read/v1/purchase-orders/7"
+    assert captured["url"] == "http://procurement.test/procurement/read/v1/wms/receiving-sources/7"
     assert result.id == 7
     assert result.total_amount == Decimal("20.00")
     assert result.lines[0].qty_ordered_base == 24

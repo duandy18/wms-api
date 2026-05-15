@@ -21,6 +21,8 @@ class HttpProcurementReadClient:
     - WMS 只读取 procurement-api read API。
     - 本 client 不写 procurement owner 数据。
     - 本 client 不创建 WMS 入库单。
+    - 采购入库来源必须使用 procurement-api 暴露给 WMS 的 receiving-sources 合同，
+      不再绑定采购管理页面的 purchase-orders 读模型路径。
     """
 
     def __init__(
@@ -54,7 +56,7 @@ class HttpProcurementReadClient:
             params["q"] = q.strip()
 
         payload = await self._get_json(
-            "/procurement/read/v1/purchase-orders/source-options",
+            "/procurement/read/v1/wms/receiving-sources",
             params=params,
         )
 
@@ -62,7 +64,7 @@ class HttpProcurementReadClient:
 
     async def get_purchase_order(self, po_id: int) -> ProcurementPurchaseOrderOut:
         payload = await self._get_json(
-            f"/procurement/read/v1/purchase-orders/{int(po_id)}",
+            f"/procurement/read/v1/wms/receiving-sources/{int(po_id)}",
             params=None,
         )
 
