@@ -61,8 +61,8 @@ markers = [
     "sqlite: tests requiring SQLite behavior",
 ]
 env = [
-    "DATABASE_URL=postgresql+asyncpg://wms:wms@127.0.0.1:5432/wms",
-    "DATABASE_URL_TEST=postgresql+asyncpg://wms:wms@127.0.0.1:5432/wms_test",
+    "DATABASE_URL=postgresql+asyncpg://wms:wms@127.0.0.1:5433/wms",
+    "DATABASE_URL_TEST=postgresql+asyncpg://wms:wms@127.0.0.1:5433/wms_test",
     "ENABLE_DIAG=1",
     "JWT_SECRET=dev-temp-secret",
 ]
