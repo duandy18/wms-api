@@ -21,6 +21,7 @@ WMS-DU backend service for WMS execution, inventory, inbound, outbound, finance,
 | pms-api upstream | 8005 | PMS HTTP API consumed by WMS |
 | oms-api upstream | 8010 | OMS HTTP API consumed by WMS |
 | procurement-api upstream | 8015 | Procurement HTTP API consumed by WMS |
+| logistics-api upstream | 8020 | Logistics HTTP API consumed by WMS |
 
 See `docs/dev-ports.md` for the full local port contract.
 

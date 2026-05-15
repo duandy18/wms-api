@@ -12,7 +12,7 @@ class LogisticsShippingFactsClientError(RuntimeError):
 
 
 def _logistics_base_url() -> str:
-    return (os.getenv("LOGISTICS_API_BASE_URL") or "http://127.0.0.1:8002").rstrip("/")
+    return (os.getenv("LOGISTICS_API_BASE_URL") or "http://127.0.0.1:8020").rstrip("/")
 
 
 def _logistics_api_token() -> str | None:
