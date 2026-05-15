@@ -66,6 +66,12 @@ class ProcurementPurchaseOrderOut(BaseModel):
     editable: bool = False
     edit_block_reason: str | None = None
 
+    total_ordered_base: int = Field(default=0, ge=0)
+    total_received_base: int = Field(default=0, ge=0)
+    total_remaining_base: int = Field(default=0, ge=0)
+    completion_status: ProcurementPurchaseOrderCompletionStatus = "NOT_RECEIVED"
+    last_received_at: datetime | None = None
+
     lines: list[ProcurementPurchaseOrderLineOut] = Field(default_factory=list)
 
     model_config = ConfigDict(extra="forbid")
