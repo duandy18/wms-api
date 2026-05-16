@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 import httpx
@@ -7,6 +8,9 @@ import httpx
 from app.integrations.procurement.contracts import (
     ProcurementPurchaseOrderOut,
     ProcurementPurchaseOrderSourceOptionsOut,
+)
+from app.integrations.procurement.wms_procurement_service_auth import (
+    wms_to_procurement_service_auth_headers,
 )
 
 
@@ -21,6 +25,7 @@ class HttpProcurementReadClient:
     - WMS 只读取 procurement-api read API。
     - 本 client 不写 procurement owner 数据。
     - 本 client 不创建 WMS 入库单。
+    - 本 client 统一以 wms-service 身份调用 Procurement。
     - 采购入库来源必须使用 procurement-api 暴露给 WMS 的 receiving-sources 合同，
       不再绑定采购管理页面的 purchase-orders 读模型路径。
     """
@@ -31,6 +36,7 @@ class HttpProcurementReadClient:
         base_url: str,
         timeout_seconds: float = 10.0,
         transport: httpx.AsyncBaseTransport | None = None,
+        headers: Mapping[str, str] | None = None,
     ) -> None:
         normalized = (base_url or "").strip().rstrip("/")
         if not normalized:
@@ -39,6 +45,7 @@ class HttpProcurementReadClient:
         self._base_url = normalized
         self._timeout_seconds = float(timeout_seconds)
         self._transport = transport
+        self._headers = wms_to_procurement_service_auth_headers(headers)
 
     async def list_purchase_order_source_options(
         self,
@@ -80,6 +87,7 @@ class HttpProcurementReadClient:
 
         async with httpx.AsyncClient(
             transport=self._transport,
+            headers=self._headers,
             timeout=httpx.Timeout(self._timeout_seconds),
         ) as client:
             response = await client.get(url, params=params)
