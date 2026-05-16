@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_session
+from app.service_auth.deps import require_wms_service_capability
 from app.wms.inbound.contracts.inbound_event_read import (
     InboundEventDetailOut,
     InboundEventListOut,
@@ -26,6 +27,10 @@ from app.wms.inbound.services.procurement_receiving_result_service import (
 
 router = APIRouter(prefix="/wms/inbound", tags=["wms-inbound-events"])
 
+require_wms_read_procurement_receiving_results = require_wms_service_capability(
+    "wms.read.procurement_receiving_results"
+)
+
 
 @router.get(
     "/procurement-receiving-results",
@@ -37,6 +42,7 @@ async def list_procurement_receiving_results_endpoint(
     procurement_po_id: int | None = Query(default=None, ge=1, description="采购系统采购单 ID"),
     receipt_no: str | None = Query(default=None, description="WMS 入库单号"),
     session: AsyncSession = Depends(get_session),
+    _service_permission: None = Depends(require_wms_read_procurement_receiving_results),
 ) -> ProcurementReceivingResultsOut:
     try:
         return await list_procurement_receiving_results(
@@ -59,6 +65,7 @@ async def list_procurement_receiving_results_endpoint(
 async def get_procurement_receiving_result_detail_endpoint(
     event_id: int,
     session: AsyncSession = Depends(get_session),
+    _service_permission: None = Depends(require_wms_read_procurement_receiving_results),
 ) -> ProcurementReceivingResultDetailOut:
     try:
         return await get_procurement_receiving_result_detail(
@@ -115,4 +122,7 @@ async def get_inbound_event_detail_endpoint(
         raise HTTPException(status_code=400, detail=str(e)) from e
 
 
-__all__ = ["router"]
+__all__ = [
+    "require_wms_read_procurement_receiving_results",
+    "router",
+]

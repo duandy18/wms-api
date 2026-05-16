@@ -9,6 +9,7 @@ from httpx import AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.service_auth.deps import WMS_SERVICE_CLIENT_HEADER
 from tests.services._helpers import ensure_store
 
 pytestmark = pytest.mark.asyncio
@@ -16,9 +17,8 @@ UTC = timezone.utc
 
 
 async def _login_admin_headers(client: AsyncClient) -> dict[str, str]:
-    r = await client.post("/users/login", json={"username": "admin", "password": "admin123"})
-    assert r.status_code == 200, r.text
-    return {"Authorization": f"Bearer {r.json()['access_token']}"}
+    _ = client
+    return {WMS_SERVICE_CLIENT_HEADER: "logistics-service"}
 
 
 async def _pick_any_item_id(session: AsyncSession) -> int:

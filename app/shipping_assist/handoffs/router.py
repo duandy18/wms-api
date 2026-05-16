@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.deps import get_async_session as get_session
+from app.service_auth.deps import require_wms_service_capability
 from app.shipping_assist.handoffs.contracts import (
     ShippingHandoffListResponse,
     ShippingHandoffRow,
@@ -53,6 +54,16 @@ LogisticsStatus = Literal[
 ]
 
 router = APIRouter(prefix="/shipping-assist/handoffs", tags=["shipping-assist-handoffs"])
+
+require_wms_read_shipping_handoffs = require_wms_service_capability(
+    "wms.read.shipping_handoffs"
+)
+require_wms_write_shipping_handoff_import_results = require_wms_service_capability(
+    "wms.write.shipping_handoff_import_results"
+)
+require_wms_write_shipping_handoff_shipping_results = require_wms_service_capability(
+    "wms.write.shipping_handoff_shipping_results"
+)
 
 
 @router.get(
@@ -110,10 +121,8 @@ async def list_shipping_assist_handoff_ready(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     session: AsyncSession = Depends(get_session),
-    current_user: Any = Depends(get_current_user),
+    _service_permission: None = Depends(require_wms_read_shipping_handoffs),
 ) -> LogisticsReadyListOut:
-    del current_user
-
     total = await count_logistics_ready_records(
         session,
         source_doc_type=source_doc_type,
@@ -144,10 +153,8 @@ async def list_shipping_assist_handoff_ready(
 async def record_shipping_assist_handoff_import_result(
     payload: LogisticsImportResultIn,
     session: AsyncSession = Depends(get_session),
-    current_user: Any = Depends(get_current_user),
+    _service_permission: None = Depends(require_wms_write_shipping_handoff_import_results),
 ) -> LogisticsImportResultOut:
-    del current_user
-
     try:
         if payload.export_status == "EXPORTED":
             row = await apply_logistics_import_success(
@@ -188,10 +195,8 @@ async def record_shipping_assist_handoff_import_result(
 async def record_shipping_assist_handoff_shipping_result(
     payload: LogisticsShippingResultIn,
     session: AsyncSession = Depends(get_session),
-    current_user: Any = Depends(get_current_user),
+    _service_permission: None = Depends(require_wms_write_shipping_handoff_shipping_results),
 ) -> LogisticsShippingResultOut:
-    del current_user
-
     try:
         row = await apply_logistics_shipping_results(
             session,
