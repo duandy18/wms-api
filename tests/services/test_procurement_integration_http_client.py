@@ -12,6 +12,11 @@ from app.integrations.procurement.http_client import (
     HttpProcurementReadClient,
     ProcurementReadClientError,
 )
+from app.integrations.procurement.wms_procurement_service_auth import (
+    PROCUREMENT_SERVICE_CLIENT_HEADER,
+    WMS_SERVICE_CLIENT_CODE,
+    wms_to_procurement_service_auth_headers,
+)
 
 
 def _json_response(payload: object, status_code: int = 200) -> httpx.Response:
@@ -22,6 +27,18 @@ def _json_response(payload: object, status_code: int = 200) -> httpx.Response:
     )
 
 
+def test_wms_to_procurement_service_auth_headers_force_wms_service_client() -> None:
+    headers = wms_to_procurement_service_auth_headers(
+        {
+            "Authorization": "Bearer token",
+            PROCUREMENT_SERVICE_CLIENT_HEADER: "wrong-service",
+        }
+    )
+
+    assert headers["Authorization"] == "Bearer token"
+    assert headers[PROCUREMENT_SERVICE_CLIENT_HEADER] == WMS_SERVICE_CLIENT_CODE
+
+
 @pytest.mark.asyncio
 async def test_list_purchase_order_source_options_calls_procurement_read_api() -> None:
     captured: dict[str, object] = {}
@@ -30,6 +47,7 @@ async def test_list_purchase_order_source_options_calls_procurement_read_api() -
     async def handler(request: httpx.Request) -> httpx.Response:
         captured["url"] = str(request.url)
         captured["params"] = dict(request.url.params)
+        captured["service_client"] = request.headers.get(PROCUREMENT_SERVICE_CLIENT_HEADER)
 
         return _json_response(
             {
@@ -72,6 +90,7 @@ async def test_list_purchase_order_source_options_calls_procurement_read_api() -
         "target_warehouse_id": "2",
         "q": "SUP",
     }
+    assert captured["service_client"] == WMS_SERVICE_CLIENT_CODE
     assert result.items[0].po_id == 1
     assert result.items[0].supplier_name_snapshot == "供应商快照"
     assert result.items[0].completion_status == "PARTIAL"
@@ -84,6 +103,7 @@ async def test_get_purchase_order_calls_procurement_read_api_and_parses_lines() 
 
     async def handler(request: httpx.Request) -> httpx.Response:
         captured["url"] = str(request.url)
+        captured["service_client"] = str(request.headers.get(PROCUREMENT_SERVICE_CLIENT_HEADER))
 
         return _json_response(
             {
@@ -139,6 +159,7 @@ async def test_get_purchase_order_calls_procurement_read_api_and_parses_lines() 
     result = await client.get_purchase_order(7)
 
     assert captured["url"] == "http://procurement.test/procurement/read/v1/wms/receiving-sources/7"
+    assert captured["service_client"] == WMS_SERVICE_CLIENT_CODE
     assert result.id == 7
     assert result.total_amount == Decimal("20.00")
     assert result.lines[0].qty_ordered_base == 24
@@ -146,7 +167,10 @@ async def test_get_purchase_order_calls_procurement_read_api_and_parses_lines() 
 
 @pytest.mark.asyncio
 async def test_procurement_read_client_raises_on_error_status() -> None:
-    async def handler(_request: httpx.Request) -> httpx.Response:
+    captured: dict[str, str] = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        captured["service_client"] = str(request.headers.get(PROCUREMENT_SERVICE_CLIENT_HEADER))
         return _json_response({"detail": "not found"}, status_code=404)
 
     client = HttpProcurementReadClient(
@@ -156,6 +180,8 @@ async def test_procurement_read_client_raises_on_error_status() -> None:
 
     with pytest.raises(ProcurementReadClientError):
         await client.get_purchase_order(404)
+
+    assert captured["service_client"] == WMS_SERVICE_CLIENT_CODE
 
 
 def test_factory_uses_explicit_base_url() -> None:
