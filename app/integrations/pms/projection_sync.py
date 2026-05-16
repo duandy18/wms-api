@@ -22,6 +22,8 @@ from typing import Any, Literal
 
 import httpx
 from sqlalchemy import text
+
+from app.integrations.pms.service_auth import pms_service_auth_headers
 from sqlalchemy.ext.asyncio import AsyncSession
 
 ProjectionResource = Literal["items", "suppliers", "uoms", "sku-codes", "barcodes"]
@@ -605,6 +607,7 @@ async def sync_pms_read_projection_once(
 
     async with httpx.AsyncClient(
         base_url=_base_url(pms_api_base_url),
+        headers=pms_service_auth_headers(),
         timeout=httpx.Timeout(timeout_seconds),
         transport=transport,
     ) as client:

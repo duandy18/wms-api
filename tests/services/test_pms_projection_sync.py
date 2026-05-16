@@ -12,6 +12,10 @@ from app.integrations.pms.projection_sync import (
     SYNC_VERSION,
     sync_pms_read_projection_once,
 )
+from app.integrations.pms.service_auth import (
+    PMS_SERVICE_CLIENT_CODE,
+    PMS_SERVICE_CLIENT_HEADER,
+)
 
 pytestmark = pytest.mark.asyncio
 
@@ -27,12 +31,12 @@ async def _clear_projection_tables(session: AsyncSession) -> None:
         await session.execute(text(f"DELETE FROM {table_name}"))
 
 
-def _transport(calls: list[tuple[str, str]]) -> httpx.MockTransport:
+def _transport(calls: list[tuple[str, str, str | None]]) -> httpx.MockTransport:
     def handler(request: httpx.Request) -> httpx.Response:
         path = request.url.path
         offset = int(request.url.params.get("offset", 0))
         limit = int(request.url.params.get("limit", 500))
-        calls.append((path, str(request.url.query.decode("utf-8"))))
+        calls.append((path, str(request.url.query.decode("utf-8")), request.headers.get(PMS_SERVICE_CLIENT_HEADER)))
 
         if path == "/pms/read/v1/projection-feed/items":
             rows: list[dict[str, Any]] = [
@@ -199,7 +203,7 @@ def _transport(calls: list[tuple[str, str]]) -> httpx.MockTransport:
 async def test_sync_pms_read_projection_upserts_feed_rows(session: AsyncSession) -> None:
     await _clear_projection_tables(session)
 
-    calls: list[tuple[str, str]] = []
+    calls: list[tuple[str, str, str | None]] = []
     result = await sync_pms_read_projection_once(
         session,
         pms_api_base_url="http://pms-api.test",
@@ -312,7 +316,7 @@ async def test_sync_pms_read_projection_upserts_feed_rows(session: AsyncSession)
     assert barcode["active"] is True
     assert barcode["is_primary"] is True
 
-    called_paths = [path for path, _ in calls]
+    called_paths = [path for path, _query, _service_client in calls]
     assert called_paths == [
         "/pms/read/v1/projection-feed/items",
         "/pms/read/v1/projection-feed/items",
@@ -322,12 +326,13 @@ async def test_sync_pms_read_projection_upserts_feed_rows(session: AsyncSession)
         "/pms/read/v1/projection-feed/sku-codes",
         "/pms/read/v1/projection-feed/barcodes",
     ]
+    assert {service_client for _path, _query, service_client in calls} == {PMS_SERVICE_CLIENT_CODE}
 
 
 async def test_sync_pms_read_projection_can_limit_resources(session: AsyncSession) -> None:
     await _clear_projection_tables(session)
 
-    calls: list[tuple[str, str]] = []
+    calls: list[tuple[str, str, str | None]] = []
     result = await sync_pms_read_projection_once(
         session,
         pms_api_base_url="http://pms-api.test",
@@ -340,5 +345,6 @@ async def test_sync_pms_read_projection_can_limit_resources(session: AsyncSessio
     assert sorted(result.resources) == ["barcodes"]
     assert result.fetched == 1
 
-    called_paths = [path for path, _ in calls]
+    called_paths = [path for path, _query, _service_client in calls]
     assert called_paths == ["/pms/read/v1/projection-feed/barcodes"]
+    assert {service_client for _path, _query, service_client in calls} == {PMS_SERVICE_CLIENT_CODE}

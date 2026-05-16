@@ -9,6 +9,10 @@ import pytest
 
 from app.integrations.pms.contracts import BarcodeProbeStatus
 from app.integrations.pms.http_client import HttpPmsReadClient
+from app.integrations.pms.service_auth import (
+    PMS_SERVICE_CLIENT_CODE,
+    PMS_SERVICE_CLIENT_HEADER,
+)
 
 pytestmark = pytest.mark.asyncio
 
@@ -21,6 +25,7 @@ def _json(request: httpx.Request) -> dict[str, Any]:
 
 def _transport() -> httpx.MockTransport:
     def handler(request: httpx.Request) -> httpx.Response:
+        assert request.headers.get(PMS_SERVICE_CLIENT_HEADER) == PMS_SERVICE_CLIENT_CODE
         path = request.url.path
 
         if path == "/pms/read/v1/items/basic":

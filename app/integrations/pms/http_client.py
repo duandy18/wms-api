@@ -20,6 +20,7 @@ from typing import Any, NoReturn, TypeVar
 
 import httpx
 
+from app.integrations.pms.service_auth import pms_service_auth_headers
 from app.integrations.pms.contracts import (
     BarcodeProbeOut,
     ItemBasic,
@@ -99,7 +100,7 @@ class HttpPmsReadClient:
         self.base_url = _base_url(base_url)
         self.timeout = httpx.Timeout(timeout_seconds)
         self.transport = transport
-        self.headers = dict(headers or {})
+        self.headers = pms_service_auth_headers(headers)
 
     async def _request(
         self,
