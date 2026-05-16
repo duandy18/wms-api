@@ -32,6 +32,7 @@ from app.integrations.oms.projection_contracts import (
     OmsFulfillmentReadyOrderIn,
     OmsFulfillmentReadyPlatform,
 )
+from app.integrations.oms.service_auth import oms_service_auth_headers
 
 SYNC_VERSION = "oms-read-v1-fulfillment-ready-orders"
 RESOURCE_PATH = "/oms/read/v1/fulfillment-ready-orders"
@@ -65,7 +66,7 @@ def _auth_headers(value: str | None = None) -> dict[str, str]:
     token = (value or os.getenv("OMS_API_TOKEN") or "").strip()
     if not token:
         raise RuntimeError("OMS_API_TOKEN is required for OMS fulfillment projection sync")
-    return {"Authorization": f"Bearer {token}"}
+    return oms_service_auth_headers({"Authorization": f"Bearer {token}"})
 
 
 def _safe_limit(value: int) -> int:

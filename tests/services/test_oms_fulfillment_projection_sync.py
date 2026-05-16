@@ -14,6 +14,10 @@ from app.integrations.oms.projection_sync import (
     OmsFulfillmentProjectionSyncError,
     sync_oms_fulfillment_projection_once,
 )
+from app.integrations.oms.service_auth import (
+    OMS_SERVICE_CLIENT_HEADER,
+    WMS_SERVICE_CLIENT_CODE,
+)
 
 pytestmark = pytest.mark.asyncio
 
@@ -126,6 +130,7 @@ def _transport(
                 "path": request.url.path,
                 "params": dict(request.url.params),
                 "authorization": request.headers.get("authorization"),
+                "service_client": request.headers.get(OMS_SERVICE_CLIENT_HEADER),
             }
         )
         return httpx.Response(
@@ -259,6 +264,7 @@ async def test_sync_oms_fulfillment_projection_upserts_ready_orders(session: Asy
     ]
     assert [call["params"]["offset"] for call in calls] == ["0", "1"]
     assert all(call["authorization"] == "Bearer oms-token-001" for call in calls)
+    assert {call["service_client"] for call in calls} == {WMS_SERVICE_CLIENT_CODE}
 
 
 async def test_sync_oms_fulfillment_projection_replaces_stale_children(session: AsyncSession) -> None:
