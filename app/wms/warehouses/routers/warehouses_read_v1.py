@@ -8,10 +8,13 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.deps import get_async_session as get_session
+from app.service_auth.deps import require_wms_service_capability
 from app.wms.warehouses.contracts.warehouse_read_v1 import (
     WmsReadWarehouseListOut,
     WmsReadWarehouseOut,
 )
+
+require_wms_read_warehouses = require_wms_service_capability("wms.read.warehouses")
 
 
 def _row_to_read_warehouse(row: Mapping[str, Any]) -> WmsReadWarehouseOut:
@@ -38,6 +41,7 @@ def register(router: APIRouter) -> None:
         ),
         limit: int = Query(200, ge=1, le=500),
         session: AsyncSession = Depends(get_session),
+        _service_permission: None = Depends(require_wms_read_warehouses),
     ) -> WmsReadWarehouseListOut:
         """List WMS warehouses for cross-system read contracts.
 
@@ -87,6 +91,7 @@ def register(router: APIRouter) -> None:
     async def get_wms_read_warehouse(
         warehouse_id: int = Path(..., ge=1),
         session: AsyncSession = Depends(get_session),
+        _service_permission: None = Depends(require_wms_read_warehouses),
     ) -> WmsReadWarehouseOut:
         row = (
             await session.execute(
@@ -111,4 +116,4 @@ def register(router: APIRouter) -> None:
         return _row_to_read_warehouse(row)
 
 
-__all__ = ["register"]
+__all__ = ["register", "require_wms_read_warehouses"]

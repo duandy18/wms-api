@@ -6,6 +6,10 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from app.service_auth.deps import (
+    WMS_SERVICE_CLIENT_HEADER,
+    get_wms_service_permission_service,
+)
 from app.wms.inbound.contracts.procurement_receiving_result import (
     ProcurementReceivingResultDetailOut,
     ProcurementReceivingResultLineOut,
@@ -14,9 +18,26 @@ from app.wms.inbound.contracts.procurement_receiving_result import (
 from app.wms.inbound.routers import inbound_events as router_module
 
 
-def _client() -> TestClient:
+class FakePermissionService:
+    def __init__(self, *, allowed: bool = True) -> None:
+        self.allowed = allowed
+        self.calls: list[tuple[str | None, str | None]] = []
+
+    def is_allowed(self, *, client_code: str | None, capability_code: str | None) -> bool:
+        self.calls.append((client_code, capability_code))
+        return self.allowed
+
+
+def _headers(client_code: str = "procurement-service") -> dict[str, str]:
+    return {WMS_SERVICE_CLIENT_HEADER: client_code}
+
+
+def _client(fake_permission: FakePermissionService | None = None) -> TestClient:
     app = FastAPI()
     app.include_router(router_module.router)
+    app.dependency_overrides[get_wms_service_permission_service] = (
+        lambda: fake_permission or FakePermissionService()
+    )
     return TestClient(app)
 
 
@@ -77,6 +98,7 @@ def test_procurement_receiving_results_route_returns_contract(
 
     response = _client().get(
         "/wms/inbound/procurement-receiving-results",
+        headers=_headers(),
         params={
             "after_event_id": 10,
             "limit": 20,
@@ -122,7 +144,10 @@ def test_procurement_receiving_result_detail_route_returns_contract(
         fake_get_result_detail,
     )
 
-    response = _client().get("/wms/inbound/procurement-receiving-results/34")
+    response = _client().get(
+        "/wms/inbound/procurement-receiving-results/34",
+        headers=_headers(),
+    )
 
     assert response.status_code == 200
     body = response.json()
@@ -130,3 +155,20 @@ def test_procurement_receiving_result_detail_route_returns_contract(
     assert captured["event_id"] == 34
     assert body["event_id"] == 34
     assert body["items"][0]["receipt_no"] == "IR-PO-1-20260513141447-A864B3"
+
+
+def test_procurement_receiving_results_requires_service_client_header() -> None:
+    response = _client().get("/wms/inbound/procurement-receiving-results")
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "wms_service_client_required"
+
+
+def test_procurement_receiving_results_rejects_denied_service_permission() -> None:
+    response = _client(FakePermissionService(allowed=False)).get(
+        "/wms/inbound/procurement-receiving-results",
+        headers=_headers(),
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "wms_service_permission_denied"
