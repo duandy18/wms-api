@@ -4,7 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.db.base import Base, init_models
-from app.service_auth.models import (
+from app.wms.system.service_auth.models import (
     WmsServiceCapability,
     WmsServiceCapabilityRoute,
     WmsServiceClient,
@@ -81,7 +81,7 @@ def test_wms_service_auth_models_are_registered_in_metadata() -> None:
 def test_wms_service_auth_model_is_loaded_by_db_base() -> None:
     text = (ROOT / "app/db/base.py").read_text(encoding="utf-8")
 
-    assert '"app.service_auth.models"' in text
+    assert '"app.wms.system.service_auth.models"' in text
 
 
 def test_wms_service_clients_table_contract() -> None:

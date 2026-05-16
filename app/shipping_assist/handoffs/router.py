@@ -16,7 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.deps import get_async_session as get_session
-from app.service_auth.deps import require_wms_service_capability
+from app.wms.system.service_auth.deps import require_wms_service_capability
 from app.shipping_assist.handoffs.contracts import (
     ShippingHandoffListResponse,
     ShippingHandoffRow,

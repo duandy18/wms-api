@@ -8,7 +8,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.deps import get_async_session as get_session
-from app.service_auth.deps import require_wms_service_capability
+from app.wms.system.service_auth.deps import require_wms_service_capability
 from app.wms.warehouses.contracts.warehouse_read_v1 import (
     WmsReadWarehouseListOut,
     WmsReadWarehouseOut,
