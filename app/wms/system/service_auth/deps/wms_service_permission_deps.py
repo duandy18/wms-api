@@ -1,4 +1,4 @@
-# app/service_auth/deps.py
+# app/wms/system/service_auth/deps/wms_service_permission_deps.py
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -7,15 +7,21 @@ from fastapi import Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.service_auth.services import WmsServicePermissionService
+from app.wms.system.service_auth.services import WmsServicePermissionService
 
 WMS_SERVICE_CLIENT_HEADER = "X-Service-Client"
 
+GET_DB_DEP = Depends(get_db)
+WMS_SERVICE_CLIENT_HEADER_DEP = Header(default=None, alias=WMS_SERVICE_CLIENT_HEADER)
+
 
 def get_wms_service_permission_service(
-    db: Session = Depends(get_db),
+    db: Session = GET_DB_DEP,
 ) -> WmsServicePermissionService:
     return WmsServicePermissionService(db)
+
+
+WMS_SERVICE_PERMISSION_SERVICE_DEP = Depends(get_wms_service_permission_service)
 
 
 def require_wms_service_capability(
@@ -36,8 +42,8 @@ def require_wms_service_capability(
     normalized_capability_code = (capability_code or "").strip()
 
     def dependency(
-        x_service_client: str | None = Header(default=None, alias=WMS_SERVICE_CLIENT_HEADER),
-        service: WmsServicePermissionService = Depends(get_wms_service_permission_service),
+        x_service_client: str | None = WMS_SERVICE_CLIENT_HEADER_DEP,
+        service: WmsServicePermissionService = WMS_SERVICE_PERMISSION_SERVICE_DEP,
     ) -> None:
         client_code = (x_service_client or "").strip()
         if not client_code:

@@ -9,7 +9,7 @@ from httpx import AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.service_auth.deps import WMS_SERVICE_CLIENT_HEADER
+from app.wms.system.service_auth.deps import WMS_SERVICE_CLIENT_HEADER
 from tests.services._helpers import ensure_store
 
 pytestmark = pytest.mark.asyncio

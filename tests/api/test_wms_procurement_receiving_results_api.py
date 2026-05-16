@@ -6,7 +6,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.service_auth.deps import (
+from app.wms.system.service_auth.deps import (
     WMS_SERVICE_CLIENT_HEADER,
     get_wms_service_permission_service,
 )

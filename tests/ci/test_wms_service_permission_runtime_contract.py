@@ -5,16 +5,16 @@ from fastapi import HTTPException
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session
 
-from app.service_auth.deps import (
+from app.wms.system.service_auth.deps import (
     WMS_SERVICE_CLIENT_HEADER,
     require_wms_service_capability,
 )
-from app.service_auth.models import (
+from app.wms.system.service_auth.models import (
     WmsServiceCapability,
     WmsServiceClient,
     WmsServicePermission,
 )
-from app.service_auth.services import WmsServicePermissionService
+from app.wms.system.service_auth.services import WmsServicePermissionService
 
 
 def _sqlite_session() -> Session:

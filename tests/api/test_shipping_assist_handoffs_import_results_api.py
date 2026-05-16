@@ -8,7 +8,7 @@ from httpx import AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.service_auth.deps import WMS_SERVICE_CLIENT_HEADER
+from app.wms.system.service_auth.deps import WMS_SERVICE_CLIENT_HEADER
 pytestmark = pytest.mark.asyncio
 UTC = timezone.utc
 
