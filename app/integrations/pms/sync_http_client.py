@@ -20,6 +20,7 @@ from typing import Any, TypeVar
 import httpx
 
 from app.integrations.pms.contracts import PmsExportSkuCodeResolution
+from app.integrations.pms.service_auth import pms_service_auth_headers
 
 ModelT = TypeVar("ModelT")
 
@@ -50,7 +51,7 @@ class SyncHttpPmsReadClient:
         self.base_url = _base_url(base_url)
         self.timeout = httpx.Timeout(timeout_seconds)
         self.transport = transport
-        self.headers = dict(headers or {})
+        self.headers = pms_service_auth_headers(headers)
 
     def resolve_active_code_for_outbound_default(
         self,
