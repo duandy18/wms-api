@@ -62,11 +62,8 @@ def _base_url(value: str | None = None) -> str:
     return raw.rstrip("/")
 
 
-def _auth_headers(value: str | None = None) -> dict[str, str]:
-    token = (value or os.getenv("OMS_API_TOKEN") or "").strip()
-    if not token:
-        raise RuntimeError("OMS_API_TOKEN is required for OMS fulfillment projection sync")
-    return oms_service_auth_headers({"Authorization": f"Bearer {token}"})
+def _auth_headers() -> dict[str, str]:
+    return oms_service_auth_headers()
 
 
 def _safe_limit(value: int) -> int:
@@ -435,7 +432,6 @@ async def sync_oms_fulfillment_projection_once(
     session: AsyncSession,
     *,
     oms_api_base_url: str | None = None,
-    oms_api_token: str | None = None,
     platform: OmsFulfillmentReadyPlatform | None = None,
     store_code: str | None = None,
     limit: int = DEFAULT_LIMIT,
@@ -454,7 +450,7 @@ async def sync_oms_fulfillment_projection_once(
 
     async with httpx.AsyncClient(
         base_url=_base_url(oms_api_base_url),
-        headers=_auth_headers(oms_api_token),
+        headers=_auth_headers(),
         timeout=httpx.Timeout(timeout_seconds),
         transport=transport,
     ) as client:

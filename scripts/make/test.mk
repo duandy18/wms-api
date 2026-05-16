@@ -262,7 +262,7 @@ pms-projection-sync: venv
 
 # ---------------------------------
 # OMS fulfillment projection sync
-# Requires oms-api running locally on OMS_API_BASE_URL and OMS_API_TOKEN with oms.fulfillment.read scope.
+# Requires oms-api running locally on OMS_API_BASE_URL. Auth uses X-Service-Client: wms-service.
 # This target is intentionally local/manual and is not part of default CI.
 # ---------------------------------
 .PHONY: oms-fulfillment-projection-sync

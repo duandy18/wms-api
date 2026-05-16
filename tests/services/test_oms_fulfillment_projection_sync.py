@@ -129,7 +129,6 @@ def _transport(
             {
                 "path": request.url.path,
                 "params": dict(request.url.params),
-                "authorization": request.headers.get("authorization"),
                 "service_client": request.headers.get(OMS_SERVICE_CLIENT_HEADER),
             }
         )
@@ -175,7 +174,6 @@ async def test_sync_oms_fulfillment_projection_upserts_ready_orders(session: Asy
     result = await sync_oms_fulfillment_projection_once(
         session,
         oms_api_base_url="http://oms-api.test",
-        oms_api_token="oms-token-001",
         limit=1,
         transport=_transport(rows, calls),
     )
@@ -263,7 +261,6 @@ async def test_sync_oms_fulfillment_projection_upserts_ready_orders(session: Asy
         "/oms/read/v1/fulfillment-ready-orders",
     ]
     assert [call["params"]["offset"] for call in calls] == ["0", "1"]
-    assert all(call["authorization"] == "Bearer oms-token-001" for call in calls)
     assert {call["service_client"] for call in calls} == {WMS_SERVICE_CLIENT_CODE}
 
 
@@ -283,7 +280,6 @@ async def test_sync_oms_fulfillment_projection_replaces_stale_children(session: 
     await sync_oms_fulfillment_projection_once(
         session,
         oms_api_base_url="http://oms-api.test",
-        oms_api_token="oms-token-001",
         limit=200,
         transport=_transport(first_rows, []),
     )
@@ -302,7 +298,6 @@ async def test_sync_oms_fulfillment_projection_replaces_stale_children(session: 
     await sync_oms_fulfillment_projection_once(
         session,
         oms_api_base_url="http://oms-api.test",
-        oms_api_token="oms-token-001",
         limit=200,
         transport=_transport(second_rows, []),
     )
@@ -339,16 +334,22 @@ async def test_sync_oms_fulfillment_projection_replaces_stale_children(session: 
     assert component_count == 1
 
 
-async def test_sync_oms_fulfillment_projection_requires_token(session: AsyncSession) -> None:
+async def test_sync_oms_fulfillment_projection_sends_service_client_without_token(
+    session: AsyncSession,
+) -> None:
     await _clear_projection_tables(session)
+    calls: list[dict[str, Any]] = []
 
-    with pytest.raises(RuntimeError, match="OMS_API_TOKEN is required"):
-        await sync_oms_fulfillment_projection_once(
-            session,
-            oms_api_base_url="http://oms-api.test",
-            oms_api_token="",
-            transport=_transport([], []),
-        )
+    result = await sync_oms_fulfillment_projection_once(
+        session,
+        oms_api_base_url="http://oms-api.test",
+        limit=200,
+        transport=_transport([], calls),
+    )
+
+    assert result.fetched == 0
+    assert result.pages == 1
+    assert {call["service_client"] for call in calls} == {WMS_SERVICE_CLIENT_CODE}
 
 
 async def test_sync_oms_fulfillment_projection_reports_auth_failure(session: AsyncSession) -> None:
@@ -361,6 +362,5 @@ async def test_sync_oms_fulfillment_projection_reports_auth_failure(session: Asy
         await sync_oms_fulfillment_projection_once(
             session,
             oms_api_base_url="http://oms-api.test",
-            oms_api_token="bad-token",
-            transport=httpx.MockTransport(handler),
+                transport=httpx.MockTransport(handler),
         )

@@ -27,7 +27,6 @@ async def _main() -> None:
     )
     parser.add_argument("--limit", type=int, default=DEFAULT_LIMIT)
     parser.add_argument("--oms-api-base-url", default=None)
-    parser.add_argument("--oms-api-token", default=None)
     parser.add_argument("--platform", default=None, choices=["pdd", "taobao", "jd"])
     parser.add_argument("--store-code", default=None)
     parser.add_argument("--timeout-seconds", type=float, default=30.0)
@@ -37,7 +36,6 @@ async def _main() -> None:
         result = await sync_oms_fulfillment_projection_once(
             session,
             oms_api_base_url=args.oms_api_base_url,
-            oms_api_token=args.oms_api_token,
             platform=_platform(args.platform),
             store_code=args.store_code,
             limit=args.limit,
