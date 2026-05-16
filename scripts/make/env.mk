@@ -79,7 +79,7 @@ env-check:
 	@$(DEV_ENV) $(PY) -c "from app.main import app; print('WMS app import OK:', len(app.routes), 'routes')"
 	@echo
 	@echo "===== PMS projection feed check ====="
-	@curl --max-time 3 -fsS "$(PMS_API_BASE_URL)/pms/read/v1/projection-feed/suppliers?limit=1&offset=0" >/dev/null && echo "PMS projection feed OK: $(PMS_API_BASE_URL)" || (echo "PMS projection feed FAILED: $(PMS_API_BASE_URL)" >&2; exit 2)
+	@curl --max-time 3 -fsS -H "X-Service-Client: wms-service" "$(PMS_API_BASE_URL)/pms/read/v1/projection-feed/suppliers?limit=1&offset=0" >/dev/null && echo "PMS projection feed OK: $(PMS_API_BASE_URL)" || (echo "PMS projection feed FAILED: $(PMS_API_BASE_URL)" >&2; exit 2)
 	@echo
 	@echo "===== OMS OpenAPI check ====="
 	@curl --max-time 3 -fsS "$(OMS_API_BASE_URL)/openapi.json" >/dev/null && echo "OMS API OK: $(OMS_API_BASE_URL)" || (echo "OMS API FAILED: $(OMS_API_BASE_URL)" >&2; exit 2)
