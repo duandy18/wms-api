@@ -47,8 +47,18 @@ def test_wms_local_env_contract_includes_oms_api_base_url() -> None:
 def test_wms_oms_projection_has_no_cross_system_foreign_keys() -> None:
     text = (ROOT / "app/integrations/oms/projection_models.py").read_text(encoding="utf-8")
 
-    assert "oms_fskus" not in text
-    assert "oms_orders" not in text
-    assert "orders.id" not in text
-    assert "order_lines.id" not in text
-    assert "wms_pms_" not in text
+    # WMS-local projection models may reference WMS-local execution/import tables.
+    # This guard only forbids coupling back to OMS-owner tables or PMS projection tables.
+    forbidden_terms = (
+        "oms_fskus",
+        "oms_orders",
+        "oms_order_lines",
+        "from app.oms.orders",
+        "from app.oms.fsku",
+        "sa.ForeignKey(\"oms_",
+        "ForeignKey('oms_",
+        "wms_pms_",
+    )
+
+    for term in forbidden_terms:
+        assert term not in text

@@ -44,16 +44,18 @@ def test_oms_fulfillment_projection_sync_writes_projection_tables_only() -> None
     assert "wms_pms_" not in text
 
 
-def test_oms_fulfillment_projection_sync_has_local_make_target_and_token_contract() -> None:
+def test_oms_fulfillment_projection_sync_has_local_make_target_and_service_auth_contract() -> None:
     makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
     env_example = (ROOT / ".env.example").read_text(encoding="utf-8")
     test_mk = (ROOT / "scripts/make/test.mk").read_text(encoding="utf-8")
+    sync_text = (ROOT / "app/integrations/oms/projection_sync.py").read_text(encoding="utf-8")
 
-    assert "OMS_API_TOKEN ?=" in makefile
-    assert 'OMS_API_TOKEN="$(OMS_API_TOKEN)"' in makefile
-    assert "OMS_API_TOKEN=" in env_example
+    assert "OMS_API_TOKEN" not in makefile
+    assert "OMS_API_TOKEN" not in env_example
+    assert "OMS_API_TOKEN" not in sync_text
     assert "oms-fulfillment-projection-sync" in test_mk
     assert "scripts/oms/sync_fulfillment_projection.py" in test_mk
+    assert "X-Service-Client: wms-service" in test_mk
 
 
 def test_oms_fulfillment_projection_sync_sends_wms_service_client_header() -> None:

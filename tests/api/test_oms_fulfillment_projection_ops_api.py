@@ -171,7 +171,6 @@ async def test_oms_fulfillment_projection_status_lists_resources(
 
     data = r.json()
     assert data["oms_api_base_url_configured"] in {True, False}
-    assert data["oms_api_token_configured"] in {True, False}
 
     resources = {row["resource"]: row for row in data["resources"]}
     assert list(resources.keys()) == ["orders", "lines", "components"]
@@ -233,7 +232,7 @@ async def test_oms_fulfillment_projection_can_check_projection(
 
 
 @pytest.mark.asyncio
-async def test_oms_fulfillment_projection_sync_without_token_returns_400_and_logs_failed_run(
+async def test_oms_fulfillment_projection_status_does_not_expose_legacy_token_config(
     client: AsyncClient,
     session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
@@ -244,37 +243,11 @@ async def test_oms_fulfillment_projection_sync_without_token_returns_400_and_log
 
     headers = await _login_admin_headers(client)
 
-    r = await client.post(
-        "/oms/fulfillment-projection/projections/fulfillment-ready-orders/sync?platform=pdd&store_code=UT-PDD",
-        headers=headers,
-    )
-    assert r.status_code == 400, r.text
-    assert "OMS_API_TOKEN" in r.text
+    r = await client.get("/oms/fulfillment-projection/status", headers=headers)
 
-    row = (
-        await session.execute(
-            text(
-                """
-                SELECT
-                    resource,
-                    platform,
-                    store_code,
-                    status,
-                    error_message
-                FROM wms_oms_fulfillment_projection_sync_runs
-                WHERE resource = 'fulfillment-ready-orders'
-                ORDER BY id DESC
-                LIMIT 1
-                """
-            )
-        )
-    ).mappings().one()
-
-    assert row["resource"] == "fulfillment-ready-orders"
-    assert row["platform"] == "pdd"
-    assert row["store_code"] == "UT-PDD"
-    assert row["status"] == "FAILED"
-    assert "OMS_API_TOKEN" in str(row["error_message"])
+    assert r.status_code == 200, r.text
+    assert "oms_api_base_url_configured" in r.json()
+    assert "oms_api_token_configured" not in r.json()
 
 
 @pytest.mark.asyncio

@@ -69,10 +69,6 @@ class OmsFulfillmentProjectionService:
         value = (os.getenv("OMS_API_BASE_URL") or "").strip().rstrip("/")
         return value or None
 
-    @staticmethod
-    def _oms_api_token_configured() -> bool:
-        return bool((os.getenv("OMS_API_TOKEN") or "").strip())
-
     def get_status(self) -> dict[str, Any]:
         latest_run = self.repo.latest_sync_run()
         resources: list[dict[str, Any]] = []
@@ -92,7 +88,6 @@ class OmsFulfillmentProjectionService:
 
         return {
             "oms_api_base_url_configured": self._oms_api_base_url_snapshot() is not None,
-            "oms_api_token_configured": self._oms_api_token_configured(),
             "resources": resources,
         }
 

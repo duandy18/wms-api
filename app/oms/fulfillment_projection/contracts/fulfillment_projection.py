@@ -42,7 +42,6 @@ class OmsProjectionResourceStatusOut(BaseModel):
 
 class OmsProjectionStatusOut(BaseModel):
     oms_api_base_url_configured: bool
-    oms_api_token_configured: bool
     resources: list[OmsProjectionResourceStatusOut] = Field(default_factory=list)
 
 
